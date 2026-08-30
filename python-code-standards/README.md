@@ -69,9 +69,27 @@ E:\_src\eval\
         └── baseline\
 ```
 
-`evals/RUNBOOK.md` is a paste-ready instruction block for Claude Code that does
-the whole sequence: fixes the skill symlink, verifies the toolchain, sets up the
-scratch repository, runs the evals, and grades them.
+In Claude Code, open this repository and say:
+
+```
+Follow the instructions in @evals/RUNBOOK.md
+```
+
+That runbook fixes the skill symlink, verifies the toolchain, sets up the scratch
+repository, runs the evals, and grades them.
+
+### Reading the result
+
+A near-zero delta in declaration violations means the rule is not landing, and
+the fix is to make it louder in `SKILL.md` — not to conclude the eval failed.
+
+A low trigger rate on eval 6 means the `description` frontmatter needs work. That
+field is the only thing loaded before a skill fires, so a strong body behind a
+weak description is worth nothing.
+
+A failure on report question 4 is the most serious. Verification honesty is the
+one rule that asks an agent to say something against its own apparent interest,
+and it is the hardest to enforce mechanically.
 
 Launch two subagents per prompt **in the same turn** — one with the skill, one
 without — writing to the two run directories. Launching them together matters:
