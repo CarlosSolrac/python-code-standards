@@ -56,6 +56,38 @@ cd <target-repo> && uv lock          # ci.yml installs with --locked
 
 The repository copy is authoritative wherever both exist: it is the one CI runs.
 
+## Running the evals
+
+Set up a scratch repository the agents will work in, separate from this one:
+
+```
+E:\_src\eval\
+├── fixtures\        copies of evals/fixtures/, the inputs agents edit
+└── runs\
+    └── eval-1\
+        ├── with-skill\
+        └── baseline\
+```
+
+`evals/RUNBOOK.md` is a paste-ready instruction block for Claude Code that does
+the whole sequence: fixes the skill symlink, verifies the toolchain, sets up the
+scratch repository, runs the evals, and grades them.
+
+Launch two subagents per prompt **in the same turn** — one with the skill, one
+without — writing to the two run directories. Launching them together matters:
+running all the with-skill cases first and the baselines later compares across
+different conditions.
+
+Then grade from this repository:
+
+```bash
+uv sync --all-groups
+uv run python evals/grade.py <runs>/with-skill <runs>/baseline --json scores.json
+```
+
+The delta between the two columns is the measurement; a single run's absolute
+numbers mean little.
+
 ## Verifying the skill itself
 
 ```bash

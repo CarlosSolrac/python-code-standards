@@ -147,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     """
     parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runs", nargs="+", type=Path)
-    parser.add_argument("--checker", type=Path, default=Path("tools/check_declarations.py"))
+    parser.add_argument("--checker", type=Path, default=Path("skill/tools/check_declarations.py"))
     parser.add_argument("--config", type=Path, default=Path("pyproject.toml"))
     parser.add_argument("--json", type=Path, default=None)
     args: argparse.Namespace = parser.parse_args(argv)
@@ -155,7 +155,9 @@ def main(argv: list[str] | None = None) -> int:
     scores: list[Score] = []
     run: Path
     for run in args.runs:
-        scores.append(grade(run, args.checker.resolve(), args.config.resolve()))
+        # Resolve every path: the tools below run with a different working
+        # directory, so a relative run path would resolve twice and match nothing.
+        scores.append(grade(run.resolve(), args.checker.resolve(), args.config.resolve()))
 
     print(f"{'run':<24}{'files':>6}{'lines':>7}{'decl':>7}{'ruff':>7}{'pyright':>9}{'uv':>5}")
     score: Score

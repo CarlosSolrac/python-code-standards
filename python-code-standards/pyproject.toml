@@ -106,6 +106,8 @@ disallow_any_explicit = false
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers"
 testpaths = ["tests"]
+# The repo is not an installed package; tests import skill.tools from the tree.
+pythonpath = ["."]
 
 [tool.coverage.run]
 branch = true
