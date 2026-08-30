@@ -1,0 +1,42 @@
+{
+  "skill_name": "python-code-standards",
+  "notes": "Replace these with prompts drawn from your actual work. Prompt phrasing must not hint at the standards; that is what is being tested.",
+  "evals": [
+    {
+      "id": 1,
+      "tests": "fresh code, declaration rule",
+      "prompt": "I have a DuckDB table `events(event_id, event_name, occurred_at, count)`. Write me a function that returns total counts grouped by month.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "tests": "scope discipline; does it touch only what was asked",
+      "prompt": "There's a bug in summarize() — it skips the last row. Fix it.",
+      "files": ["fixtures/nonconforming.py"]
+    },
+    {
+      "id": 3,
+      "tests": "conflict reporting; repo violates the standards",
+      "prompt": "Add a `min_count` filter parameter to this module.",
+      "files": ["fixtures/nonconforming.py"]
+    },
+    {
+      "id": 4,
+      "tests": "declaration rule under refactor pressure",
+      "prompt": "This function is doing too much. Split it up.",
+      "files": ["fixtures/long_function.py"]
+    },
+    {
+      "id": 5,
+      "tests": "survival late in a long session; run as the 4th or 5th task in one session",
+      "prompt": "Now add a CLI entry point and tests for the whole module.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "tests": "triggering; run 3+ times, phrased so the skill must fire on its own",
+      "prompt": "Clean up this script for me.",
+      "files": ["fixtures/nonconforming.py"]
+    }
+  ]
+}
