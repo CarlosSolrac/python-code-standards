@@ -107,6 +107,11 @@ uv run python evals/grade.py <runs>/eval-N/with-skill <runs>/eval-N/baseline --j
 
 The measurement is the difference between the two rows, not either row alone.
 
+Only the `decl` column is unconfounded. Ruff and Pyright counts depend on what
+each run happens to ship and on whether its dependencies are installed in the
+grader's environment, so treat them as context and read the per-rule breakdown in
+the JSON rather than the totals.
+
 ## 6. Report
 
 Give a table of with-skill against baseline for each eval: declaration

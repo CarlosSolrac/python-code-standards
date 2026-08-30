@@ -5,6 +5,9 @@ counts from the declaration checker, Ruff, and Pyright. It makes no judgment
 calls: every number here comes from a tool, so the same output scores the same
 way regardless of who ran it.
 
+Whether the agent used uv, claimed an unrun check passed, or kept its diff scoped
+is not measurable here — those live in the transcript. Read them there.
+
 Compare a with-skill run against a without-skill baseline on identical prompts.
 A single run's absolute numbers mean little; the difference between the two is
 the measurement.
@@ -34,7 +37,6 @@ class Score:
     ruff_violations: int
     ruff_by_rule: dict[str, int]
     pyright_errors: int
-    used_uv: bool
     notes: list[str]
 
 
@@ -55,12 +57,22 @@ def count_declarations(target: Path, checker: Path) -> int:
 
 
 def count_ruff(target: Path, config: Path) -> tuple[int, dict[str, int]]:
-    """Return the total Ruff violations and a per-rule breakdown."""
+    """Return the total Ruff violations and a per-rule breakdown.
+
+    The config is copied into the run directory and Ruff is invoked from there,
+    because per-file ignores such as ``tests/**/*.py`` resolve relative to the
+    config's own location. Pointing at a config elsewhere silently fails to match
+    them, which penalises a run for exactly the findings the standards waive.
+    """
+    local: Path = target / "pyproject.toml"
+    if not local.exists():
+        local.write_text(config.read_text(encoding="utf-8"), encoding="utf-8")
+
     status: int
     output: str
     status, output = _run(
-        ["uvx", "ruff@latest", "check", "--no-cache", "--config", str(config), "--output-format", "json", str(target)],
-        target.parent,
+        ["uvx", "ruff@latest", "check", "--no-cache", "--output-format", "json", "."],
+        target,
     )
     if status not in (0, 1):
         return -1, {}
@@ -122,6 +134,8 @@ def grade(run: Path, checker: Path, config: Path) -> Score:
         notes.append("no Python files found; check the run directory")
     if "pip install" in text or "python -m venv" in text:
         notes.append("mentions pip or venv; the standards require uv")
+    if any("pyright" in note for note in notes):
+        notes.append("pyright needs the run's own dependencies installed to be meaningful")
 
     return Score(
         run=run.name,
@@ -131,7 +145,6 @@ def grade(run: Path, checker: Path, config: Path) -> Score:
         ruff_violations=ruff_total,
         ruff_by_rule=ruff_rules,
         pyright_errors=count_pyright(run, config),
-        used_uv="uv " in text or "uv run" in text,
         notes=notes,
     )
 
@@ -159,10 +172,10 @@ def main(argv: list[str] | None = None) -> int:
         # directory, so a relative run path would resolve twice and match nothing.
         scores.append(grade(run.resolve(), args.checker.resolve(), args.config.resolve()))
 
-    print(f"{'run':<24}{'files':>6}{'lines':>7}{'decl':>7}{'ruff':>7}{'pyright':>9}{'uv':>5}")
+    print(f"{'run':<24}{'files':>6}{'lines':>7}{'decl':>7}{'ruff':>7}{'pyright':>9}")
     score: Score
     for score in scores:
-        print(f"{score.run:<24}{score.files:>6}{score.lines:>7}{score.declaration_violations:>7}{score.ruff_violations:>7}{score.pyright_errors:>9}{'yes' if score.used_uv else 'no':>5}")
+        print(f"{score.run:<24}{score.files:>6}{score.lines:>7}{score.declaration_violations:>7}{score.ruff_violations:>7}{score.pyright_errors:>9}")
         note: str
         for note in score.notes:
             print(f"  ! {note}")

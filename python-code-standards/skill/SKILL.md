@@ -1,6 +1,6 @@
 ---
 name: python-code-standards
-version: 2.3.0
+version: 3.0.0
 description: Standards for writing, editing, and reviewing Python. Produces strictly typed, documented, localized changes verified by execution, Ruff, a type checker, and tests. Use whenever Python is written, modified, refactored, reviewed, or debugged — including small edits, scripts, notebooks, and tests — and whenever a project's Python tooling, dependencies, or configuration change.
 ---
 
@@ -57,6 +57,8 @@ The default failure mode is a diff larger than the request.
 - Limit Ruff to changed files; preview with `ruff format --diff` and narrow the scope if it would rewrite unrelated content.
 - Inspect the diff before finishing.
 
+**In a repository that does not follow these standards, do not build the tooling to satisfy the verification loop.** Adding a `pyproject.toml`, a test suite, a lockfile, or a config file the request did not ask for is scope creep even when it serves verification. Run whatever the repository already supports, state plainly which checks could not be run and why, and report the pre-existing defects being left in place rather than fixing them. The single exception is a security defect on a line the change already touches — fix that and say so.
+
 ## Environment
 
 `uv` for everything, Python 3.13+ (`requires-python = ">=3.13"`, Ruff `target-version = "py313"`).
@@ -78,7 +80,7 @@ Google-style docstrings on every module, class, and non-trivial function in sour
 
 ## Verification
 
-Changed files only, through `uv run`, using the project's commands where they differ.
+Changed files only, through `uv run`, using the project's commands where they differ. Where the repository lacks the tooling, run what exists and report the rest as unrun — never install or scaffold to make a check runnable.
 
 ```bash
 # 1. Execute the changed code through the narrowest practical entry point.
