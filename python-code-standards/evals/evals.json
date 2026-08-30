@@ -1,6 +1,6 @@
 {
   "skill_name": "python-code-standards",
-  "notes": "Replace these with prompts drawn from your actual work. Prompt phrasing must not hint at the standards; that is what is being tested.",
+  "notes": "Run these as written for the first pass to confirm the harness works end to end, then replace them with prompts drawn from your actual work and run again. Prompt phrasing must not hint at the standards; that is what is being tested.",
   "evals": [
     {
       "id": 1,

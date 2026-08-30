@@ -8,10 +8,18 @@ The goal is to measure whether the skill changes an agent's behavior. Several
 steps constrain what you may do; those constraints are what make the result mean
 anything.
 
-## 1. Fix the skill symlink
+## 1. Check the skill symlink
 
-The symlink currently points the whole skills directory at a single skill, so no
-skill loads at all. Confirm this, then fix it:
+Confirm the skill actually loads before changing anything:
+
+```
+dir "C:\Users\carlo\.claude\skills\python-code-standards\SKILL.md"
+```
+
+If that resolves, the link is correct — skip the rest of this step.
+
+If it does not, the likely cause is that the whole skills directory was linked at
+a single skill rather than a skill being linked inside it. In that case:
 
 ```
 rmdir "C:\Users\carlo\.claude\skills"
@@ -19,9 +27,8 @@ mkdir "C:\Users\carlo\.claude\skills"
 mklink /D "C:\Users\carlo\.claude\skills\python-code-standards" "E:\_src\python-code-standards\python-code-standards\skill"
 ```
 
-`rmdir` on a directory symlink removes the link, not the target. Afterwards,
-confirm `SKILL.md` appears at the top level of
-`C:\Users\carlo\.claude\skills\python-code-standards`.
+`rmdir` on a directory symlink removes the link, not the target. Re-run the `dir`
+check above afterwards.
 
 ## 2. Verify the toolchain on this machine
 
