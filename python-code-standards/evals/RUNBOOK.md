@@ -53,13 +53,32 @@ Agent output must never be written inside this source repository.
 
 ## 4. Run the evals
 
-For each eval in `evals/evals.json`, dispatch **two subagents in the same turn**:
+The skill is installed personally, so every subagent can see it. A baseline
+subagent merely *told* not to use skills may load it anyway, which would void the
+comparison. Isolate the two arms by making the skill physically absent for the
+baseline pass:
 
-- **A** works with the `python-code-standards` skill available.
-- **B** works with no skill and no coding standards of any kind.
+**Pass 1 — baseline.** Remove the link first:
 
-Both receive the same prompt and the same fixture files, and write output into
-the matching run directory.
+```
+rmdir "C:\Users\carlo\.claude\skills\python-code-standards"
+```
+
+Confirm it is gone, then run every eval's **B** arm, writing to
+`runs/eval-N/baseline`.
+
+**Pass 2 — with skill.** Restore the link:
+
+```
+mklink /D "C:\Users\carlo\.claude\skills\python-code-standards" "E:\_src\python-code-standards\python-code-standards\skill"
+```
+
+Confirm `SKILL.md` resolves, then run every eval's **A** arm, writing to
+`runs/eval-N/with-skill`.
+
+Both arms receive the same prompt and the same fixture files. Do not run the two
+passes interleaved: the whole point is that the skill is unreachable during pass
+1 and reachable during pass 2.
 
 These constraints decide whether the results mean anything:
 
@@ -69,8 +88,10 @@ These constraints decide whether the results mean anything:
   nothing.
 - Do not review, correct, or comment on subagent output before grading. Record it
   as produced, including anything that looks wrong.
-- Launch both subagents in the same turn. Running all A cases first and the B
-  cases later compares across different conditions.
+- Run each pass in a single sitting so conditions do not drift between evals
+  within a pass.
+- In each **A** transcript, confirm the skill actually loaded. A run where it did
+  not is not a with-skill run; note it and rerun.
 - Run eval 6 ("clean up this script") at least three times. It tests whether the
   skill triggers unprompted, which is probabilistic.
 - Run eval 5 as the fourth or fifth task inside one long session, not fresh. It
