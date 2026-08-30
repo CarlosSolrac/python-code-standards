@@ -25,11 +25,21 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+GRADER_VERSION: str = "3.0.0"
+"""Bump on any change to what is counted.
+
+Scores from different grader versions are not comparable: v3.0.0 dropped the
+``used_uv`` field and began copying the config into the run directory, which
+changed which Ruff rules fire. The version is recorded in every result so a
+cross-run comparison can be checked rather than assumed.
+"""
+
 
 @dataclass(frozen=True)
 class Score:
     """Mechanical results for one eval run."""
 
+    grader_version: str
     run: str
     files: int
     lines: int
@@ -138,6 +148,7 @@ def grade(run: Path, checker: Path, config: Path) -> Score:
         notes.append("pyright needs the run's own dependencies installed to be meaningful")
 
     return Score(
+        grader_version=GRADER_VERSION,
         run=run.name,
         files=len(sources),
         lines=lines,
@@ -172,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         # directory, so a relative run path would resolve twice and match nothing.
         scores.append(grade(run.resolve(), args.checker.resolve(), args.config.resolve()))
 
+    print(f"grader {GRADER_VERSION} — scores are comparable only across runs of the same version\n")
     print(f"{'run':<24}{'files':>6}{'lines':>7}{'decl':>7}{'ruff':>7}{'pyright':>9}")
     score: Score
     for score in scores:

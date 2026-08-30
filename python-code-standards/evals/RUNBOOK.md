@@ -64,8 +64,14 @@ baseline pass:
 rmdir "C:\Users\carlo\.claude\skills\python-code-standards"
 ```
 
-Confirm it is gone, then run every eval's **B** arm, writing to
-`runs/eval-N/baseline`.
+Prefer `mv` to a stash path over `rmdir`: it is reversible and needs no symlink
+privilege. Confirm the skill is gone, **then start a fresh session** — the skill
+listing injected into subagents is cached per session, so a stale one will keep
+advertising the skill's `description` to baseline agents even once the body is
+unreachable. That description names strict typing and the tooling, so leaving it
+visible partially contaminates the baseline.
+
+Then run every eval's **B** arm, writing to `runs/eval-N/baseline`.
 
 **Pass 2 — with skill.** Restore the link:
 
@@ -90,6 +96,9 @@ These constraints decide whether the results mean anything:
   as produced, including anything that looks wrong.
 - Run each pass in a single sitting so conditions do not drift between evals
   within a pass.
+- One run per arm supports only a structural yes/no result (was a file created,
+  did the skill trigger). Baseline behaviour varies between runs, so any numeric
+  delta needs at least three samples per arm before it means anything.
 - In each **A** transcript, confirm the skill actually loaded. A run where it did
   not is not a with-skill run; note it and rerun.
 - Run eval 6 ("clean up this script") at least three times. It tests whether the
