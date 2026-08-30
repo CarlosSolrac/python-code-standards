@@ -60,6 +60,11 @@ unfixable = []
 # pytest's assert-based style trips bandit; test names carry the meaning that
 # a mandatory docstring would only restate, so docstrings in tests are optional.
 "tests/**/*.py" = ["S101", "S105", "S106", "D100", "D103", "INP001"]
+# A file named test_*.py is a test file wherever it sits. Without these two
+# patterns the ignores above never match a test written beside its module.
+"test_*.py" = ["S101", "S105", "S106", "D100", "D103", "INP001"]
+"**/test_*.py" = ["S101", "S105", "S106", "D100", "D103", "INP001"]
+"conftest.py" = ["S101", "D100", "INP001"]
 "evals/**/*.py" = ["INP001", "T201", "S603", "S607"]
 # conformance.py is a standalone example read by the agent, not an importable module.
 "skill/assets/*.py" = ["INP001"]

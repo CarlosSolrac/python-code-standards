@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import subprocess
 import sys
@@ -56,6 +57,36 @@ def _run(command: list[str], cwd: Path) -> tuple[int, str]:
     return completed.returncode, completed.stdout + completed.stderr
 
 
+def _payload(output: str, opener: str) -> object:
+    """Parse the first JSON value in tool output, ignoring text around it.
+
+    ``uvx`` prints installer progress before the tool runs, and ``_run`` appends
+    stderr after stdout, so the payload can have text on either side. Anchoring
+    on a delimiter and slicing to the end fails on the trailing text;
+    ``raw_decode`` stops at the end of the first complete value.
+
+    Args:
+        output: Combined stdout and stderr from the tool.
+        opener: The character the payload starts with, ``{`` or ``[``.
+
+    Returns:
+        The decoded value, or ``None`` when no valid payload is present.
+    """
+    decoder: json.JSONDecoder = json.JSONDecoder()
+    index: int = output.find(opener)
+    while index != -1:
+        try:
+            value: object
+            end: int
+            value, end = decoder.raw_decode(output[index:])
+            del end
+        except json.JSONDecodeError:
+            index = output.find(opener, index + 1)
+            continue
+        return value
+    return None
+
+
 def count_declarations(target: Path, checker: Path) -> int:
     """Return the number of declaration-rule violations under a directory."""
     status: int
@@ -87,14 +118,10 @@ def count_ruff(target: Path, config: Path) -> tuple[int, dict[str, int]]:
     if status not in (0, 1):
         return -1, {}
 
-    # uvx prints installer chatter before the JSON payload.
-    start: int = output.find("[")
-    if start == -1:
+    payload: object = _payload(output, "[")
+    if not isinstance(payload, list):
         return -1, {}
-    try:
-        findings: list[dict[str, object]] = json.loads(output[start:])
-    except json.JSONDecodeError:
-        return -1, {}
+    findings: list[dict[str, object]] = payload
     by_rule: dict[str, int] = {}
     finding: dict[str, object]
     for finding in findings:
@@ -103,16 +130,53 @@ def count_ruff(target: Path, config: Path) -> tuple[int, dict[str, int]]:
     return len(findings), dict(sorted(by_rule.items()))
 
 
+def third_party_imports(target: Path) -> list[str]:
+    """Return the non-stdlib, non-local packages a run imports.
+
+    Pyright in strict mode reports ``reportMissingImports`` for anything absent
+    from its environment, then cascades unknown types through everything the
+    import touched. Left unhandled that penalises whichever arm happened to
+    import more, which is a fact about the grader rather than about the code.
+
+    Args:
+        target: Directory holding the files an agent produced.
+
+    Returns:
+        Package names to install before running Pyright, sorted.
+    """
+    local: set[str] = {path.stem for path in target.rglob("*.py")}
+    found: set[str] = set()
+    path: Path
+    for path in sorted(target.rglob("*.py")):
+        try:
+            tree: ast.Module = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        node: ast.AST
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                alias: ast.alias
+                for alias in node.names:
+                    found.add(alias.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                found.add(node.module.split(".")[0])
+    return sorted(found - sys.stdlib_module_names - local)
+
+
 def count_pyright(target: Path, config: Path) -> int:
     """Return the number of Pyright errors, or -1 when Pyright could not run."""
+    extras: list[str] = []
+    package: str
+    for package in third_party_imports(target):
+        extras.extend(["--with", package])
+
     status: int
     output: str
-    status, output = _run(["uvx", "pyright@latest", "--project", str(config), "--outputjson", str(target)], target.parent)
+    status, output = _run(["uvx", *extras, "pyright@latest", "--project", str(config), "--outputjson", str(target)], target.parent)
     if status not in (0, 1):
         return -1
-    try:
-        report: dict[str, object] = json.loads(output[output.index("{") :])
-    except (ValueError, json.JSONDecodeError):
+    report: object = _payload(output, "{")
+    if not isinstance(report, dict):
         return -1
     summary: object = report.get("summary", {})
     if isinstance(summary, dict):
@@ -144,8 +208,9 @@ def grade(run: Path, checker: Path, config: Path) -> Score:
         notes.append("no Python files found; check the run directory")
     if "pip install" in text or "python -m venv" in text:
         notes.append("mentions pip or venv; the standards require uv")
-    if any("pyright" in note for note in notes):
-        notes.append("pyright needs the run's own dependencies installed to be meaningful")
+    imports: list[str] = third_party_imports(run)
+    if imports:
+        notes.append(f"pyright ran with: {', '.join(imports)}")
 
     return Score(
         grader_version=GRADER_VERSION,

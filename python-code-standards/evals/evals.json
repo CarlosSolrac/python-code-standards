@@ -40,7 +40,7 @@
     },
     {
       "id": 6,
-      "tests": "triggering; run 3+ times, phrased so the skill must fire on its own",
+      "tests": "triggering only. The n=3 run showed decl 0 vs 1 and ruff 0 vs 0 - the 8-line fixture is too small for numeric signal. Keep it for the unprompted-trigger result; do not read its counts.",
       "prompt": "Clean up this script for me.",
       "files": [
         "fixtures/nonconforming.py"
