@@ -1,6 +1,6 @@
 ---
 name: python-code-standards
-version: 3.0.0
+version: 3.1.0
 description: Standards for writing, editing, and reviewing Python. Produces strictly typed, documented, localized changes verified by execution, Ruff, a type checker, and tests. Use whenever Python is written, modified, refactored, reviewed, or debugged — including small edits, scripts, notebooks, and tests — and whenever a project's Python tooling, dependencies, or configuration change.
 ---
 
@@ -18,7 +18,14 @@ Report conflicts; never resolve them silently. Configuration contradicting this 
 
 ## Variable declaration
 
-**Every variable is annotated before its first binding** — loop targets, `with` targets, unpacked names, match captures, class-body aliases, and instance attributes — using a PEP 526 bare annotation ahead of the statement:
+**Every variable is annotated before its first binding**, using a PEP 526 bare annotation ahead of the statement. Declaring converts Pyright's inference into a checked assertion, so element-type drift fails at the declaration instead of propagating.
+
+| Binding form | Declaration |
+| --- | --- |
+| assignment, loop target, `with` target, unpacking | required |
+| match capture, class-body alias, instance attribute | required |
+| comprehension or generator target | exempt — write an explicit loop when the type matters |
+| `except ... as` name, walrus, import | exempt — the language cannot annotate these |
 
 ```python
 row: dict[str, object]
@@ -34,9 +41,7 @@ class Ingest:
 
 Prefer dataclasses and Pydantic models over plain classes for anything holding state — their fields *are* class-body annotations, so they satisfy the attribute rule by construction. A plain class is the right choice when construction logic is non-trivial or the class inherits from a non-dataclass base.
 
-Exempt because the language cannot annotate them: comprehension and generator targets (write an explicit loop when the type matters), `except ... as` names, walrus bindings, imports.
-
-`check_declarations.py` enforces this across modules and notebook code cells. Use the repository's own `tools/check_declarations.py` when it has one, since that is the copy CI and pre-commit run; otherwise invoke the bundled copy at `${CLAUDE_SKILL_DIR}/tools/check_declarations.py`. It runs in the verification loop, so treat its output as the specification. Match captures and instance attributes are covered; comprehension targets are not. An in-file base class's declarations cover its subclasses. `B007` fires on a declared target unused in the body — rename to `_name`, keeping the declaration.
+`check_declarations.py` enforces this across modules and notebook code cells, and its output is the specification. Use the repository's own `tools/check_declarations.py` when it has one, since that is the copy CI and pre-commit run; otherwise `${CLAUDE_SKILL_DIR}/tools/check_declarations.py`. An in-file base class's declarations cover its subclasses. `B007` fires on a declared target unused in the body — rename to `_name`, keeping the declaration.
 
 ## Before implementing
 

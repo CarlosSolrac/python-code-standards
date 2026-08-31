@@ -11,7 +11,7 @@ skill/                  <- this is the installed skill; symlink or copy it
   assets/               templates copied into the repositories you work in
   tools/                bundled checker, invoked via ${CLAUDE_SKILL_DIR}
 tests/                  tests for the checker  (development only)
-evals/                  prompts + mechanical grader (development only)
+evals/                  prompts, grader, runbook, pinned eval subagent (development only)
 pyproject.toml          tooling for this repo, and the baseline the skill teaches
 ```
 

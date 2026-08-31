@@ -45,6 +45,14 @@ plausible. Report one rather than patching around it.
 
 ## 3. Set up the scratch repository
 
+Copy `evals/agents/eval-runner.md` into `.claude/agents/` in the scratch
+repository. Every sample in both arms runs through that subagent, so the model
+and effort are pinned in one file rather than inherited per session. The ad-hoc
+Agent tool does not expose effort, which is why the n=3 run could not verify that
+the two arms matched. Record the pinned values in `STATE.md` and confirm they are
+unchanged before each pass.
+
+
 Create `E:\_src\eval` as a separate git repository. Copy `evals/fixtures/` into
 it. Create `runs/eval-N/with-skill` and `runs/eval-N/baseline` for each eval in
 `evals/evals.json`.
