@@ -25,6 +25,57 @@ WHERE event_name = ?
 """
 
 
+class EventCounter:
+    """Mutable accumulator, declared in the class body rather than in ``__init__``.
+
+    A plain class is deliberate here: a dataclass would satisfy the attribute rule
+    by construction, so this demonstrates the rule where it actually costs
+    something.
+    """
+
+    total: int
+    seen: set[str]
+
+    def __init__(self) -> None:
+        """Start empty."""
+        self.total = 0
+        self.seen = set()
+
+    def add(self, name: str, count: int) -> None:
+        """Record one event.
+
+        Args:
+            name: Event name.
+            count: Occurrences to add.
+        """
+        self.total += count
+        self.seen.add(name)
+
+
+def classify(payload: object) -> str:
+    """Describe a payload using structural pattern matching.
+
+    Match captures are bindings, so each is declared before the statement.
+
+    Args:
+        payload: Any decoded value.
+
+    Returns:
+        A short description of the payload's shape.
+    """
+    head: object
+    rest: list[object]
+    name: str
+    other: object
+    match payload:
+        case [head, *rest]:
+            return f"sequence of {len(rest) + 1} starting with {head!r}"
+        case {"name": name}:
+            return f"mapping for {name}"
+        case other:
+            return f"scalar {type(other).__name__}"
+
+
 @dataclass(frozen=True)
 class EventSummary:
     """Aggregated counts for a single named event."""
