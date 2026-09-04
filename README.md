@@ -28,7 +28,19 @@ ln -s "$PWD/CLAUDE.md" ~/.claude/CLAUDE.md
 ln -s "$PWD/python-code-standards/skill" ~/.claude/skills/python-code-standards
 ```
 
-Windows (`cmd`, with Developer Mode enabled or an elevated prompt):
+Windows, in either shell, needs Developer Mode enabled or an elevated prompt.
+
+PowerShell:
+
+```powershell
+git clone https://github.com/CarlosSolrac/python-code-standards.git
+Set-Location python-code-standards
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills"
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\CLAUDE.md" -Target "$PWD\CLAUDE.md"
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\python-code-standards" -Target "$PWD\python-code-standards\skill"
+```
+
+`cmd`:
 
 ```cmd
 git clone https://github.com/CarlosSolrac/python-code-standards.git
@@ -38,10 +50,11 @@ mklink "%USERPROFILE%\.claude\CLAUDE.md" "%CD%\CLAUDE.md"
 mklink /D "%USERPROFILE%\.claude\skills\python-code-standards" "%CD%\python-code-standards\skill"
 ```
 
-`mklink` takes the link first and the target second — the reverse of `ln -s`. Use `cd /d`
-when the clone is on another drive; plain `cd` does not change drives. Link the skill
-*inside* `skills\`; linking `skills\` itself hides every other skill and stops this one
-loading, because Claude Code scans subdirectories for `SKILL.md`.
+Both Windows forms name the link first and the target second — the reverse of `ln -s`. In
+`cmd`, use `cd /d` when the clone is on another drive; plain `cd` does not change drives,
+while `Set-Location` handles them. Link the skill *inside* `skills\`; linking `skills\`
+itself hides every other skill and stops this one loading, because Claude Code scans
+subdirectories for `SKILL.md`.
 
 ### Copy instead of link
 
@@ -50,6 +63,11 @@ A copy is pinned and survives this repository moving, but must be refreshed afte
 ```bash
 cp CLAUDE.md ~/.claude/CLAUDE.md
 cp -r python-code-standards/skill ~/.claude/skills/python-code-standards
+```
+
+```powershell
+Copy-Item CLAUDE.md "$env:USERPROFILE\.claude\CLAUDE.md"
+Copy-Item -Recurse python-code-standards\skill "$env:USERPROFILE\.claude\skills\python-code-standards"
 ```
 
 ```cmd
@@ -66,6 +84,10 @@ order between the two scopes is not something to rely on.
 ls -l ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards/SKILL.md
 ```
 
+```powershell
+Get-Item "$env:USERPROFILE\.claude\CLAUDE.md", "$env:USERPROFILE\.claude\skills\python-code-standards\SKILL.md"
+```
+
 ```cmd
 dir "%USERPROFILE%\.claude\CLAUDE.md" "%USERPROFILE%\.claude\skills\python-code-standards\SKILL.md"
 ```
@@ -78,6 +100,11 @@ Removing a link removes the link, not this repository.
 
 ```bash
 rm ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards
+```
+
+```powershell
+Remove-Item "$env:USERPROFILE\.claude\CLAUDE.md"
+Remove-Item "$env:USERPROFILE\.claude\skills\python-code-standards"
 ```
 
 ```cmd
