@@ -98,3 +98,8 @@ uv run python skill\tools\check_declarations.py skill\tools skill\assets\conform
 
 The last line is the drift check: `conformance.py` is the executable form of
 these standards, so when a Ruff upgrade changes which rules fire, it fails here.
+
+
+## Based on these CLAUDE.md files
+
+https://github.com/multica-ai/andrej-karpathy-skills/blob/main/CLAUDE.md
