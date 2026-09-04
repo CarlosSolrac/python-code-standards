@@ -123,11 +123,3 @@ don't silently downgrade new code to match old.
 
 If a request conflicts with a rule here, follow the request and name the
 conflict in one sentence.
-
----
-
-# Python code standards
-
-Mandatory for all Python in this repo.
-
-@~/.claude/skills/python-coding-standards/SKILL.md
