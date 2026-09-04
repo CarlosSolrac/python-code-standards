@@ -48,9 +48,11 @@ mkdir -p <target-repo>/tools
 cp skill/tools/check_declarations.py <target-repo>/tools/
 cp skill/assets/pyproject-baseline.toml <target-repo>/pyproject.toml
 cp skill/assets/pre-commit-config.yaml <target-repo>/.pre-commit-config.yaml
+cp skill/assets/gitattributes <target-repo>/.gitattributes
 mkdir -p <target-repo>/.github/workflows
 cp skill/assets/ci.yml <target-repo>/.github/workflows/verify.yml
 cd <target-repo>
+git add --renormalize .              # existing files keep their old endings until this
 uv lock                              # ci.yml installs with --locked
 uv sync --all-groups                 # the baseline dev group includes pre-commit
 uv run pre-commit install
@@ -61,9 +63,11 @@ mkdir "<target-repo>\tools"
 copy skill\tools\check_declarations.py "<target-repo>\tools\"
 copy skill\assets\pyproject-baseline.toml "<target-repo>\pyproject.toml"
 copy skill\assets\pre-commit-config.yaml "<target-repo>\.pre-commit-config.yaml"
+copy skill\assets\gitattributes "<target-repo>\.gitattributes"
 mkdir "<target-repo>\.github\workflows"
 copy skill\assets\ci.yml "<target-repo>\.github\workflows\verify.yml"
 cd /d "<target-repo>"
+git add --renormalize .
 uv lock
 uv sync --all-groups
 uv run pre-commit install

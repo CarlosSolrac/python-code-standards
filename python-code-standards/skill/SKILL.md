@@ -93,7 +93,7 @@ Coverage on changed code: **90% statement, 85% branch**, both reported. If misse
 
 ## References
 
-- `assets/` — templates to copy into a repository: `pyproject-baseline.toml`, `pre-commit-config.yaml`, and `ci.yml`
+- `assets/` — templates to copy into a repository: `pyproject-baseline.toml`, `pre-commit-config.yaml`, `gitattributes`, and `ci.yml`
 - `assets/conformance.py` — a module in house style that passes the whole toolchain; read it instead of asking how something should look
 - `references/typing.md` — annotation decisions and checkers; always when a dependency ships no types
 - `references/sql-duckdb.md` — Python constructs, executes, or embeds SQL
