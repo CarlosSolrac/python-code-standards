@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude Code per-machine model pin, written by bin/set-model.*
+.claude/settings.local.json
