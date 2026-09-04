@@ -1,105 +1,93 @@
 # python-code-standards
 
-Source repository for the `python-code-standards` skill.
+A global `CLAUDE.md` and a Python skill for [Claude Code](https://claude.com/claude-code),
+installed once into `~/.claude` and active in every project.
 
-## Layout
+- `CLAUDE.md` — language-agnostic working rules: think first, minimal diffs, verify by
+  running, stop-and-ask gates. Loaded in every session.
+- `python-code-standards/skill/` — the `python-code-standards` skill: strict typing, a
+  variable-declaration rule with its own checker, `uv`, Ruff, Pyright, MyPy, and pytest
+  coverage. Loaded when Python work triggers it. See
+  [python-code-standards/README.md](python-code-standards/README.md).
 
-```
-skill/                  <- this is the installed skill; symlink or copy it
-  SKILL.md
-  references/
-  assets/               templates copied into the repositories you work in
-  tools/                bundled checker, invoked via ${CLAUDE_SKILL_DIR}
-tests/                  tests for the checker  (development only)
-evals/                  prompts + mechanical grader (development only)
-pyproject.toml          tooling for this repo, and the baseline the skill teaches
-```
-
-Only `skill/` is installed. `tests/` and `evals/` stay here — they verify the
-skill rather than being part of it.
+Each rule lives in exactly one of the two files, so they can be installed together without
+conflict.
 
 ## Install
 
-Personal, all projects:
+Clone, then link both into `~/.claude`. A symlink keeps one source of truth and picks up
+edits immediately.
+
+Linux and macOS:
 
 ```bash
-ln -s "$PWD/skill" ~/.claude/skills/python-code-standards
+git clone https://github.com/CarlosSolrac/python-code-standards.git
+cd python-code-standards
+mkdir -p ~/.claude/skills
+ln -s "$PWD/CLAUDE.md" ~/.claude/CLAUDE.md
+ln -s "$PWD/python-code-standards/skill" ~/.claude/skills/python-code-standards
+```
+
+Windows (`cmd`, with Developer Mode enabled or an elevated prompt):
+
+```cmd
+git clone https://github.com/CarlosSolrac/python-code-standards.git
+cd /d python-code-standards
+mkdir "%USERPROFILE%\.claude\skills"
+mklink "%USERPROFILE%\.claude\CLAUDE.md" "%CD%\CLAUDE.md"
+mklink /D "%USERPROFILE%\.claude\skills\python-code-standards" "%CD%\python-code-standards\skill"
+```
+
+`mklink` takes the link first and the target second — the reverse of `ln -s`. Use `cd /d`
+when the clone is on another drive; plain `cd` does not change drives. Link the skill
+*inside* `skills\`; linking `skills\` itself hides every other skill and stops this one
+loading, because Claude Code scans subdirectories for `SKILL.md`.
+
+### Copy instead of link
+
+A copy is pinned and survives this repository moving, but must be refreshed after edits.
+
+```bash
+cp CLAUDE.md ~/.claude/CLAUDE.md
+cp -r python-code-standards/skill ~/.claude/skills/python-code-standards
 ```
 
 ```cmd
-mklink /D "%USERPROFILE%\.claude\skills\python-code-standards" "%CD%\skill"
+copy CLAUDE.md "%USERPROFILE%\.claude\CLAUDE.md"
+xcopy /E /I python-code-standards\skill "%USERPROFILE%\.claude\skills\python-code-standards"
 ```
 
+Do not install the skill both personally and per project under the same name; resolution
+order between the two scopes is not something to rely on.
 
-Per project, shared with anyone who clones that repository:
+### Verify
 
 ```bash
-cp -r skill <target-repo>/.claude/skills/python-code-standards
+ls -l ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards/SKILL.md
 ```
 
 ```cmd
-xcopy /E /I skill "<target-repo>\.claude\skills\python-code-standards"
+dir "%USERPROFILE%\.claude\CLAUDE.md" "%USERPROFILE%\.claude\skills\python-code-standards\SKILL.md"
 ```
 
-A symlink keeps one source of truth and picks up edits immediately; a copy is
-pinned and survives this repository moving. Do not install both at once under
-the same name — resolution order between personal and project scope is not
-something to rely on.
+In a Claude Code session, `/python-code-standards` appears in the skill list.
 
-## Adopting the standards in a repository
+### Uninstall
 
-`skill/tools/check_declarations.py` is bundled so the rule is enforceable in any
-repository, including one with no setup. But CI and pre-commit run inside the
-target repository and cannot see the skill directory, so any repository that
-adopts the tooling vendors its own copy:
+Removing a link removes the link, not this repository.
 
 ```bash
-mkdir -p <target-repo>/tools
-cp skill/tools/check_declarations.py <target-repo>/tools/
-cp skill/assets/pyproject-baseline.toml <target-repo>/pyproject.toml
-cp skill/assets/pre-commit-config.yaml <target-repo>/.pre-commit-config.yaml
-mkdir -p <target-repo>/.github/workflows
-cp skill/assets/ci.yml <target-repo>/.github/workflows/verify.yml
-cd <target-repo> && uv lock          # ci.yml installs with --locked
+rm ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards
 ```
 
 ```cmd
-mkdir "<target-repo>\tools"
-copy skill\tools\check_declarations.py "<target-repo>\tools\"
-copy skill\assets\pyproject-baseline.toml "<target-repo>\pyproject.toml"
-copy skill\assets\pre-commit-config.yaml "<target-repo>\.pre-commit-config.yaml"
-mkdir "<target-repo>\.github\workflows"
-copy skill\assets\ci.yml "<target-repo>\.github\workflows\verify.yml"
-REM ci.yml installs with --locked, so the lockfile must exist and be committed.
-cd /d "<target-repo>"
-uv lock
+del "%USERPROFILE%\.claude\CLAUDE.md"
+rmdir "%USERPROFILE%\.claude\skills\python-code-standards"
 ```
 
-The repository copy is authoritative wherever both exist: it is the one CI runs.
+## Credits
 
-## Verifying the skill itself
+`CLAUDE.md` is based on
+https://github.com/multica-ai/andrej-karpathy-skills/blob/main/CLAUDE.md.
 
-```bash
-uv sync --all-groups
-uv run pytest --cov=tools.check_declarations --cov-branch
-uv run ruff check skill/tools tests evals
-uv run python skill/tools/check_declarations.py skill/tools tests evals/grade.py
-# evals/fixtures/ is deliberately non-conforming — it is the baseline input
-uv run python skill/tools/check_declarations.py skill/assets/conformance.py
-```
-
-```cmd
-uv sync --all-groups
-uv run pytest --cov=skill.tools.check_declarations --cov=evals.grade --cov-branch
-uv run ruff check skill/tools skill/assets/conformance.py tests evals/grade.py
-REM evals/fixtures/ is deliberately non-conforming - it is a baseline input, not source
-uv run python skill\tools\check_declarations.py skill\tools skill\assets\conformance.py tests evals\grade.py
-```
-
-The last line is the drift check: `conformance.py` is the executable form of
-these standards, so when a Ruff upgrade changes which rules fire, it fails here.
-
-
-## Based on these CLAUDE.md files
-
-https://github.com/multica-ai/andrej-karpathy-skills/blob/main/CLAUDE.md
+MIT licence; see [LICENSE](LICENSE).

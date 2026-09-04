@@ -1,20 +1,18 @@
 ---
 name: python-code-standards
-version: 3.2.0
+version: 4.0.0
 description: Standards for writing, editing, and reviewing Python. Produces strictly typed, documented, localized changes verified by execution, Ruff, a type checker, and tests. Use whenever Python is written, modified, refactored, reviewed, or debugged — including small edits, scripts, notebooks, and tests — and whenever a project's Python tooling, dependencies, or configuration change.
 ---
 
 # Python Code Standards
 
-Strictly typed, documented Python. Localized changes, verified by execution.
-
-Assume competent Python by default. This file covers only what overrides a default or is easy to drift from under pressure.
+Strictly typed, documented Python, verified by execution. Competent Python is assumed; this file covers only what overrides a default or drifts under pressure.
 
 ## Precedence
 
-Current request → repository configuration (`pyproject.toml`, `ruff.toml`, `pyrightconfig.json`, `mypy.ini`, pytest and coverage config) → this document → tool defaults.
+Current request → repository configuration (`pyproject.toml`, `ruff.toml`, pyright, mypy, pytest, and coverage config) → this document → tool defaults.
 
-Report conflicts; never resolve them silently. Configuration contradicting this document is a conflict to raise, not a file to edit.
+Repository configuration or file style that contradicts this document: stop before editing, name the clash, ask whether to convert or match. Never edit configuration to make a check pass.
 
 ## Variable declaration
 
@@ -43,26 +41,11 @@ Prefer dataclasses and Pydantic models over plain classes for anything holding s
 
 `check_declarations.py` enforces this across modules and notebook code cells, and its output is the specification. Use the repository's own `tools/check_declarations.py` when it has one, since that is the copy CI and pre-commit run; otherwise `${CLAUDE_SKILL_DIR}/tools/check_declarations.py`. An in-file base class's declarations cover its subclasses. `B007` fires on a declared target unused in the body — rename to `_name`, keeping the declaration.
 
-## Before implementing
-
-State assumptions that change the solution. Present competing interpretations rather than picking silently; stop and ask when requirements are ambiguous or conflicting. Say so when a simpler approach would do, or when the requested one adds complexity, conflicts with a repository constraint, or weakens correctness — then recommend the smallest safer alternative.
-
-Build only what was asked: no speculative features, extension points, config options, or abstractions for a single caller.
-
-Define observable success criteria first, and for a bug fix, how it is reproduced. Keep overhead proportional — a trivial change needs a sentence, not a plan.
-
 ## Scope
 
-The default failure mode is a diff larger than the request.
-
-- Every changed line traces to the request, a required test, required documentation, or verification remediation.
-- Preserve unrelated behavior, formatting, imports, names, and comments. Match local patterns in the modified area even where another approach would normally be preferred.
-- Report unrelated problems and pre-existing dead code; don't fix or delete them. Remove only what *this* change made unused.
-- Never replace a whole function or file for a localized edit.
-- Limit Ruff to changed files; preview with `ruff format --diff` and narrow the scope if it would rewrite unrelated content.
-- Inspect the diff before finishing.
-
-**In a repository that does not follow these standards, do not build the tooling to satisfy the verification loop.** Adding a `pyproject.toml`, a test suite, a lockfile, or a config file the request did not ask for is scope creep even when it serves verification. Run whatever the repository already supports, state plainly which checks could not be run and why, and report the pre-existing defects being left in place rather than fixing them. The single exception is a security defect on a line the change already touches — fix that and say so.
+- Run Ruff on changed files only. Preview with `ruff format --diff`; narrow the scope if it would rewrite unrelated content.
+- Do not add `pyproject.toml`, tests, a lockfile, or config the request did not ask for, even to make verification runnable. Run what the repository supports; report the rest as unrun.
+- Report pre-existing defects; do not fix them. One exception: a security defect on a line the change already touches — fix it and say so.
 
 ## Environment
 
@@ -73,7 +56,7 @@ uv venv                  uv add <pkg>            uv sync
 uv python pin 3.13       uv add --dev <pkg>      uv run <command>
 ```
 
-Every tool runs through `uv run` so the verified environment is the project environment; `uvx` only for non-dependencies. Runtime deps in `[project] dependencies`, tooling in `[dependency-groups] dev`. Commit `uv.lock` for applications, not libraries — run `uv lock` once and commit it before CI, since `assets/ci.yml` installs with `--locked`. Never migrate build backends, dependency managers, or layouts unasked.
+Every tool runs through `uv run` so the verified environment is the project environment; `uvx` only for non-dependencies. Runtime deps in `[project] dependencies`, tooling in `[dependency-groups] dev`. Commit `uv.lock` for applications, not libraries — run `uv lock` once and commit it before CI, since `assets/ci.yml` installs with `--locked`.
 
 ## Formatting and documentation
 
@@ -81,44 +64,38 @@ Ruff is authoritative and the checked-in config is the specification — don't r
 
 Never auto-apply unsafe fixes: inspect with `ruff check --unsafe-fixes --diff`, check `ruff rule <CODE>`, apply only when the behavioral effect is understood and tested.
 
-Google-style docstrings on every module, class, and non-trivial function in source (optional in tests, where the name carries the meaning), describing the contract rather than narrating the implementation. `Args:`/`Returns:`/`Raises:` only where they add what the name and annotations don't. Never document `self`/`cls` or repeat annotations in prose. Comments explain *why*, and are updated whenever the code they describe changes — staleness is the failure mode for prose attached to code.
+Google-style docstrings on every module, class, and non-trivial function in source (optional in tests, where the name carries the meaning), describing the contract rather than narrating the implementation. `Args:`/`Returns:`/`Raises:` only where they add what the name and annotations don't. Never document `self`/`cls` or repeat annotations in prose. Comments explain *why*, and are updated whenever the code they describe changes. No placeholder ellipses in copy-ready code.
 
 ## Verification
 
-Changed files only, through `uv run`, using the project's commands where they differ. Where the repository lacks the tooling, run what exists and report the rest as unrun — never install or scaffold to make a check runnable.
+Changed files only, through `uv run`, using the project's commands where they differ.
 
 ```bash
 # 1. Execute the changed code through the narrowest practical entry point.
-# 2. Lint, format, declarations, and both type checkers:
+# 2. Lint, format, declarations, and both type checkers (pre-commit is in the dev group):
 uv run pre-commit run --files <files>
-# In a repository that has not adopted the tooling, run the bundled checker:
+# Repository without pre-commit: run the tools individually.
+uv run ruff check --fix <files> && uv run ruff format <files>
 uv run python "${CLAUDE_SKILL_DIR}/tools/check_declarations.py" <files>
+uv run pyright <files> && uv run mypy <files>
 # 3. Tests and coverage:
 uv run pytest <tests> -q
 uv run pytest <tests> --cov=<module> --cov-report=term-missing --cov-branch
 ```
 
-`assets/pre-commit-config.yaml` defines those hooks. Where the repository has no pre-commit setup, run the tools individually: `ruff check --fix`, `ruff format`, the declaration checker, `pyright`, `mypy`.
+Coverage on changed code: **90% statement, 85% branch**, both reported. If missed, say what is uncovered; never lower the threshold.
 
-Coverage on changed code: **90% statement, 85% branch**, both reported. If missed, say what is uncovered rather than lowering the threshold.
-
-**Never claim anything passed unless the command ran and its output was observed.** Editor diagnostics don't substitute — an IDE bridge like `mcp__ide__getDiagnostics` is read-only, often absent, and covers only analyzed files, so an empty result is indistinguishable from an unanalyzed one.
-
-When commands can't run, don't imply results. Open with `UNVERIFIED — no execution environment; nothing below was run.`, give the code and tests, list the exact commands in order, and state which claims depend on them. "This should pass" is not that notice.
+**Never claim anything passed unless the command ran and its output was observed.** Editor diagnostics such as `mcp__ide__getDiagnostics` are not verification (see `references/typing.md`). When commands cannot run, open the reply with `UNVERIFIED — nothing below was run.`, list the exact commands in order, and state which claims depend on them.
 
 ## Suppressions
 
-`# noqa`, `# type: ignore`, `# pyright: ignore`, `# pragma: no cover`, per-file ignores, disabled diagnostics, coverage omissions, `fail_under` reductions, and warning filters all require explicit authorization. Attempt a real fix first; if a genuine tool limitation remains, explain the diagnostic, why code can't fix it, and the narrowest suppression — then wait. Never weaken coverage to make it pass. `PGH` rejects blanket directives, and `RUF100` flags ones that stopped applying — both are enforcement, not advice.
-
-## Reporting
-
-Changed files, tests added, exact commands run, pass/fail with measured coverage, and anything unrun or unresolved. No placeholder ellipses in copy-ready code.
+`# noqa`, `# type: ignore`, `# pyright: ignore`, `# pragma: no cover`, per-file ignores, disabled diagnostics, coverage omissions, `fail_under` reductions, and warning filters all require explicit authorization. Attempt a real fix first. If a genuine tool limitation remains, explain the diagnostic, why code can't fix it, and the narrowest suppression — then wait. `PGH` rejects blanket directives, and `RUF100` flags ones that stopped applying.
 
 ## References
 
-- `assets/` — templates to copy into a repository: `pyproject-baseline.toml`, `pre-commit-config.yaml`, and `ci.yml`, which runs everything above plus a conformance check that fails when a tooling upgrade drifts from these standards
+- `assets/` — templates to copy into a repository: `pyproject-baseline.toml`, `pre-commit-config.yaml`, and `ci.yml`
 - `assets/conformance.py` — a module in house style that passes the whole toolchain; read it instead of asking how something should look
-- `references/typing.md` — annotation decisions; always when a dependency ships no types
+- `references/typing.md` — annotation decisions and checkers; always when a dependency ships no types
 - `references/sql-duckdb.md` — Python constructs, executes, or embeds SQL
 - `references/testing.md` — writing or changing tests
 - `references/domains.md` — Pydantic, concurrency, packaging, dependency security

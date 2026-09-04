@@ -1,6 +1,6 @@
 # Typing
 
-Strict typing is a requirement. The part no tool checks is the variable declaration rule in `SKILL.md`.
+Strict typing is a requirement. The part no tool checks is the variable declaration rule in `SKILL.md`. Checker configuration lives in `assets/pyproject-baseline.toml` (`[tool.pyright]`, `[tool.mypy]`).
 
 ## Annotations
 
@@ -20,7 +20,7 @@ uv run mypy <files>
 
 The PyPI `pyright` package is a wrapper that fetches a Node runtime on first use, which fails in air-gapped CI — install it via npm there, or substitute `basedpyright`. Strict mode is also hostile to AST and metaprogramming code; `assets/pyproject-baseline.toml` relaxes unknown-type reporting for `tools/` in one declared place rather than scattering ignores.
 
-Pylance is not usable as a gate. It is reachable only through the IDE's `mcp__ide__getDiagnostics` bridge, which is read-only, is not always present depending on how the session started, and by default reports only files the editor has opened — so an empty result means "nothing analyzed" as often as "no errors". Pylance runs Pyright's engine anyway, so `uv run pyright` gives the same diagnostics on demand with no IDE dependency. Where an IDE bridge happens to exist, use it for editor-only signal, never as evidence a file is clean.
+Pylance and the IDE's `mcp__ide__getDiagnostics` bridge are not a gate: the bridge is read-only, often absent, and reports only files the editor has opened, so an empty result means "nothing analyzed" as often as "no errors". Pylance runs Pyright's engine, so `uv run pyright` gives the same diagnostics on demand.
 
 Checker disagreement points at a real imprecision in the type model. Fix it with annotations, typed adapters, protocols, or stubs — not suppressions.
 
@@ -35,20 +35,3 @@ Stop at the first step that works. Do not skip to a suppression.
 5. Isolate the untyped surface behind a typed adapter or `Protocol` so the imprecision cannot spread.
 
 Only after all five fail is a suppression a candidate, and it still needs authorization.
-
-## Baseline
-
-```toml
-[tool.pyright]
-typeCheckingMode = "strict"
-pythonVersion = "3.13"
-reportMissingTypeStubs = true
-reportUnknownMemberType = true
-stubPath = "stubs"
-
-[tool.mypy]
-python_version = "3.13"
-strict = true
-warn_unreachable = true
-disallow_any_explicit = false
-```

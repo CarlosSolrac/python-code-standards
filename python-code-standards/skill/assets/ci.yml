@@ -32,13 +32,5 @@ jobs:
       - name: Lint, format, declarations, types
         run: uv run pre-commit run --all-files --show-diff-on-failure
 
-      # assets/conformance.py is the executable form of these standards.
-      # If it stops passing, the standards drifted from the tooling.
-      - name: Conformance example still conforms
-        run: |
-          uv run ruff check assets/conformance.py
-          uv run ruff format --check assets/conformance.py
-          uv run python tools/check_declarations.py assets/conformance.py
-
       - name: Tests and coverage
         run: uv run pytest --cov --cov-report=term-missing --cov-branch

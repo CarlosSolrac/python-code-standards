@@ -4,7 +4,6 @@ Read the relevant section when the work touches it.
 
 ## Domain modeling and configuration
 
-- **Default to a dataclass or a Pydantic model.** A plain class is a deliberate choice, justified by non-trivial construction logic, a non-dataclass base, or behavior that outweighs state. This is not only style: their fields are class-body annotations, so they satisfy the instance-attribute declaration rule with no duplication.
 - The boundary between the two: Pydantic where input is untrusted or structurally variable and runtime validation earns its cost; dataclasses everywhere else. Reaching for Pydantic on internal types buys validation nobody needs and a dependency in the hot path.
 - Prefer frozen dataclasses for validated values, `slots=True` where measurement justifies it, and mutable ones only where mutation is the type's explicit responsibility.
 - Design types so invalid states are hard to construct: discriminated unions with `Literal` over one model of conditionally valid optional fields, `NewType` or a value object for identifiers sharing a runtime representation, `Protocol` where behavior matters more than inheritance.
