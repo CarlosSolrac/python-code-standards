@@ -112,6 +112,52 @@ del "%USERPROFILE%\.claude\CLAUDE.md"
 rmdir "%USERPROFILE%\.claude\skills\python-code-standards"
 ```
 
+## Switching between local Qwen and Anthropic
+
+`bin/ai.sh` and `bin/ai.ps1` launch Claude Code against either the local Qwen model or
+Anthropic, from the same clone.
+
+```bash
+bin/ai.sh qwen              # local Qwen, served by Ollama
+bin/ai.sh claude --resume   # Anthropic; extra arguments pass straight through
+```
+
+```powershell
+bin\ai.ps1 qwen
+bin\ai.ps1 claude --resume
+```
+
+Anthropic mode is the plain `claude` command with no environment overrides, so it keeps
+whatever authentication the account already has. Qwen mode applies
+[.claude/profiles/qwen.json](.claude/profiles/qwen.json) with `--settings`, which outranks
+both the user and the project settings files. The launcher checks that Ollama is answering
+before starting a session, so a stopped container fails immediately instead of at the first
+prompt.
+
+### Keep the user settings file neutral
+
+`~/.claude/settings.json` must not set any `ANTHROPIC_*` variable. Claude Code merges `env`
+one key at a time, and a lower-precedence file cannot unset a key a higher one defined —
+setting it to `""` breaks the request rather than clearing it. A base URL or auth token
+pinned there therefore leaks into Anthropic mode, and no profile or project file can remove
+it. Pin the local model in the profile, never in the user settings.
+
+The same asymmetry is why the toggle is a launcher rather than a project
+`.claude/settings.json`. A project file does outrank user settings, but pinning the local
+model there would make the switch one-way for the whole repository.
+
+### Prerequisites
+
+Ollama must serve the model named in the profile; it answers the Anthropic Messages API at
+`/v1/messages` directly, so no gateway or proxy sits in between. Anthropic mode needs the
+machine to be logged in once — run `claude` and `/login` if it reports `Not logged in`. A
+WSL install is a separate machine for this purpose and has its own credentials.
+
+Claude Code warns that the Qwen model `isn't described by this version's model catalog` and
+assumes a 200k context window. The session still works. Setting
+`CLAUDE_CODE_MAX_CONTEXT_TOKENS` in the profile silences it, but the correct value is
+whatever `num_ctx` Ollama actually serves, not the window the model advertises.
+
 ## Credits
 
 `CLAUDE.md` is based on
