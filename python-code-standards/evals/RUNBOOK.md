@@ -13,7 +13,7 @@ anything.
 Confirm the skill actually loads before changing anything:
 
 ```
-dir "C:\Users\carlo\.claude\skills\python-code-standards\SKILL.md"
+dir "%USERPROFILE%\.claude\skills\python-code-standards\SKILL.md"
 ```
 
 If that resolves, the link is correct — skip the rest of this step.
@@ -22,9 +22,9 @@ If it does not, the likely cause is that the whole skills directory was linked a
 a single skill rather than a skill being linked inside it. In that case:
 
 ```
-rmdir "C:\Users\carlo\.claude\skills"
-mkdir "C:\Users\carlo\.claude\skills"
-mklink /D "C:\Users\carlo\.claude\skills\python-code-standards" "E:\_src\python-code-standards\python-code-standards\skill"
+rmdir "%USERPROFILE%\.claude\skills"
+mkdir "%USERPROFILE%\.claude\skills"
+mklink /D "%USERPROFILE%\.claude\skills\python-code-standards" "%CD%\skill"
 ```
 
 `rmdir` on a directory symlink removes the link, not the target. Re-run the `dir`
@@ -39,9 +39,9 @@ uv run ruff check skill/tools tests evals/grade.py skill/assets/conformance.py
 uv run python skill/tools/check_declarations.py skill/tools tests evals/grade.py
 ```
 
-Expect 59 tests passing and clean output from the rest. This has only been
-verified on Linux with CPython 3.13.13, so a Windows-specific failure is
-plausible. Report one rather than patching around it.
+Run these from this repository's root, the directory holding `pyproject.toml`; the
+`%CD%\skill` link target above assumes the same. Expect 85 tests passing and clean
+output from the rest, verified on Linux (CPython 3.13) and Windows 11. Report a failure rather than patching around it.
 
 ## 3. Set up the scratch repository
 
@@ -53,9 +53,9 @@ the two arms matched. Record the pinned values in `STATE.md` and confirm they ar
 unchanged before each pass.
 
 
-Create `E:\_src\eval` as a separate git repository. Copy `evals/fixtures/` into
-it. Create `runs/eval-N/with-skill` and `runs/eval-N/baseline` for each eval in
-`evals/evals.json`.
+Create a scratch directory outside this repository (the README uses `..\eval` as
+the example) as its own git repository. Copy `evals/fixtures/` into it. Create
+`runs/eval-N/with-skill` and `runs/eval-N/baseline` for each eval in `evals/evals.json`.
 
 Agent output must never be written inside this source repository.
 
@@ -69,7 +69,7 @@ baseline pass:
 **Pass 1 — baseline.** Remove the link first:
 
 ```
-rmdir "C:\Users\carlo\.claude\skills\python-code-standards"
+rmdir "%USERPROFILE%\.claude\skills\python-code-standards"
 ```
 
 Prefer `mv` to a stash path over `rmdir`: it is reversible and needs no symlink
@@ -84,7 +84,7 @@ Then run every eval's **B** arm, writing to `runs/eval-N/baseline`.
 **Pass 2 — with skill.** Restore the link:
 
 ```
-mklink /D "C:\Users\carlo\.claude\skills\python-code-standards" "E:\_src\python-code-standards\python-code-standards\skill"
+mklink /D "%USERPROFILE%\.claude\skills\python-code-standards" "%CD%\skill"
 ```
 
 Confirm `SKILL.md` resolves, then run every eval's **A** arm, writing to

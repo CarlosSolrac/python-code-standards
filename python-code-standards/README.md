@@ -104,7 +104,7 @@ Windows, so the only genuinely shell-specific commands are the symlink and file-
 Set up a scratch repository the agents will work in, separate from this one:
 
 ```
-E:\_src\eval\
+..\eval\
 ├── fixtures\        copies of evals/fixtures/, the inputs agents edit
 └── runs\
     └── eval-1\
