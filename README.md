@@ -134,6 +134,28 @@ both the user and the project settings files. The launcher checks that Ollama is
 before starting a session, so a stopped container fails immediately instead of at the first
 prompt.
 
+### Choosing the scope
+
+Three places can decide which model a session uses. Claude Code applies them in this order,
+highest first, merging `env` one key at a time:
+
+| Scope | Where the choice lives | How it is set |
+| --- | --- | --- |
+| One session | `--settings`, which the launcher passes | typed per launch |
+| One repository | `.claude/settings.json` in the repository | edit a file, once |
+| Every repository | `~/.claude/settings.json` | edit a file, once |
+
+The launcher uses the first and leaves the other two neutral, so plain `claude` reaches
+Anthropic everywhere and choosing Qwen means typing `bin/ai.sh qwen`. That is the only
+arrangement in which both directions stay free.
+
+To make one repository use Qwen without typing anything, copy the `env` block from
+[.claude/profiles/qwen.json](.claude/profiles/qwen.json) into a `.claude/settings.json`
+beside it — or into `.claude/settings.local.json`, which is ignored by git and so keeps the
+choice on one machine. To do the same for every repository, copy that block into
+`~/.claude/settings.json` instead. Both are sticky rather than reversible, for the reason
+below.
+
 ### Keep the user settings file neutral
 
 `~/.claude/settings.json` must not set any `ANTHROPIC_*` variable. Claude Code merges `env`
@@ -142,9 +164,11 @@ setting it to `""` breaks the request rather than clearing it. A base URL or aut
 pinned there therefore leaks into Anthropic mode, and no profile or project file can remove
 it. Pin the local model in the profile, never in the user settings.
 
-The same asymmetry is why the toggle is a launcher rather than a project
-`.claude/settings.json`. A project file does outrank user settings, but pinning the local
-model there would make the switch one-way for the whole repository.
+That asymmetry is what makes the two file-based scopes one-way. Once a base URL and auth
+token are pinned, reaching Anthropic again needs a profile that supplies its own
+`ANTHROPIC_AUTH_TOKEN`, and an auth token takes precedence over the `claude.ai` login — so
+it means a metered API key rather than an account subscription. The launcher avoids this by
+never pinning anything beyond a single session.
 
 ### Prerequisites
 
