@@ -26,10 +26,19 @@ Personal, all projects:
 ln -s "$PWD/skill" ~/.claude/skills/python-code-standards
 ```
 
+```cmd
+mklink /D "%USERPROFILE%\.claude\skills\python-code-standards" "%CD%\skill"
+```
+
+
 Per project, shared with anyone who clones that repository:
 
 ```bash
 cp -r skill <target-repo>/.claude/skills/python-code-standards
+```
+
+```cmd
+xcopy /E /I skill "<target-repo>\.claude\skills\python-code-standards"
 ```
 
 A symlink keeps one source of truth and picks up edits immediately; a copy is
@@ -54,6 +63,18 @@ cp skill/assets/ci.yml <target-repo>/.github/workflows/verify.yml
 cd <target-repo> && uv lock          # ci.yml installs with --locked
 ```
 
+```cmd
+mkdir "<target-repo>\tools"
+copy skill\tools\check_declarations.py "<target-repo>\tools\"
+copy skill\assets\pyproject-baseline.toml "<target-repo>\pyproject.toml"
+copy skill\assets\pre-commit-config.yaml "<target-repo>\.pre-commit-config.yaml"
+mkdir "<target-repo>\.github\workflows"
+copy skill\assets\ci.yml "<target-repo>\.github\workflows\verify.yml"
+REM ci.yml installs with --locked, so the lockfile must exist and be committed.
+cd /d "<target-repo>"
+uv lock
+```
+
 The repository copy is authoritative wherever both exist: it is the one CI runs.
 
 ## Verifying the skill itself
@@ -65,6 +86,14 @@ uv run ruff check skill/tools tests evals
 uv run python skill/tools/check_declarations.py skill/tools tests evals/grade.py
 # evals/fixtures/ is deliberately non-conforming — it is the baseline input
 uv run python skill/tools/check_declarations.py skill/assets/conformance.py
+```
+
+```cmd
+uv sync --all-groups
+uv run pytest --cov=skill.tools.check_declarations --cov=evals.grade --cov-branch
+uv run ruff check skill/tools skill/assets/conformance.py tests evals/grade.py
+REM evals/fixtures/ is deliberately non-conforming - it is a baseline input, not source
+uv run python skill\tools\check_declarations.py skill\tools skill\assets\conformance.py tests evals\grade.py
 ```
 
 The last line is the drift check: `conformance.py` is the executable form of
