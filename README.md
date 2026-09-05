@@ -139,22 +139,34 @@ prompt.
 Three places can decide which model a session uses. Claude Code applies them in this order,
 highest first, merging `env` one key at a time:
 
-| Scope | Where the choice lives | How it is set |
+| Scope | Where the choice lives | Command |
 | --- | --- | --- |
-| One session | `--settings`, which the launcher passes | typed per launch |
-| One repository | `.claude/settings.json` in the repository | edit a file, once |
-| Every repository | `~/.claude/settings.json` | edit a file, once |
+| One session | `--settings`, which the launcher passes | `bin/ai.sh qwen` |
+| One repository | `.claude/settings.json` in the repository | `bin/set-model.sh qwen repo` |
+| One repository, this machine only | `.claude/settings.local.json`, ignored by git | `bin/set-model.sh qwen local` |
+| Every repository on this machine | `~/.claude/settings.json` | `bin/set-model.sh qwen global` |
 
-The launcher uses the first and leaves the other two neutral, so plain `claude` reaches
-Anthropic everywhere and choosing Qwen means typing `bin/ai.sh qwen`. That is the only
-arrangement in which both directions stay free.
+The launcher uses the first and leaves the others neutral, so plain `claude` reaches
+Anthropic everywhere and choosing Qwen means typing `bin/ai.sh qwen` each time.
 
-To make one repository use Qwen without typing anything, copy the `env` block from
-[.claude/profiles/qwen.json](.claude/profiles/qwen.json) into a `.claude/settings.json`
-beside it — or into `.claude/settings.local.json`, which is ignored by git and so keeps the
-choice on one machine. To do the same for every repository, copy that block into
-`~/.claude/settings.json` instead. Both are sticky rather than reversible, for the reason
-below.
+`bin/set-model.sh` (`bin\set-model.ps1` on Windows) makes the other three automatic: it
+writes the `env` block from the profile into the chosen file, and `claude` in place of
+`qwen` removes exactly those keys again. Every other key in the file — `model`, `theme`,
+`enabledPlugins` — is left as it was; unpinning a file that held nothing else deletes it
+rather than leaving an empty stub; and the global file is copied to `settings.json.bak`
+before each write. Both scripts embed the same Python, so the two platforms write
+byte-identical JSON. Only the launcher checks that Ollama is up — a pinned scope fails at
+the first prompt if it is not.
+
+```bash
+bin/set-model.sh qwen global     # every repository on this machine
+bin/set-model.sh claude global   # back to Anthropic
+```
+
+```powershell
+bin\set-model.ps1 qwen repo
+bin\set-model.ps1 claude repo
+```
 
 ### Keep the user settings file neutral
 
@@ -162,13 +174,14 @@ below.
 one key at a time, and a lower-precedence file cannot unset a key a higher one defined —
 setting it to `""` breaks the request rather than clearing it. A base URL or auth token
 pinned there therefore leaks into Anthropic mode, and no profile or project file can remove
-it. Pin the local model in the profile, never in the user settings.
+it. Change that file only through `bin/set-model.sh`, which can undo exactly what it did.
 
-That asymmetry is what makes the two file-based scopes one-way. Once a base URL and auth
-token are pinned, reaching Anthropic again needs a profile that supplies its own
-`ANTHROPIC_AUTH_TOKEN`, and an auth token takes precedence over the `claude.ai` login — so
-it means a metered API key rather than an account subscription. The launcher avoids this by
-never pinning anything beyond a single session.
+That asymmetry is why a pinned file cannot be overridden from below. Once a base URL and
+auth token are set in it, reaching Anthropic by overriding would need a profile that
+supplies its own `ANTHROPIC_AUTH_TOKEN`, and an auth token takes precedence over the
+`claude.ai` login — a metered API key rather than an account subscription. The launcher
+never pins anything beyond a single session, and `bin/set-model.sh claude` reverses a pin
+by editing the file instead.
 
 ### Prerequisites
 
@@ -177,10 +190,13 @@ Ollama must serve the model named in the profile; it answers the Anthropic Messa
 machine to be logged in once — run `claude` and `/login` if it reports `Not logged in`. A
 WSL install is a separate machine for this purpose and has its own credentials.
 
-Claude Code warns that the Qwen model `isn't described by this version's model catalog` and
-assumes a 200k context window. The session still works. Setting
-`CLAUDE_CODE_MAX_CONTEXT_TOKENS` in the profile silences it, but the correct value is
-whatever `num_ctx` Ollama actually serves, not the window the model advertises.
+The profile sets `CLAUDE_CODE_MAX_CONTEXT_TOKENS` so Claude Code knows the real context
+window; without it, it assumes 200k and says so on every launch. Keep the value equal to
+the `context_length` that `GET /api/ps` on Ollama reports while the model is loaded — that
+is what Ollama enforces, not the larger window the model file advertises. Two shorter
+notices remain in Qwen mode and are harmless: a `[claude-code:unrecognized_model]` line,
+because the model is not in Claude Code's catalog, and a note that claude.ai connectors
+are disabled while an auth token is set.
 
 ## Credits
 
