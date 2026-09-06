@@ -37,44 +37,44 @@ pyproject.toml          tooling for this repo, and the baseline the skill teache
 Only `skill/` is installed. `tests/` and `evals/` stay here — they verify the skill rather
 than being part of it.
 
-## Adopting the standards in a repository
+## Configuring a repository to follow the standards
 
-`skill/tools/check_declarations.py` is bundled so the rule is enforceable in any repository,
-including one with no setup. But CI and pre-commit run inside the target repository and cannot
-see the skill directory, so any repository that adopts the tooling vendors its own copy:
+CI and pre-commit run inside the target repository and cannot see the skill directory, so a
+repository that adopts the tooling vendors its own copy of every config file and the checker.
+`skill/assets/setup-standards.sh` does that in one step: it writes `pyproject.toml`,
+`.pre-commit-config.yaml`, `.gitattributes`, a `.gitignore` (only when the repo has none),
+`.github/workflows/ci.yml`, and `tools/check_declarations.py`, then pins Python 3.13, runs
+`uv sync --all-groups`, installs the pre-commit hook, and runs the full check once. A file
+that already exists is reported and left untouched, so an existing `pyproject.toml` is yours
+to merge by hand.
+
+The script is self-contained — every template and the checker are embedded — so it also runs
+copied on its own to a host with no clone of this repo. `tests/test_setup_script.py` keeps the
+embedded copies byte-identical to `skill/tools/` and `skill/assets/`.
+
+Run it from inside the target repository; it configures the repo your current directory is in,
+not wherever the script lives. `-y` skips the confirmation prompt.
 
 ```bash
-mkdir -p <target-repo>/tools
-cp skill/tools/check_declarations.py <target-repo>/tools/
-cp skill/assets/pyproject-baseline.toml <target-repo>/pyproject.toml
-cp skill/assets/pre-commit-config.yaml <target-repo>/.pre-commit-config.yaml
-cp skill/assets/gitattributes <target-repo>/.gitattributes
-mkdir -p <target-repo>/.github/workflows
-cp skill/assets/ci.yml <target-repo>/.github/workflows/verify.yml
 cd <target-repo>
-git add --renormalize .              # existing files keep their old endings until this
-uv lock                              # ci.yml installs with --locked
-uv sync --all-groups                 # the baseline dev group includes pre-commit
-uv run pre-commit install
+~/.claude/skills/python-code-standards/assets/setup-standards.sh
+```
+
+```powershell
+Set-Location <target-repo>
+bash "$env:USERPROFILE\.claude\skills\python-code-standards\assets\setup-standards.sh"
 ```
 
 ```cmd
-mkdir "<target-repo>\tools"
-copy skill\tools\check_declarations.py "<target-repo>\tools\"
-copy skill\assets\pyproject-baseline.toml "<target-repo>\pyproject.toml"
-copy skill\assets\pre-commit-config.yaml "<target-repo>\.pre-commit-config.yaml"
-copy skill\assets\gitattributes "<target-repo>\.gitattributes"
-mkdir "<target-repo>\.github\workflows"
-copy skill\assets\ci.yml "<target-repo>\.github\workflows\verify.yml"
 cd /d "<target-repo>"
-git add --renormalize .
-uv lock
-uv sync --all-groups
-uv run pre-commit install
+bash "%USERPROFILE%\.claude\skills\python-code-standards\assets\setup-standards.sh"
 ```
 
-`cd /d` is required: plain `cd` will not change drives, so `cd E:\repo` from a `C:` prompt
-silently does nothing and `uv lock` runs in the wrong directory.
+The script is `bash`; on Windows it needs Git Bash or WSL `bash` on `PATH`, and only the
+`bash` block has been executed. `cd /d` is required in `cmd` because plain `cd` will not
+change drives. Working on a clone of this repo, the path is `skill/assets/setup-standards.sh`.
+Adopting the tooling in an existing repository with mixed line endings needs one more step
+after the script, `git add --renormalize .`, so the new `.gitattributes` takes effect.
 
 The repository copy is authoritative wherever both exist: it is the one CI runs.
 
