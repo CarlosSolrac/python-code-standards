@@ -21,7 +21,7 @@
 #   .pre-commit-config.yaml     the lint + type verification loop
 #   .gitattributes              eol=lf as a property of the repo
 #   .gitignore                  Python caches and build output (only if absent)
-#   .github/workflows/ci.yml    CI: pre-commit --all-files + pytest --cov
+#   .github/workflows/ci.yml    CI: pre-commit --all-files + pytest --cov + diff-cover
 #   tools/check_declarations.py the "annotate before first binding" checker
 #   tools/__init__.py           makes tools importable as a package
 #   tests/.gitkeep              pytest testpaths root
@@ -137,6 +137,7 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "diff-cover>=10,<11",        # CI: 100% coverage of changed lines
     "mypy>=1.18,<2",
     "pre-commit>=4,<5",
     "pyright>=1.1.400,<2",       # PyPI wrapper; downloads a Node runtime on first run
@@ -242,7 +243,10 @@ testpaths = ["tests"]
 branch = true
 
 [tool.coverage.report]
-fail_under = 90
+# Whole-project floor. A project adopting this with untested legacy code starts
+# at its current coverage and only raises it; CI's diff-cover step holds changed
+# lines at 100% either way.
+fail_under = 100
 show_missing = true
 TOML
     CREATED+=("pyproject.toml")
@@ -283,6 +287,8 @@ repos:
         language: system
         types: [python]
         pass_filenames: true
+        # Parallel batches share .mypy_cache and crash mypy on a cold cache.
+        require_serial: true
 YAML
 
 # --------------------------------------------------------------------------- #
@@ -308,6 +314,7 @@ __pycache__/
 .mypy_cache/
 .pyright/
 .coverage
+coverage.xml
 htmlcov/
 dist/
 build/
@@ -331,6 +338,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # diff-cover compares against the base branch
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -353,8 +362,14 @@ jobs:
       - name: Lint, format, declarations, types
         run: uv run pre-commit run --all-files --show-diff-on-failure
 
+      # fail_under in pyproject.toml is the floor for the whole project; the
+      # standard is 100% of the lines a change touches, which diff-cover
+      # enforces, so untested legacy code does not block a covered change.
       - name: Tests and coverage
-        run: uv run pytest --cov --cov-report=term-missing --cov-branch
+        run: uv run pytest --cov --cov-report=term-missing --cov-report=xml --cov-branch
+
+      - name: Coverage of changed lines
+        run: uv run diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref || 'main' }} --fail-under=100
 CI
 
 # --------------------------------------------------------------------------- #

@@ -27,3 +27,5 @@ repos:
         language: system
         types: [python]
         pass_filenames: true
+        # Parallel batches share .mypy_cache and crash mypy on a cold cache.
+        require_serial: true

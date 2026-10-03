@@ -1,6 +1,6 @@
 ---
 name: python-code-standards
-version: 4.0.0
+version: 4.1.0
 description: Standards for writing, editing, and reviewing Python. Produces strictly typed, documented, localized changes verified by execution, Ruff, a type checker, and tests. Use whenever Python is written, modified, refactored, reviewed, or debugged — including small edits, scripts, notebooks, and tests — and whenever a project's Python tooling, dependencies, or configuration change.
 ---
 
@@ -66,6 +66,14 @@ Never auto-apply unsafe fixes: inspect with `ruff check --unsafe-fixes --diff`, 
 
 Google-style docstrings on every module, class, and non-trivial function in source (optional in tests, where the name carries the meaning), describing the contract rather than narrating the implementation. `Args:`/`Returns:`/`Raises:` only where they add what the name and annotations don't. Never document `self`/`cls` or repeat annotations in prose. Comments explain *why*, and are updated whenever the code they describe changes. No placeholder ellipses in copy-ready code.
 
+## Design and testing
+
+- **Top-down design.** Write the public entry point first, expressed as calls to helpers that do not exist yet; then build each helper the same way, one level down at a time, until every leaf is concrete.
+- **Test-driven development.** No production code without a failing test that demands it. Red: write one unit test and watch it fail for the expected reason. Green: write the least code that passes. Refactor with the suite green. Repeat per unit, top level first.
+- **Unit tests.** Each test exercises one unit in isolation, with collaborators injected as fakes; I/O, clocks, randomness, and the network stay out of unit tests.
+
+`references/testing.md` has the mechanics.
+
 ## Verification
 
 Changed files only, through `uv run`, using the project's commands where they differ.
@@ -80,16 +88,19 @@ uv run python "${CLAUDE_SKILL_DIR}/tools/check_declarations.py" <files>
 uv run pyright <files> && uv run mypy <files>
 # 3. Tests and coverage:
 uv run pytest <tests> -q
-uv run pytest <tests> --cov=<module> --cov-report=term-missing --cov-branch
+uv run pytest <tests> --cov=<module> --cov-report=term-missing --cov-report=xml --cov-branch
+uv run diff-cover coverage.xml --compare-branch=main --fail-under=100
 ```
 
-Coverage on changed code: **90% statement, 85% branch**, both reported. If missed, say what is uncovered; never lower the threshold.
+Coverage on changed code: **100% statement and 100% branch**, both reported. `diff-cover` measures exactly the changed lines, and CI runs it the same way; `fail_under` is only the whole-project floor. If missed, say what is uncovered; never lower the threshold.
 
 **Never claim anything passed unless the command ran and its output was observed.** Editor diagnostics such as `mcp__ide__getDiagnostics` are not verification (see `references/typing.md`). When commands cannot run, open the reply with `UNVERIFIED — nothing below was run.`, list the exact commands in order, and state which claims depend on them.
 
 ## Suppressions
 
 `# noqa`, `# type: ignore`, `# pyright: ignore`, `# pragma: no cover`, per-file ignores, disabled diagnostics, coverage omissions, `fail_under` reductions, and warning filters all require explicit authorization. Attempt a real fix first. If a genuine tool limitation remains, explain the diagnostic, why code can't fix it, and the narrowest suppression — then wait. `PGH` rejects blanket directives, and `RUF100` flags ones that stopped applying.
+
+Private-usage errors (Pyright `reportPrivateUsage`) may be suppressed only inside unit tests, per line with `# pyright: ignore[reportPrivateUsage]`, and there without asking. In any other code, never: call the public API or make the name public.
 
 ## References
 

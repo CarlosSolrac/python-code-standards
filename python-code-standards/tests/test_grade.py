@@ -6,18 +6,37 @@ run paths resolved twice, JSON buried in installer output — produced a confide
 wrong answer. These tests pin the parsing and detection logic that made those
 faults possible.
 
-Ruff and Pyright invocations are not exercised here; they shell out to ``uvx`` and
-belong to the runbook's manual verification, not to a unit test.
+Real Ruff and Pyright invocations shell out to ``uvx`` and belong to the
+runbook's manual verification. Their failure handling is unit-tested here by
+replacing ``_run`` with ``FakeRun``, which returns a canned exit status and output.
 """
 
 from __future__ import annotations
 
 import json
+import runpy
+import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
-from evals.grade import GRADER_VERSION, Score, _payload, count_declarations, grade, main, third_party_imports
+from evals.grade import GRADER_VERSION, Score, _payload, count_declarations, count_pyright, count_ruff, grade, main, third_party_imports  # pyright: ignore[reportPrivateUsage]
+
+
+@dataclass
+class FakeRun:
+    """Stand-in for ``_run``: returns a fixed result and records each command."""
+
+    status: int
+    output: str
+    commands: list[list[str]] = field(default_factory=list[list[str]])
+
+    def __call__(self, command: list[str], cwd: Path) -> tuple[int, str]:
+        """Record the command and return the canned result."""
+        del cwd
+        self.commands.append(command)
+        return self.status, self.output
 
 
 @pytest.mark.parametrize(
@@ -182,3 +201,85 @@ def test_count_declarations_returns_negative_on_checker_failure(tmp_path: Path) 
     run.mkdir()
     (run / "m.py").write_text("x = 1\n", encoding="utf-8")
     assert count_declarations(run.resolve(), tmp_path / "does-not-exist.py") == -1
+
+
+@pytest.mark.parametrize(
+    ("status", "output"),
+    [(2, "error: ruff crashed"), (0, "{}"), (1, "no payload")],
+    ids=["crashed", "object-not-array", "missing-payload"],
+)
+def test_count_ruff_reports_failure_as_negative(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int, output: str) -> None:
+    """A Ruff run that crashed or printed no findings array scores -1, never zero."""
+    monkeypatch.setattr("evals.grade._run", FakeRun(status, output))
+    config: Path = tmp_path / "standards.toml"
+    config.write_text("", encoding="utf-8")
+    assert count_ruff(tmp_path, config) == (-1, {})
+
+
+def test_count_ruff_keeps_existing_run_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pyproject.toml already in the run directory is not overwritten."""
+    monkeypatch.setattr("evals.grade._run", FakeRun(0, "[]"))
+    local: Path = tmp_path / "pyproject.toml"
+    local.write_text("# run's own config\n", encoding="utf-8")
+    config: Path = tmp_path / "standards.toml"
+    config.write_text("# standards\n", encoding="utf-8")
+
+    assert count_ruff(tmp_path, config) == (0, {})
+    assert local.read_text(encoding="utf-8") == "# run's own config\n"
+
+
+@pytest.mark.parametrize(
+    ("status", "output"),
+    [(2, "error: pyright crashed"), (0, "[]"), (0, '{"summary": []}')],
+    ids=["crashed", "array-not-object", "summary-not-object"],
+)
+def test_count_pyright_reports_failure_as_negative(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int, output: str) -> None:
+    """A Pyright run without a usable summary scores -1, never zero."""
+    monkeypatch.setattr("evals.grade._run", FakeRun(status, output))
+    assert count_pyright(tmp_path, tmp_path / "pyproject.toml") == -1
+
+
+def test_count_pyright_installs_third_party_imports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each third-party import is passed to ``uvx`` with ``--with``."""
+    fake: FakeRun = FakeRun(0, '{"summary": {"errorCount": 2}}')
+    monkeypatch.setattr("evals.grade._run", fake)
+    (tmp_path / "m.py").write_text("import duckdb\n", encoding="utf-8")
+
+    assert count_pyright(tmp_path, tmp_path / "pyproject.toml") == 2
+    assert fake.commands[0][:3] == ["uvx", "--with", "duckdb"]
+
+
+def test_grade_notes_packages_pyright_ran_with(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Packages installed for Pyright are named in the notes."""
+    monkeypatch.setattr("evals.grade._run", FakeRun(0, "[]"))
+    run: Path = tmp_path / "sample"
+    run.mkdir()
+    (run / "m.py").write_text("import duckdb\n", encoding="utf-8")
+    config: Path = tmp_path / "standards.toml"
+    config.write_text("", encoding="utf-8")
+
+    score: Score = grade(run, tmp_path / "checker.py", config)
+    assert "pyright ran with: duckdb" in score.notes
+
+
+def test_main_prints_notes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """Each note is printed beneath its run's row."""
+    monkeypatch.setattr("evals.grade._run", FakeRun(0, "[]"))
+    run: Path = tmp_path / "empty"
+    run.mkdir()
+    config: Path = tmp_path / "standards.toml"
+    config.write_text("", encoding="utf-8")
+
+    main([str(run), "--checker", str(tmp_path / "checker.py"), "--config", str(config)])
+    assert "  ! no Python files found" in capsys.readouterr().out
+
+
+def test_runs_as_script(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """Executed as a script, the module hands control to ``main``."""
+    script: Path = Path(__file__).parent.parent / "evals" / "grade.py"
+    monkeypatch.setattr(sys, "argv", [str(script), "--help"])
+    exit_info: pytest.ExceptionInfo[SystemExit]
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_path(str(script), run_name="__main__")
+    assert exit_info.value.code == 0
+    assert "--checker" in capsys.readouterr().out

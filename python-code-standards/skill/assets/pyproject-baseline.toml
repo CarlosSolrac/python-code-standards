@@ -11,6 +11,7 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "diff-cover>=10,<11",        # CI: 100% coverage of changed lines
     "mypy>=1.18,<2",
     "pre-commit>=4,<5",
     "pyright>=1.1.400,<2",       # PyPI wrapper; downloads a Node runtime on first run
@@ -116,5 +117,8 @@ testpaths = ["tests"]
 branch = true
 
 [tool.coverage.report]
-fail_under = 90
+# Whole-project floor. A project adopting this with untested legacy code starts
+# at its current coverage and only raises it; CI's diff-cover step holds changed
+# lines at 100% either way.
+fail_under = 100
 show_missing = true

@@ -7,6 +7,8 @@ so exemptions are asserted as explicitly as violations.
 from __future__ import annotations
 
 import json
+import runpy
+import sys
 from pathlib import Path
 
 import pytest
@@ -274,3 +276,64 @@ def test_nested_function_receiver_is_not_confused() -> None:
     """A closure inside a method is not checked against the outer receiver."""
     source: str = "class C:\n    total: int\n    def f(self) -> None:\n        def inner(other: object) -> None:\n            other.total = 1"
     assert names(source) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("match p:\n    case (1 | 2) as pair:\n        pass", ["pair"]),
+        ("match p:\n    case _:\n        pass", []),
+        ("match p:\n    case [1, *_]:\n        pass", []),
+        ("match p:\n    case {'k': v}:\n        pass", ["v"]),
+        ("match p:\n    case n if n > 0:\n        pass", ["n"]),
+    ],
+    ids=["as-pattern", "wildcard", "anonymous-star", "mapping-without-rest", "guarded-capture"],
+)
+def test_match_pattern_variants(source: str, expected: list[str]) -> None:
+    """Patterns that bind nothing stay silent; wrapped and guarded captures are still reported."""
+    assert names(source) == expected
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "with open('f'):\n    pass",
+        "try:\n    pass\nexcept ValueError:\n    pass",
+        "evens: set[int]\nevens = {n for n in range(3)}",
+    ],
+    ids=["with-without-as", "except-without-name", "set-comp-target"],
+)
+def test_forms_without_bindings_are_not_reported(source: str) -> None:
+    """Statements that bind no annotatable name produce no violation."""
+    assert names(source) == []
+
+
+def test_dotted_base_class_contributes_no_declarations() -> None:
+    """Only in-file bases named directly are resolved; a dotted base declares nothing."""
+    source: str = "class C(models.Base):\n    def reset(self) -> None:\n        self.total = 0"
+    assert names(source) == ["self.total"]
+
+
+def test_local_annotation_in_method_is_not_an_attribute() -> None:
+    """An annotated local inside a method neither reports nor declares an attribute."""
+    source: str = "class C:\n    def f(self) -> None:\n        n: int = 0\n        self.n = n"
+    assert names(source) == ["self.n"]
+
+
+def test_read_source_ignores_malformed_cells(tmp_path: Path) -> None:
+    """A notebook whose ``cells`` is not a list yields no source rather than raising."""
+    notebook: Path = tmp_path / "nb.ipynb"
+    notebook.write_text(json.dumps({"cells": {"cell_type": "code"}}), encoding="utf-8")
+    assert read_source(notebook) == ""
+
+
+def test_runs_as_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Executed as a script, the module exits with ``main``'s status."""
+    module: Path = tmp_path / "m.py"
+    module.write_text("x: int = 1\n", encoding="utf-8")
+    script: Path = Path(__file__).parent.parent / "skill" / "tools" / "check_declarations.py"
+    monkeypatch.setattr(sys, "argv", [str(script), str(module)])
+    exit_info: pytest.ExceptionInfo[SystemExit]
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_path(str(script), run_name="__main__")
+    assert exit_info.value.code == 0

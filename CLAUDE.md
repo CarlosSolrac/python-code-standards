@@ -11,6 +11,9 @@ Python (`.py`, `.ipynb`): invoke the `python-code-standards` skill before readin
 - State assumptions that change the solution. Two possible readings: ask, do not pick.
 - A simpler approach exists: say so.
 - Write the success check first: a test, a command, or an observable output.
+- Design top-down: the entry point first, then each helper it calls, one level at a time.
+- Implement test-first: a failing unit test before each unit, watched failing for the
+  expected reason. Changed code reaches 100% statement and branch coverage.
 - More than two files, or a new dependency: post a numbered plan (step → check) and wait.
   Single-file edits skip the plan.
 

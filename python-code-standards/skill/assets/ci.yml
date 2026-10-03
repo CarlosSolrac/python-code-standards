@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # diff-cover compares against the base branch
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -32,5 +34,11 @@ jobs:
       - name: Lint, format, declarations, types
         run: uv run pre-commit run --all-files --show-diff-on-failure
 
+      # fail_under in pyproject.toml is the floor for the whole project; the
+      # standard is 100% of the lines a change touches, which diff-cover
+      # enforces, so untested legacy code does not block a covered change.
       - name: Tests and coverage
-        run: uv run pytest --cov --cov-report=term-missing --cov-branch
+        run: uv run pytest --cov --cov-report=term-missing --cov-report=xml --cov-branch
+
+      - name: Coverage of changed lines
+        run: uv run diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref || 'main' }} --fail-under=100

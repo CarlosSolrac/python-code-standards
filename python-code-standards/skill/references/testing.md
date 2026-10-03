@@ -2,6 +2,22 @@
 
 Standard pytest practice is assumed. What follows is what shapes the outcome.
 
+## Test-first, top-down
+
+1. **Start at the top.** Write a unit test for the public entry point. Inject its collaborators as fakes with the interface you want them to have; the test fixes that interface before any helper exists.
+2. **Red.** Run the single test (`uv run pytest <test_file>::<test_name> -q`) and confirm it fails for the expected reason — a missing function or a wrong result, not an import typo or a broken fixture.
+3. **Green.** Write the least production code that passes: the entry point, calling helpers by the interface the fakes defined.
+4. **Refactor** with the suite green, then commit the step if the repository's workflow asks for it.
+5. **Descend.** Each helper the entry point needed becomes the next unit: write its failing test, make it pass, repeat until every leaf is real. Stubs never survive to the finished change.
+
+Unit tests isolate one unit. Collaborators arrive through parameters or constructor injection, so a test swaps them without patching. I/O, time, randomness, and the network stay at the edges, behind injected protocols, and out of unit tests; a few integration tests cover the real wiring.
+
+## Coverage
+
+100% statement and branch coverage on changed code is the floor, not the goal — it follows from test-first, since no line exists without a test that demanded it. A line no test can reach is unreachable: delete it rather than suppress it. `# pragma: no cover` still needs explicit authorization.
+
+## Practice
+
 - Cover every new code path and changed behavior: normal operation, meaningful boundaries, expected failures. For a bug fix, add a test that fails before and passes after — write it first and watch it fail for the expected reason.
 - Test observable behavior, not internals, unless a private unit holds independently complex logic.
 - For security, authorization, financial, destructive, and data-integrity behavior, cover every known outcome, denial path, and failure mode. A coverage percentage does not substitute for scenario coverage.
