@@ -26,7 +26,7 @@ only when the work touches their topic, so they cost no tokens otherwise.
 ```
 skill/                  <- this is the installed skill; symlink or copy it
   SKILL.md
-  references/           typing, testing, SQL/DuckDB, Pydantic, concurrency, packaging
+  references/           typing, testing, SQL/DuckDB, Pydantic, concurrency, packaging, repo setup
   assets/               templates copied into the repositories you work in
   tools/                bundled checker, invoked via ${CLAUDE_SKILL_DIR}
 tests/                  tests for the checker and grader  (development only)

@@ -13,7 +13,110 @@ installed once into `~/.claude` and active in every project.
 Each rule lives in exactly one of the two files, so they can be installed together without
 conflict.
 
-## Install
+## Ask Claude to install
+
+Claude Code can install these standards for you:
+
+1. Open a Claude Code session in any folder.
+2. Set the model and effort for your scenario from the table below.
+3. Copy the **prompt** for your scenario and paste it into the session.
+
+Each prompt clones this repository to `~/src/python-code-standards`; edit that path in the
+prompt if you keep code elsewhere.
+
+| Scenario | Model | Effort | Why this model |
+| --- | --- | --- | --- |
+| Brand-new install, or replace | Sonnet 5.5 (`/model sonnet`) | medium (`/effort medium`) | Cloning, backing up, and linking follow the README step by step, so the faster, cheaper model is enough. |
+| Merge | Opus 5.5 (`/model opus`) | high (`/effort high`) | Telling a real conflict from two wordings of the same rule, and merging without dropping either side's intent, is judgment the stronger model handles more reliably. |
+
+### Scenario 1: brand-new install
+
+Use this when you have no `~/.claude/CLAUDE.md` yet.
+
+- **Prompt** — copy into Claude Code:
+
+  ```text
+  Install the python-code-standards from https://github.com/CarlosSolrac/python-code-standards.
+  Clone it to ~/src/python-code-standards, then follow its README's Install section to link
+  CLAUDE.md into ~/.claude and the skill into ~/.claude/skills/python-code-standards. If
+  ~/.claude/CLAUDE.md or that skill folder already exists, stop and ask me. Finish by running
+  the README's Verify step and showing me the output.
+  ```
+
+### Scenario 2: replace your current CLAUDE.md
+
+Use this to switch to this repository's rules, keeping a backup of yours.
+
+- **Prompt** — copy into Claude Code:
+
+  ```text
+  Install the python-code-standards from https://github.com/CarlosSolrac/python-code-standards,
+  replacing my current global CLAUDE.md. Clone it to ~/src/python-code-standards. Before
+  changing anything, copy ~/.claude/CLAUDE.md to ~/.claude/CLAUDE.md.bak-<today's date> and
+  show me that the backup exists. Then delete the original ~/.claude/CLAUDE.md, because a
+  link cannot be created over an existing file. Follow the README's Install section to link
+  CLAUDE.md and the skill, run the README's Verify step, and show me the output.
+  ```
+
+### Scenario 3: merge with your current CLAUDE.md
+
+Use this to keep your own rules alongside these. Claude asks you about every overlap and
+writes nothing until you approve the merged file.
+
+- **Prompt** — copy into Claude Code:
+
+  ```text
+  Install the python-code-standards from https://github.com/CarlosSolrac/python-code-standards,
+  merging its CLAUDE.md with my current global one. Clone it to ~/src/python-code-standards and
+  copy ~/.claude/CLAUDE.md to ~/.claude/CLAUDE.md.bak-<today's date> before changing anything.
+  Then go through both files section by section: keep any rule only one file has, and for each
+  rule where they overlap or conflict, show me both versions and ask which to keep. Show me the
+  complete merged file and wait for my approval before writing it. Write ~/.claude/CLAUDE.md as
+  a regular file, not a link, and link only the skill. Finish by running the README's Verify
+  step and showing me the output.
+  ```
+
+A merged `CLAUDE.md` is your own file, so later changes to this repository's `CLAUDE.md` do
+not reach it; pull them in by running the merge prompt again. The skill stays linked either
+way.
+
+On Windows, links need Developer Mode or an elevated prompt. Without either, add
+"copy instead of linking" to the end of any prompt.
+
+## Set up a new Python project
+
+After [installing](#ask-claude-to-install), open Claude Code in the project's folder, set the
+model and effort from the table below, and paste the prompt.
+
+- **Prompt** — copy into Claude Code:
+
+  ```text
+  Configure this repository to follow the python-code-standards.
+  ```
+
+Claude loads the skill, tells you what its `setup-standards.sh` will change, and runs it once
+you approve. The script writes `pyproject.toml`, `.pre-commit-config.yaml`, `.gitattributes`,
+`.gitignore`, `.github/workflows/ci.yml`, and `tools/check_declarations.py`, pins Python
+3.13, syncs the environment, installs the pre-commit hook, stages every file in the
+repository, and runs the pre-commit checks once: Ruff, formatting, the declaration checker,
+Pyright, and MyPy. It does not run tests or coverage; those run in CI and whenever you run
+`uv run pytest`. A file that already exists is reported and left untouched. Claude asks
+before committing the result.
+
+The project needs `git` and `uv` on `PATH`, `bash` (Git Bash or WSL on Windows), and a git
+repository — in an empty folder, run `git init` first.
+
+Recommended model and effort:
+
+| Project | Model | Effort | Why this model |
+| --- | --- | --- | --- |
+| New, empty | Sonnet 5.5 (`/model sonnet`) | medium (`/effort medium`) | The script makes every decision, so the session only runs it and reads the output — a faster, cheaper model loses nothing. |
+| Existing code | Opus 5.5 (`/model opus`) | high (`/effort high`) | Merging an existing `pyproject.toml` and fixing the violations the first check reports are judgment calls, where the stronger model makes fewer wrong edits. |
+
+To run the script yourself instead, see
+[Configuring a repository](python-code-standards/README.md#configuring-a-repository-to-follow-the-standards).
+
+## Manual Install
 
 Clone, then link both into `~/.claude`. A symlink keeps one source of truth and picks up
 edits immediately.

@@ -1,6 +1,6 @@
 ---
 name: python-code-standards
-version: 4.1.0
+version: 4.3.0
 description: Standards for writing, editing, and reviewing Python. Produces strictly typed, documented, localized changes verified by execution, Ruff, a type checker, and tests. Use whenever Python is written, modified, refactored, reviewed, or debugged — including small edits, scripts, notebooks, and tests — and whenever a project's Python tooling, dependencies, or configuration change.
 ---
 
@@ -56,11 +56,11 @@ uv venv                  uv add <pkg>            uv sync
 uv python pin 3.13       uv add --dev <pkg>      uv run <command>
 ```
 
-Every tool runs through `uv run` so the verified environment is the project environment; `uvx` only for non-dependencies. Runtime deps in `[project] dependencies`, tooling in `[dependency-groups] dev`. Commit `uv.lock` for applications, not libraries — run `uv lock` once and commit it before CI, since `assets/ci.yml` installs with `--locked`.
+Every tool runs through `uv run` so the verified environment is the project environment; `uvx` only for non-dependencies. Runtime deps in `[project] dependencies`, tooling in `[dependency-groups] dev`. Commit `uv.lock` for applications, not libraries.
 
 ## Formatting and documentation
 
-Ruff is authoritative and the checked-in config is the specification — don't restate its rules in prose or review. Line length **220**. `assets/pyproject-baseline.toml` is the baseline for a new project.
+Ruff is authoritative and the checked-in config is the specification — don't restate its rules in prose or review. Line length **220**.
 
 Never auto-apply unsafe fixes: inspect with `ruff check --unsafe-fixes --diff`, check `ruff rule <CODE>`, apply only when the behavioral effect is understood and tested.
 
@@ -104,7 +104,7 @@ Private-usage errors (Pyright `reportPrivateUsage`) may be suppressed only insid
 
 ## References
 
-- `assets/` — templates to copy into a repository: `pyproject-baseline.toml`, `pre-commit-config.yaml`, `gitattributes`, and `ci.yml`
+- `references/setup.md` — setting up or configuring a repository to follow these standards
 - `assets/conformance.py` — a module in house style that passes the whole toolchain; read it instead of asking how something should look
 - `references/typing.md` — annotation decisions and checkers; always when a dependency ships no types
 - `references/sql-duckdb.md` — Python constructs, executes, or embeds SQL
