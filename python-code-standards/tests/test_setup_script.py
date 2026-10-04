@@ -1,7 +1,8 @@
 """The setup script embeds the skill's templates; assert the copies have not drifted.
 
 ``skill/assets/setup-standards.sh`` is self-contained so it can run on a host with
-no clone of this repo. That duplication is only safe if drift fails here.
+no clone of this repo. That duplication is only safe if drift fails here. The
+script's own check must also leave the repository's existing files unmodified.
 """
 
 from __future__ import annotations
@@ -64,3 +65,23 @@ def test_embedded_template_matches_source(delimiter: str, asset: str) -> None:
     """
     source: str = (REPO_ROOT / asset).read_text(encoding="utf-8")
     assert heredoc(delimiter) == source
+
+
+def test_setup_check_is_read_only() -> None:
+    """The check the script runs reports problems without rewriting any file.
+
+    The pre-commit hooks run Ruff with ``--fix`` and the formatter. Run over a
+    repository that already has Python code, they reformat it and delete unused
+    imports before anyone has reviewed the change.
+    """
+    lines: list[str] = SETUP_SCRIPT.read_text(encoding="utf-8").splitlines()
+    commands: list[str] = [line.strip() for line in lines if line.strip().startswith(("uv run", "SKIP="))]
+    assert any("pre-commit run" in command for command in commands)
+    command: str
+    for command in commands:
+        if "pre-commit run" in command:
+            assert command.startswith("SKIP=ruff,ruff-format "), command
+        if "ruff check" in command:
+            assert "--no-fix" in command, command
+        if "ruff format" in command:
+            assert "--check" in command, command

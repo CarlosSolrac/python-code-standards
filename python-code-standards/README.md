@@ -44,9 +44,10 @@ repository that adopts the tooling vendors its own copy of every config file and
 `skill/assets/setup-standards.sh` does that in one step: it writes `pyproject.toml`,
 `.pre-commit-config.yaml`, `.gitattributes`, a `.gitignore` (only when the repo has none),
 `.github/workflows/ci.yml`, and `tools/check_declarations.py`, then pins Python 3.13, runs
-`uv sync --all-groups`, installs the pre-commit hook, and runs the full check once. A file
-that already exists is reported and left untouched, so an existing `pyproject.toml` is yours
-to merge by hand.
+`uv sync --all-groups`, installs the pre-commit hook, and runs the full check once. The check
+is read-only: Ruff runs in report mode and pre-commit skips its two Ruff hooks, so existing
+code is reported on, never rewritten. A file that already exists is reported and left
+untouched, so an existing `pyproject.toml` is yours to merge by hand.
 
 The script is self-contained — every template and the checker are embedded — so it also runs
 copied on its own to a host with no clone of this repo. `tests/test_setup_script.py` keeps the

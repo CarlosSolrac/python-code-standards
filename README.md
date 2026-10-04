@@ -37,7 +37,7 @@ Use this when you have no `~/.claude/CLAUDE.md` yet.
 
   ```text
   Install the python-code-standards from https://github.com/CarlosSolrac/python-code-standards.
-  Clone it to ~/src/python-code-standards, then follow its README's Install section to link
+  Clone it to ~/src/python-code-standards, then follow its README's Manual Install section to link
   CLAUDE.md into ~/.claude and the skill into ~/.claude/skills/python-code-standards. If
   ~/.claude/CLAUDE.md or that skill folder already exists, stop and ask me. Finish by running
   the README's Verify step and showing me the output.
@@ -54,7 +54,7 @@ Use this to switch to this repository's rules, keeping a backup of yours.
   replacing my current global CLAUDE.md. Clone it to ~/src/python-code-standards. Before
   changing anything, copy ~/.claude/CLAUDE.md to ~/.claude/CLAUDE.md.bak-<today's date> and
   show me that the backup exists. Then delete the original ~/.claude/CLAUDE.md, because a
-  link cannot be created over an existing file. Follow the README's Install section to link
+  link cannot be created over an existing file. Follow the README's Manual Install section to link
   CLAUDE.md and the skill, run the README's Verify step, and show me the output.
   ```
 
@@ -98,10 +98,11 @@ Claude loads the skill, tells you what its `setup-standards.sh` will change, and
 you approve. The script writes `pyproject.toml`, `.pre-commit-config.yaml`, `.gitattributes`,
 `.gitignore`, `.github/workflows/ci.yml`, and `tools/check_declarations.py`, pins Python
 3.13, syncs the environment, installs the pre-commit hook, stages every file in the
-repository, and runs the pre-commit checks once: Ruff, formatting, the declaration checker,
-Pyright, and MyPy. It does not run tests or coverage; those run in CI and whenever you run
-`uv run pytest`. A file that already exists is reported and left untouched. Claude asks
-before committing the result.
+repository, and checks every file once: Ruff, formatting, the declaration checker, Pyright,
+and MyPy. The check is read-only — problems in code you already have are reported, not
+fixed, so nothing you wrote changes without your review. It does not run tests or coverage;
+those run in CI and whenever you run `uv run pytest`. A file that already exists is reported
+and left untouched. Claude asks before committing the result.
 
 The project needs `git` and `uv` on `PATH`, `bash` (Git Bash or WSL on Windows), and a git
 repository — in an empty folder, run `git init` first.
@@ -115,6 +116,47 @@ Recommended model and effort:
 
 To run the script yourself instead, see
 [Configuring a repository](python-code-standards/README.md#configuring-a-repository-to-follow-the-standards).
+
+## Reformat and fix existing code
+
+Setup only reports problems in code you already have. When you want them fixed, do it as a
+separate change, starting from a clean working tree so the result is one reviewable diff.
+
+Ruff fixes two kinds of problem automatically: formatting, and safe lint fixes such as
+sorting imports or removing unused ones. Its *unsafe* fixes can change behaviour, so they are
+previewed, never applied in bulk. Declaration, Pyright, and MyPy problems have no automatic
+fix; each needs a code change.
+
+| Task | Model | Effort | Why this model |
+| --- | --- | --- | --- |
+| Reformat and safe fixes only | Sonnet 5.5 (`/model sonnet`) | medium (`/effort medium`) | Ruff makes every edit; the session runs it, runs the tests, and summarises the diff. |
+| Also fix what Ruff cannot | Opus 5.5 (`/model opus`) | high (`/effort high`) | Annotating variables and resolving type errors across existing code means reading intent, where the stronger model makes fewer wrong edits. |
+
+- **Prompt** — copy into Claude Code:
+
+  ```text
+  Reformat this repository and apply the python-code-standards fixes. First check that the
+  working tree is clean, and stop if it is not. Run Ruff's safe fixes and the formatter over
+  the whole repository, run the tests, and show me a summary of the diff. List any unsafe
+  fixes Ruff suggests without applying them, and list the declaration, Pyright, and MyPy
+  problems that remain. Do not fix those, and do not commit, until I approve.
+  ```
+
+To do it yourself, from the repository root:
+
+```bash
+git status                                  # must be clean
+uv run ruff check --fix                     # safe lint fixes
+uv run ruff format                          # formatting
+uv run ruff check --unsafe-fixes --diff     # preview only; apply a fix once you understand it
+git diff                                    # review every change
+uv run pytest                               # nothing broke
+uv run pre-commit run --all-files           # declarations, Pyright, MyPy: fix what remains by hand
+```
+
+Removing an unused import can change behaviour when importing the module has side effects,
+so read the diff rather than skimming it. Commit the reformat on its own, so later
+`git blame` and reviews can tell it apart from real changes.
 
 ## Manual Install
 

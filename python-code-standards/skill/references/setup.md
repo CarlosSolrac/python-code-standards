@@ -10,7 +10,7 @@ Use `assets/setup-standards.sh` rather than copying templates by hand. It writes
 bash "${CLAUDE_SKILL_DIR}/assets/setup-standards.sh" -y
 ```
 
-It never overwrites an existing file, so merge any it reports as skipped. It runs pre-commit only; tests and coverage are separate checks.
+It never overwrites an existing file, so merge any it reports as skipped. Its check is read-only: Ruff in report mode, then the declaration checker, Pyright, and MyPy through pre-commit, so problems in existing code are listed, not fixed. Fixing them is a separate change for the user to approve; `uv run pre-commit run --all-files` applies Ruff's fixes and formatting. The hook it installs does apply them, but only to files in each later commit. Tests and coverage are separate checks.
 
 ## Templates
 

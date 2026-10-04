@@ -850,10 +850,14 @@ uv run pre-commit install
 printf '\nStaging files so the checks can see them...\n'
 git add -A
 
-printf '\nRunning the full check over all files...\n'
-PRECOMMIT_RC=0
-uv run pre-commit run --all-files || PRECOMMIT_RC=$?
-git add -A # re-stage anything the ruff hook reformatted on this first run
+# Read-only: the ruff hooks run --fix and the formatter, which would rewrite
+# Python files the repository already had. Ruff runs in report mode instead, and
+# pre-commit runs only the hooks that never modify files.
+printf '\nChecking all files (read-only)...\n'
+CHECK_RC=0
+uv run ruff check --no-fix || CHECK_RC=$?
+uv run ruff format --check || CHECK_RC=$?
+SKIP=ruff,ruff-format uv run pre-commit run --all-files || CHECK_RC=$?
 
 # --------------------------------------------------------------------------- #
 # Report
@@ -869,16 +873,16 @@ if [ "${#SKIPPED[@]}" -gt 0 ]; then
     printf 'is among them, merge the [tool.*] sections by hand.\n'
 fi
 
-if [ "$PRECOMMIT_RC" -eq 0 ]; then
-    printf '\npre-commit: PASS\n'
+if [ "$CHECK_RC" -eq 0 ]; then
+    printf '\nchecks: PASS\n'
 else
-    printf '\npre-commit: exited %s -- read the output above.\n' "$PRECOMMIT_RC"
-    printf 'On a fresh repo the first run may reformat the files it just created;\n'
-    printf 're-run "uv run pre-commit run --all-files" and it should pass.\n'
+    printf '\nchecks: FAILED -- read the output above. No file was modified.\n'
+    printf '"uv run pre-commit run --all-files" applies the Ruff fixes and formatting;\n'
+    printf 'review its diff before committing.\n'
 fi
 
 printf '\nNext (files are already staged):\n'
 printf '  git commit -m "Add python-code-standards toolchain"\n'
 printf '  # uv.lock is committed for an application; delete it + switch ci.yml for a library\n'
 
-exit "$PRECOMMIT_RC"
+exit "$CHECK_RC"
