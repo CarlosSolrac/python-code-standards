@@ -845,19 +845,43 @@ uv sync --all-groups
 printf '\nInstalling the pre-commit git hook...\n'
 uv run pre-commit install
 
-# pre-commit only sees files git tracks, so stage first. This is the state you
+# The checks read the files git tracks, so stage first. This is the state you
 # are about to commit anyway (see "Next" below).
 printf '\nStaging files so the checks can see them...\n'
 git add -A
 
-# Read-only: the ruff hooks run --fix and the formatter, which would rewrite
-# Python files the repository already had. Ruff runs in report mode instead, and
-# pre-commit runs only the hooks that never modify files.
-printf '\nChecking all files (read-only)...\n'
+# Read-only: each tool runs directly in report mode, never through pre-commit.
+# A repository that already had a .pre-commit-config.yaml keeps it, and its
+# hooks (ruff --fix, end-of-file-fixer, Black) would rewrite files if run.
 CHECK_RC=0
-uv run ruff check --no-fix || CHECK_RC=$?
-uv run ruff format --check || CHECK_RC=$?
-SKIP=ruff,ruff-format uv run pre-commit run --all-files || CHECK_RC=$?
+NOT_RUN=()
+
+check() {
+    # check <label> <tool> <args...>: run a tool from the project environment,
+    # or record it as not run when an existing pyproject.toml does not install it.
+    local label=$1
+    shift
+    if ! uv run --no-sync "$1" --version >/dev/null 2>&1; then
+        NOT_RUN+=("$label")
+        return 0
+    fi
+    printf '\n-- %s\n' "$label"
+    uv run --no-sync "$@" || CHECK_RC=1
+}
+
+PY_FILES=()
+while IFS= read -r path; do
+    PY_FILES+=("$path")
+done < <(git ls-files -- '*.py')
+
+printf '\nChecking all files (read-only)...\n'
+check "ruff lint" ruff check --no-fix
+check "ruff format" ruff format --check
+if [ "${#PY_FILES[@]}" -gt 0 ]; then
+    check "declarations" python tools/check_declarations.py "${PY_FILES[@]}"
+    check "pyright" pyright "${PY_FILES[@]}"
+    check "mypy" mypy "${PY_FILES[@]}"
+fi
 
 # --------------------------------------------------------------------------- #
 # Report
@@ -873,10 +897,17 @@ if [ "${#SKIPPED[@]}" -gt 0 ]; then
     printf 'is among them, merge the [tool.*] sections by hand.\n'
 fi
 
+if [ "${#NOT_RUN[@]}" -gt 0 ]; then
+    printf '\nNot run, because this project does not install them: %s\n' "${NOT_RUN[*]}"
+    printf 'Add the [dependency-groups] dev entries from the baseline pyproject.toml,\n'
+    printf 'run "uv sync --all-groups", then re-run the checks.\n'
+    CHECK_RC=1
+fi
+
 if [ "$CHECK_RC" -eq 0 ]; then
     printf '\nchecks: PASS\n'
 else
-    printf '\nchecks: FAILED -- read the output above. No file was modified.\n'
+    printf '\nchecks: FAILED or INCOMPLETE -- read the output above. No file was modified.\n'
     printf '"uv run pre-commit run --all-files" applies the Ruff fixes and formatting;\n'
     printf 'review its diff before committing.\n'
 fi

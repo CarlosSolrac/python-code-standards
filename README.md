@@ -80,6 +80,10 @@ A merged `CLAUDE.md` is your own file, so later changes to this repository's `CL
 not reach it; pull them in by running the merge prompt again. The skill stays linked either
 way.
 
+Claude Code asks permission before changing anything in `~/.claude`, even when it is set to
+accept edits automatically. Approve those prompts; the install waits on them rather than
+stalling.
+
 On Windows, links need Developer Mode or an elevated prompt. Without either, add
 "copy instead of linking" to the end of any prompt.
 

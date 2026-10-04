@@ -45,9 +45,10 @@ repository that adopts the tooling vendors its own copy of every config file and
 `.pre-commit-config.yaml`, `.gitattributes`, a `.gitignore` (only when the repo has none),
 `.github/workflows/ci.yml`, and `tools/check_declarations.py`, then pins Python 3.13, runs
 `uv sync --all-groups`, installs the pre-commit hook, and runs the full check once. The check
-is read-only: Ruff runs in report mode and pre-commit skips its two Ruff hooks, so existing
-code is reported on, never rewritten. A file that already exists is reported and left
-untouched, so an existing `pyproject.toml` is yours to merge by hand.
+is read-only: each tool runs directly in report mode, never through pre-commit, so existing
+code is reported on, never rewritten, and no hook from an existing config runs. A file that
+already exists is reported and left untouched, so an existing `pyproject.toml` is yours to
+merge by hand; until it installs the baseline's dev tools, the check lists them as not run.
 
 The script is self-contained — every template and the checker are embedded — so it also runs
 copied on its own to a host with no clone of this repo. `tests/test_setup_script.py` keeps the

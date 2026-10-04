@@ -67,21 +67,57 @@ def test_embedded_template_matches_source(delimiter: str, asset: str) -> None:
     assert heredoc(delimiter) == source
 
 
-def test_setup_check_is_read_only() -> None:
-    """The check the script runs reports problems without rewriting any file.
+def script_commands() -> list[str]:
+    """Return the setup script's executable lines, outside heredocs, comments, and messages."""
+    commands: list[str] = []
+    closer: str | None = None
+    line: str
+    for line in SETUP_SCRIPT.read_text(encoding="utf-8").splitlines():
+        if closer is not None:
+            if line == closer:
+                closer = None
+            continue
+        stripped: str = line.strip()
+        if "<<'" in stripped:
+            closer = stripped.split("<<'")[1].split("'")[0]
+            continue
+        if stripped and not stripped.startswith(("#", "printf")):
+            commands.append(stripped)
+    return commands
 
-    The pre-commit hooks run Ruff with ``--fix`` and the formatter. Run over a
-    repository that already has Python code, they reformat it and delete unused
-    imports before anyone has reviewed the change.
+
+def test_setup_check_runs_no_hooks() -> None:
+    """The check never runs pre-commit, so no hook from any config can rewrite files.
+
+    A repository that already has a ``.pre-commit-config.yaml`` keeps it, and its
+    hooks (``end-of-file-fixer``, Black, isort) modify files when run.
     """
-    lines: list[str] = SETUP_SCRIPT.read_text(encoding="utf-8").splitlines()
-    commands: list[str] = [line.strip() for line in lines if line.strip().startswith(("uv run", "SKIP="))]
-    assert any("pre-commit run" in command for command in commands)
+    assert [command for command in script_commands() if "pre-commit run" in command] == []
+
+
+def test_setup_check_runs_ruff_in_report_mode() -> None:
+    """Ruff runs without ``--fix`` and the formatter only checks.
+
+    Run over existing code, the fixer deletes unused imports and the formatter
+    rewrites files before anyone has reviewed the change.
+    """
     command: str
-    for command in commands:
-        if "pre-commit run" in command:
-            assert command.startswith("SKIP=ruff,ruff-format "), command
+    for command in script_commands():
         if "ruff check" in command:
             assert "--no-fix" in command, command
         if "ruff format" in command:
             assert "--check" in command, command
+
+
+def test_setup_check_reports_missing_tools() -> None:
+    """Each tool runs through ``check``, which reports a tool the project lacks as not run.
+
+    An existing ``pyproject.toml`` is kept as it is, so the project environment may
+    lack Ruff, Pyright, or MyPy; launching one directly fails as if the code did.
+    """
+    tools: tuple[str, ...] = ("ruff ", "pyright", "mypy", "tools/check_declarations.py")
+    checked: list[str] = [command for command in script_commands() if any(tool in command for tool in tools) and not command.startswith("write_file")]
+    assert len(checked) == 5, checked
+    command: str
+    for command in checked:
+        assert command.startswith("check "), command
