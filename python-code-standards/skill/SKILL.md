@@ -21,9 +21,10 @@ Repository configuration or file style that contradicts this document: stop befo
 | Binding form | Declaration |
 | --- | --- |
 | assignment, loop target, `with` target, unpacking | required |
-| match capture, class-body alias, instance attribute | required |
+| match capture, class-body alias (outside enum bodies), instance attribute | required |
 | comprehension or generator target | exempt |
 | `except ... as` name, walrus, import | exempt — the language cannot annotate these |
+| enum member (plain assignment in an `Enum` subclass body) | exempt — the typing spec forbids annotating these |
 
 ```python
 row: dict[str, object]
@@ -39,7 +40,7 @@ class Ingest:
 
 Prefer dataclasses and Pydantic models over plain classes for anything holding state — their fields *are* class-body annotations, so they satisfy the attribute rule by construction. A plain class is the right choice when construction logic is non-trivial or the class inherits from a non-dataclass base.
 
-`check_declarations.py` enforces this across modules and notebook code cells, and its output is the specification. Use the repository's own `tools/check_declarations.py` when it has one, since that is the copy CI and pre-commit run; otherwise `${CLAUDE_SKILL_DIR}/tools/check_declarations.py`. An in-file base class's declarations cover its subclasses. `B007` fires on a declared target unused in the body — rename to `_name`, keeping the declaration.
+`check_declarations.py` enforces this across modules and notebook code cells, and its output is the specification. Use the repository's own `tools/check_declarations.py` when it has one, since that is the copy CI and pre-commit run; otherwise `${CLAUDE_SKILL_DIR}/tools/check_declarations.py`. An in-file base class's declarations cover its subclasses. An enum whose base is defined in another module needs that base listed by its import name in `enum-bases` under `[tool.check-declarations]` in `pyproject.toml`; the violation says so. `B007` fires on a declared target unused in the body — rename to `_name`, keeping the declaration.
 
 ## Scope
 
