@@ -4,7 +4,8 @@ When the working tree has changed Python files (deletions included), this runs
 what CI runs, in order: pre-commit on the files that still exist, the test suite
 with branch coverage, and diff-cover at 100% of changed lines. The first failure
 blocks the stop and hands its output back to the agent, so "done" means the
-gates passed.
+gates passed. When they pass, the user is shown the review brief
+(``tools/review_brief.py``): where in the change to look.
 
 A turn with no changed Python costs nothing: the gates are skipped.
 
@@ -32,6 +33,7 @@ from typing import TextIO
 
 PYTHON_SUFFIXES: tuple[str, ...] = (".py", ".ipynb")
 TESTS: tuple[str, ...] = ("uv", "run", "pytest", "-q", "--cov", "--cov-branch", "--cov-report=xml")
+REVIEW_BRIEF: tuple[str, ...] = ("uv", "run", "--no-sync", "python", "-m", "tools.review_brief")
 CHANGED_LINES: tuple[str, ...] = ("uv", "run", "diff-cover", "coverage.xml", "--compare-branch=main", "--include-untracked", "--fail-under=100")
 COVERAGE_XML: Path = Path("coverage.xml")
 # The gate tooling setup-standards.sh vendors. It is tested at 100% where it is
@@ -48,6 +50,7 @@ VENDORED_TOOLS: frozenset[str] = frozenset(
         "tools/hooks/__init__.py",
         "tools/hooks/guard_protected.py",
         "tools/hooks/stop_gate.py",
+        "tools/review_brief.py",
     }
 )
 # Each measured file's path, relative to the project root because TESTS runs a bare
@@ -110,6 +113,7 @@ def main(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout, run: Runner = r
             return 0
         failure = first_failure(changes.existing, run, read_coverage)
     if failure is None:
+        show_review_brief(stdout, run)
         return 0
     label: str = failure[0]
     output: str = failure[1].output[-MAX_OUTPUT_CHARS:]
@@ -147,6 +151,17 @@ def changed_python(run: Runner) -> ChangedPython:
         existing=sorted(path for path in candidates - deleted if path.endswith(PYTHON_SUFFIXES)),
         deleted=sorted(path for path in deleted if path.endswith(PYTHON_SUFFIXES)),
     )
+
+
+def show_review_brief(stdout: TextIO, run: Runner) -> None:
+    """Show the user the review brief for the change that just passed the gates.
+
+    The brief is information for the reviewer, never a gate: when it fails or says
+    nothing, the stop goes through silently.
+    """
+    brief: Result = run(REVIEW_BRIEF)
+    if brief.returncode == 0 and brief.output.strip():
+        stdout.write(json.dumps({"systemMessage": brief.output.rstrip()}))
 
 
 class GitError(Exception):

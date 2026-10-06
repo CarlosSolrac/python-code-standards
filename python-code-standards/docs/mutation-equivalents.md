@@ -42,8 +42,8 @@ there without it.
 
 | Mutant | Change | Why it is equivalent |
 |---|---|---|
-| `x_load_allowed__mutmut_6`, `x_read_file__mutmut_1` | `encoding="utf-8"` → `None` | Under a UTF-8 locale, which mutmut uses on Linux, the default is UTF-8. |
-| `x_load_allowed__mutmut_8`, `x_read_file__mutmut_4` | `"utf-8"` → `"UTF-8"` | Codec names are case-insensitive. |
+| `x_load_allowed__mutmut_7`, `x_read_file__mutmut_1` | `encoding="utf-8"` → `None` | Under a UTF-8 locale, which mutmut uses on Linux, the default is UTF-8. |
+| `x_load_allowed__mutmut_9`, `x_read_file__mutmut_4` | `"utf-8"` → `"UTF-8"` | Codec names are case-insensitive. |
 | `x_main__mutmut_9` | `default=None` removed from `--base` | `None` is argparse's own default. |
 | `x_unapproved__mutmut_32` | no-comment fallback `""` → `"XXXX"` | Neither text contains a directive. |
 
@@ -60,7 +60,7 @@ there without it.
 
 | Mutant | Change | Why it is equivalent |
 |---|---|---|
-| `x__run__mutmut_11` | `check=False` removed | `False` is the default. |
+| `x__run__mutmut_6`, `_11` | `check=False` → `None` or removed | `None` is falsy and `False` is the default. |
 | `x_count_ruff__mutmut_7`, `_9`, `_10`, `_12`, `_14`; `x_third_party_imports__mutmut_12`, `_14`; `x_grade__mutmut_11`, `_13`; `x_main__mutmut_68`, `_70`, `_78` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
 | `x_count_ruff__mutmut_48`, `_52`, `_53`; `x_count_pyright__mutmut_40`, `_44`, `_45`, `_56`, `_60`, `_61` | `cast(...)` type string changed | `typing.cast` returns its value unchanged at run time. |
 | `x_count_pyright__mutmut_37`, `_39` | `summary` default `{}` → `None` or none | A missing summary fails the following `isinstance(summary, dict)` check either way and scores -1. |
@@ -73,3 +73,13 @@ there without it.
 `evals.grade.x__payload__mutmut_5`, `_6`, `_7`, `_10`, `_12`, `_14` and `_16` turn the
 retry loop in `_payload` into one that never ends. The tests hang and mutmut stops
 them, so these mutants are caught, not survivors.
+
+## `skill/tools/review_brief.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_read_text__mutmut_1`, `_3`, `_7` | `encoding="utf-8"` → `None`, removed, `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_suppressions_section__mutmut_3`, `_9`, `_10` | allow-list label changed | The label only appears in a `ValueError` message, which the brief catches and never shows. |
+| `x_added_suppressions__mutmut_20` | no-comment fallback `""` → `"XXXX"` | Neither text contains a directive. |
+| `x_mutation_section__mutmut_17` | `partition(".xǁ")` → `rpartition` | A mangled method name holds exactly one `.xǁ`. |
+| `x_mutation_section__mutmut_24` | separator test → tail test | With no `.xǁ` both are empty; with one, both are non-empty. |

@@ -139,10 +139,31 @@ nudged) and reruns the tests. A **surviving mutant** is a change no test noticed
   the `-> int` annotation, so typing and mutation testing complement each other.
 - **This repository (2026-10-06):** the first run killed 1,118 of 1,446 mutants (77%)
   at 100% line and branch coverage. Writing tests for the survivors raised it to 1,360
-  of 1,425 killed (95%), plus 7 caught by timeout. Every remaining survivor is listed
+  of 1,425 killed (95%); with the review brief added, the repository stands at 1,891 of
+  1,966 (96%), plus 6 caught by timeout. Every remaining survivor is listed
   as equivalent, with its reason, in [mutation-equivalents.md](mutation-equivalents.md).
   The same work found one real bug: comprehension variables were wrongly treated as
   declared in the enclosing scope.
+
+## Review brief
+
+`tools/review_brief.py` answers one question for the human reviewer: where in this
+change should I look? Every line is computed, never judged:
+
+| Section | What it shows |
+|---|---|
+| Size | each changed file with lines added and removed |
+| Gate files touched | changed files the guard protects (config, CI, hooks, `suppressions.toml`) |
+| Dependencies | requirements added to or removed from `pyproject.toml` |
+| Suppressions added | each new suppression, unapproved ones first |
+| Complexity | the most complex functions in changed modules, against the cap |
+| Coverage | changed modules with no coverage record |
+| Mutation | survivors in changed modules, from the last mutation run |
+
+An empty section says "none", so a brief of "none"s means nothing needs a closer
+look. The Stop hook shows it to the user after every turn whose changes pass the
+gates; it never blocks. By hand: `uv run python -m tools.review_brief`, or
+`--base origin/main` for a whole branch.
 
 ## Metrics deliberately not used
 

@@ -353,3 +353,12 @@ def test_runs_as_module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     with pytest.raises(SystemExit) as exit_info:
         runpy.run_module("skill.tools.check_suppressions", run_name="__main__")
     assert exit_info.value.code == 1
+
+
+def test_load_allowed_error_names_the_file(tmp_path: Path) -> None:
+    allow: Path = tmp_path / "suppressions.toml"
+    allow.write_text('[[suppression]]\npath = "a.py"\n', encoding="utf-8")
+    error_info: pytest.ExceptionInfo[ValueError]
+    with pytest.raises(ValueError, match="entry 1 needs") as error_info:
+        load_allowed(allow)
+    assert str(error_info.value).startswith(f"{allow}: [[suppression]] entry 1")

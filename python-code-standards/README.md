@@ -47,7 +47,7 @@ repository that adopts the tooling vendors its own copy of every config file and
 `.github/workflows/ci.yml`, `tools/check_declarations.py`, the change-scoped checks
 (`tools/check_suppressions.py`, `tools/check_coverage_records.py`, and their approved-suppression
 list `suppressions.toml`), report-only mutation testing (`tools/mutation.sh` and a nightly
-`mutation.yml`), and the Claude Code hooks
+`mutation.yml`), the review brief (`tools/review_brief.py`), and the Claude Code hooks
 (`.claude/settings.json` and `tools/hooks/`, see [docs/quality-gates.md](docs/quality-gates.md)),
 then pins Python 3.13, runs
 `uv sync --all-groups`, installs the pre-commit hook, and runs the full check once. The check
