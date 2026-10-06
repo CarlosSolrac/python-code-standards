@@ -54,8 +54,12 @@ def heredoc(delimiter: str) -> str:
         ("YAML", "skill/assets/pre-commit-config.yaml"),
         ("ATTR", "skill/assets/gitattributes"),
         ("CI", "skill/assets/ci.yml"),
+        ("GUARDEOF", "skill/tools/hooks/guard_protected.py"),
+        ("STOPEOF", "skill/tools/hooks/stop_gate.py"),
+        ("HOOKSINIT", "skill/tools/hooks/__init__.py"),
+        ("SETTINGS", "skill/assets/claude-settings.json"),
     ],
-    ids=["check_declarations", "pyproject", "pre-commit", "gitattributes", "ci"],
+    ids=["check_declarations", "pyproject", "pre-commit", "gitattributes", "ci", "guard_protected", "stop_gate", "hooks-init", "claude-settings"],
 )
 def test_embedded_template_matches_source(delimiter: str, asset: str) -> None:
     """Each embedded heredoc is identical to the file it vendors.
