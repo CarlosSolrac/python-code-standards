@@ -22,7 +22,7 @@ Repository configuration or file style that contradicts this document: stop befo
 | --- | --- |
 | assignment, loop target, `with` target, unpacking | required |
 | match capture, class-body alias, instance attribute | required |
-| comprehension or generator target | exempt — write an explicit loop when the type matters |
+| comprehension or generator target | exempt |
 | `except ... as` name, walrus, import | exempt — the language cannot annotate these |
 
 ```python

@@ -24,6 +24,10 @@
 #   .github/workflows/ci.yml    CI: pre-commit --all-files + pytest --cov + diff-cover
 #   tools/check_declarations.py the "annotate before first binding" checker
 #   tools/__init__.py           makes tools importable as a package
+#   tools/check_suppressions.py fails on a suppression added without approval
+#   tools/check_coverage_records.py  CI: fails on a changed module no test imports
+#   tools/changes.py            git helpers shared by the two checks above
+#   suppressions.toml           the approved suppressions (path, code, reason)
 #   tools/hooks/                Claude Code hooks: ask before a gate changes; block
 #                               "done" until the gates pass on changed files
 #   .claude/settings.json       registers those hooks for this project
@@ -140,11 +144,14 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "complexipy>=8,<9",           # cognitive complexity cap, see [tool.complexipy]
+    "deptry>=0.25,<0.26",         # unused, missing, and transitive dependencies
     "diff-cover>=10,<11",        # CI: 100% coverage of changed lines
     "mypy>=1.18,<2",
+    "pip-audit>=2.10,<3",         # CI: dependencies with known vulnerabilities
     "pre-commit>=4,<5",
     "pyright>=1.1.400,<2",       # PyPI wrapper; downloads a Node runtime on first run
-    "pytest>=8,<9",
+    "pytest>=9.0.3,<10",         # 9.0.3 fixes PYSEC-2026-1845
     "pytest-cov>=6,<8",
     "ruff>=0.14,<0.15",          # pinned: minor releases change which rules fire
 ]
@@ -183,6 +190,16 @@ select = [
     "PT",                     # pytest style
     "ASYNC",                  # async correctness
     "INP",                    # implicit namespace packages
+    "C90",                    # cyclomatic complexity, capped in [tool.ruff.lint.mccabe]
+    "PLR",                    # refactor: too many branches, arguments, returns; magic values
+    "BLE",                    # blind except
+    "TRY",                    # exception-handling anti-patterns
+    "FBT",                    # boolean positional-argument traps
+    "PERF",                   # performance anti-patterns
+    "PIE",                    # unnecessary code
+    "FURB",                   # modernization
+    "RSE",                    # raise hygiene
+    "EM",                     # exception messages bound before the raise
 ]
 ignore = []
 fixable = ["ALL"]
@@ -192,11 +209,13 @@ unfixable = []
 # pytest's assert-based style and test-only fixtures trip the bandit rules.
 # pytest's assert-based style trips bandit; test names carry the meaning that
 # a mandatory docstring would only restate, so docstrings in tests are optional.
-"tests/**/*.py" = ["S101", "S105", "S106", "D100", "D103", "INP001"]
+# Literal expected values are the specification in a test, so magic numbers
+# (PLR2004) are allowed there.
+"tests/**/*.py" = ["S101", "S105", "S106", "D100", "D103", "INP001", "PLR2004"]
 # A file named test_*.py is a test file wherever it sits. Without these two
 # patterns the ignores above never match a test written beside its module.
-"test_*.py" = ["S101", "S105", "S106", "D100", "D103", "INP001"]
-"**/test_*.py" = ["S101", "S105", "S106", "D100", "D103", "INP001"]
+"test_*.py" = ["S101", "S105", "S106", "D100", "D103", "INP001", "PLR2004"]
+"**/test_*.py" = ["S101", "S105", "S106", "D100", "D103", "INP001", "PLR2004"]
 "conftest.py" = ["S101", "D100", "INP001"]
 # AST and metaprogramming code cannot satisfy strict unknown-type reporting.
 # A CLI tool prints by design; that is the intentional-output carve-out.
@@ -208,6 +227,9 @@ convention = "google"
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "parents"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.ruff.format]
 quote-style = "double"
@@ -222,6 +244,8 @@ typeCheckingMode = "strict"
 pythonVersion = "3.13"
 reportMissingTypeStubs = true
 reportUnknownMemberType = true
+# A suppression that no longer suppresses anything is noise that hides the next real one.
+reportUnnecessaryTypeIgnoreComment = "error"
 stubPath = "stubs"
 
 [[tool.pyright.executionEnvironments]]
@@ -240,9 +264,16 @@ disallow_any_explicit = false
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers"
+# An xfail that starts passing, or a warning nobody reads, is a test that stopped testing.
+xfail_strict = true
+filterwarnings = ["error"]
 testpaths = ["tests"]
 # No build system, so the project is never installed; tests import it from the root.
 pythonpath = ["."]
+
+[tool.complexipy]
+# Cognitive complexity per function; Ruff's C90 caps cyclomatic complexity at 10.
+max-complexity-allowed = 15
 
 [tool.coverage.run]
 branch = true
@@ -294,6 +325,29 @@ repos:
         pass_filenames: true
         # Parallel batches share .mypy_cache and crash mypy on a cold cache.
         require_serial: true
+      - id: check-suppressions
+        name: no unapproved suppressions on added lines
+        entry: uv run python -m tools.check_suppressions
+        language: system
+        # pre-commit tags notebooks "jupyter", not "python"; the check reads both.
+        types_or: [python, jupyter]
+      - id: complexipy
+        name: cognitive complexity (complexipy)
+        entry: uv run complexipy
+        language: system
+        types: [python]
+      - id: deptry
+        name: imports match declared dependencies (deptry)
+        entry: uv run deptry .
+        language: system
+        # Whole-project check: an import or a pyproject.toml edit can break it.
+        files: (\.py|pyproject\.toml)$
+        pass_filenames: false
+  # Scans staged content only, so it guards commits; pre-commit installs Go itself.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
 YAML
 
 # --------------------------------------------------------------------------- #
@@ -373,8 +427,21 @@ jobs:
       - name: Tests and coverage
         run: uv run pytest --cov --cov-report=term-missing --cov-report=xml --cov-branch
 
+      # A module no test imports never reaches coverage.xml, and diff-cover
+      # silently skips files without a record, so it would pass untested code.
+      - name: Every changed module has a coverage record
+        run: uv run python -m tools.check_coverage_records --base origin/${{ github.base_ref || 'main' }}
+
       - name: Coverage of changed lines
         run: uv run diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref || 'main' }} --fail-under=100
+
+      # In CI the tree is HEAD, so pre-commit's suppression check sees no added
+      # lines; this compares the branch against its merge base instead.
+      - name: No unapproved suppressions on this branch
+        run: uv run python -m tools.check_suppressions --base origin/${{ github.base_ref || 'main' }}
+
+      - name: Dependencies with known vulnerabilities
+        run: uv run pip-audit
 CI
 
 # --------------------------------------------------------------------------- #
@@ -552,36 +619,15 @@ class ScopeChecker(ast.NodeVisitor):
         """Record every name a structural pattern binds.
 
         ``MatchAs``, ``MatchStar``, and ``MatchMapping`` rest-targets are ordinary
-        bindings and can be pre-declared, so the rule applies to them.
+        bindings and can be pre-declared, so the rule applies to them. Sub-patterns
+        bind before the pattern's own name, matching their order in source.
         """
-        if isinstance(node, ast.MatchAs):
-            if node.pattern is not None:
-                self._bind_pattern(node.pattern)
-            if node.name is not None:
-                self._bind(ast.Name(id=node.name, lineno=node.lineno, col_offset=node.col_offset))
-            return
-        if isinstance(node, ast.MatchStar):
-            if node.name is not None:
-                self._bind(ast.Name(id=node.name, lineno=node.lineno, col_offset=node.col_offset))
-            return
-        if isinstance(node, ast.MatchMapping):
-            sub: ast.pattern
-            for sub in node.patterns:
-                self._bind_pattern(sub)
-            if node.rest is not None:
-                # ``**rest`` has no AST node of its own; report it at the end of
-                # the mapping so it sorts after the keys it follows in source.
-                self._bind(ast.Name(id=node.rest, lineno=node.end_lineno or node.lineno, col_offset=node.end_col_offset or node.col_offset))
-            return
-        if isinstance(node, (ast.MatchSequence, ast.MatchOr)):
-            element: ast.pattern
-            for element in node.patterns:
-                self._bind_pattern(element)
-            return
-        if isinstance(node, ast.MatchClass):
-            positional: ast.pattern
-            for positional in [*node.patterns, *node.kwd_patterns]:
-                self._bind_pattern(positional)
+        sub: ast.pattern
+        for sub in _sub_patterns(node):
+            self._bind_pattern(sub)
+        target: ast.Name | None = _pattern_target(node)
+        if target is not None:
+            self._bind(target)
 
     def visit_Match(self, node: ast.Match) -> None:
         """Check every case pattern, then each case body."""
@@ -728,6 +774,28 @@ class ScopeChecker(ast.NodeVisitor):
             self.visit(statement)
 
 
+def _sub_patterns(node: ast.pattern) -> list[ast.pattern]:
+    """Return a structural pattern's direct sub-patterns, in source order."""
+    if isinstance(node, ast.MatchAs):
+        return [] if node.pattern is None else [node.pattern]
+    if isinstance(node, (ast.MatchMapping, ast.MatchSequence, ast.MatchOr)):
+        return list(node.patterns)
+    if isinstance(node, ast.MatchClass):
+        return [*node.patterns, *node.kwd_patterns]
+    return []
+
+
+def _pattern_target(node: ast.pattern) -> ast.Name | None:
+    """Return the name a pattern binds itself, apart from its sub-patterns, as a reportable node."""
+    if isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name is not None:
+        return ast.Name(id=node.name, lineno=node.lineno, col_offset=node.col_offset)
+    if isinstance(node, ast.MatchMapping) and node.rest is not None:
+        # ``**rest`` has no AST node of its own; report it at the end of
+        # the mapping so it sorts after the keys it follows in source.
+        return ast.Name(id=node.rest, lineno=node.end_lineno or node.lineno, col_offset=node.end_col_offset or node.col_offset)
+    return None
+
+
 def check_source(path: Path, source: str) -> list[Violation]:
     """Return every declaration violation in one module.
 
@@ -762,15 +830,16 @@ def read_source(path: Path) -> str:
 
     document: dict[str, object] = json.loads(text)
     cells: object = document.get("cells", [])
-    sources: list[str] = []
-    if isinstance(cells, list):
-        cell: object
-        for cell in cells:
-            if isinstance(cell, dict) and cell.get("cell_type") == "code":
-                lines: object = cell.get("source", "")
-                joined: str = "".join(lines) if isinstance(lines, list) else str(lines)
-                sources.append("\n".join(line for line in joined.splitlines() if not line.lstrip().startswith(("%", "!"))))
-    return "\n".join(sources)
+    if not isinstance(cells, list):
+        return ""
+    return "\n".join(_cell_code(cell) for cell in cells if isinstance(cell, dict) and cell.get("cell_type") == "code")
+
+
+def _cell_code(cell: dict[str, object]) -> str:
+    """Return one notebook code cell's source, without IPython magics or shell escapes."""
+    lines: object = cell.get("source", "")
+    joined: str = "".join(lines) if isinstance(lines, list) else str(lines)
+    return "\n".join(line for line in joined.splitlines() if not line.lstrip().startswith(("%", "!")))
 
 
 def iter_python_files(roots: list[Path]) -> Iterator[Path]:
@@ -830,6 +899,388 @@ write_file tools/__init__.py <<'INIT'
 INIT
 
 write_file tests/.gitkeep </dev/null
+
+# --------------------------------------------------------------------------- #
+# Change-scoped checks -- kept byte-identical to skill/ by tests/test_setup_script.py.
+# check_suppressions.py fails on an added suppression not approved in
+# suppressions.toml; check_coverage_records.py (CI) fails on a changed module
+# with no coverage record. Both share tools/changes.py and run as modules.
+# --------------------------------------------------------------------------- #
+
+write_file tools/changes.py <<'CHANGESEOF'
+"""Git helpers for checks that look only at what a change adds.
+
+Commands go through the Stop hook's runner, so output is decoded as UTF-8 and
+every git failure raises ``GitError``: the checks fail closed rather than read a
+broken repository as "nothing changed".
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Callable
+
+from .hooks.stop_gate import GitError, Result, Runner, git_paths
+
+HUNK: re.Pattern[str] = re.compile(r"^@@ -\S+ \+(\d+)")
+
+
+def base_commit(base: str | None, run: Runner) -> str:
+    """Return the commit to compare against: ``HEAD``, or the merge base with ``base``.
+
+    The merge base, not ``base`` itself, so commits the base branch gained after
+    this branch forked are not counted as this branch's changes. Before the first
+    commit there is no ``HEAD``; the result is then "", meaning every line is new.
+    ``rev-parse --verify --quiet`` exits 1 for that case alone; any other failure
+    (a broken configuration, no repository) raises, so it is never mistaken for it.
+
+    Raises:
+        GitError: git failed, or could not find the merge base.
+    """
+    command: tuple[str, ...]
+    result: Result
+    if base is None:
+        command = ("git", "rev-parse", "--verify", "--quiet", "HEAD")
+        result = run(command)
+        if result.returncode in {0, 1}:
+            return "HEAD" if result.returncode == 0 else ""
+        raise GitError(command, result)
+    command = ("git", "merge-base", base, "HEAD")
+    result = run(command)
+    if result.returncode != 0:
+        raise GitError(command, result)
+    return result.output.strip()
+
+
+def changed_files(commit: str, run: Runner) -> list[str]:
+    """Return the files changed since ``commit`` that still exist, sorted."""
+    return sorted(git_paths(("git", "diff", "-z", "--name-only", "--relative", "--diff-filter=d", commit), run))
+
+
+def added_lines(path: str, commit: str, run: Runner, read: Callable[[str], str]) -> list[tuple[int, str]]:
+    """Return the ``(line number, text)`` pairs added to ``path`` since ``commit``.
+
+    Every line is added when there is no commit yet (``commit`` is "") or the file
+    is untracked; git has no diff for either.
+    """
+    if not commit or git_paths(("git", "ls-files", "-z", "--others", "--exclude-standard", "--", path), run):
+        return list(enumerate(read(path).splitlines(), start=1))
+    command: tuple[str, ...] = ("git", "diff", "-U0", "--no-color", "--no-ext-diff", commit, "--", path)
+    result: Result = run(command)
+    if result.returncode != 0:
+        raise GitError(command, result)
+    added: list[tuple[int, str]] = []
+    number: int = 0
+    line: str
+    for line in result.output.splitlines():
+        hunk: re.Match[str] | None = HUNK.match(line)
+        if hunk is not None:
+            number = int(hunk.group(1))
+        elif line.startswith("+") and not line.startswith("+++"):
+            added.append((number, line[1:]))
+            number += 1
+    return added
+CHANGESEOF
+
+write_file tools/check_suppressions.py <<'SUPPRESSEOF'
+"""Fail when a change adds a suppression the user has not approved.
+
+Suppressing a lint, type, or coverage finding needs the user's explicit
+authorization. This makes that rule mechanical: a ``noqa``, ``type: ignore``,
+``pyright: ignore``, ``pragma: no cover``, or ``pragma: no branch`` comment on an
+added line fails, as does a file- or function-level one (``ruff: noqa``,
+``flake8: noqa``, ``mypy:`` and ``pyright:`` settings, ``complexipy: ignore``),
+unless ``suppressions.toml`` lists its file and code (for a setting, its whole
+value):
+
+    [[suppression]]
+    path = "tools/hooks/stop_gate.py"
+    code = "S603"
+    reason = "argv comes from a fixed list, never a shell"
+
+The guard hook protects ``suppressions.toml``, so an agent adding an entry
+triggers the user's permission prompt; that prompt is the approval. A blanket
+suppression has no code and can never be approved. One exception is built in:
+unit tests may suppress Pyright's ``reportPrivateUsage`` per line.
+
+Only added lines count, so existing suppressions never block an unrelated edit.
+
+Usage:
+    uv run python -m tools.check_suppressions <files>         (pre-commit: added since HEAD)
+    uv run python -m tools.check_suppressions --base origin/main   (CI: added on this branch)
+Exit status is 1 when any unapproved suppression is found or git fails.
+"""
+
+from __future__ import annotations
+
+import argparse
+import io
+import re
+import tokenize
+import tomllib
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+from .changes import added_lines, base_commit, changed_files
+from .hooks.stop_gate import PYTHON_SUFFIXES, GitError, Runner, run_command
+
+ALLOW_LIST: Path = Path("suppressions.toml")
+REQUIRED_KEYS: tuple[str, ...] = ("path", "code", "reason")
+# Line-level directives, then the file- and function-level ones (ruff and flake8
+# file noqa, mypy and pyright file comments, complexipy's ignore), which silence
+# more than a line. coverage.py honors both "no cover" and "no branch" pragmas.
+DIRECTIVE: re.Pattern[str] = re.compile(r"#\s*(ruff:\s*noqa|flake8:\s*noqa|noqa|type:\s*ignore|pyright:\s*ignore|pyright:|mypy:|complexipy:\s*ignore|pragma:?\s*no\s*(?:cover|branch))", re.IGNORECASE)
+# Ruff separates noqa codes with commas, spaces, or both; every code is captured.
+NOQA_CODES: re.Pattern[str] = re.compile(r":\s*([A-Z]+[0-9]+(?:[\s,]+[A-Z]+[0-9]+)*)")
+CODE: re.Pattern[str] = re.compile(r"[A-Z]+[0-9]+")
+# Each directive by its letters alone, so "type:ignore", "type: ignore", and
+# "pragma no cover" classify the same way their tools read them.
+CANONICAL: dict[str, str] = {
+    "ruffnoqa": "ruff: noqa",
+    "flake8noqa": "flake8: noqa",
+    "noqa": "noqa",
+    "typeignore": "type: ignore",
+    "pyrightignore": "pyright: ignore",
+    "pyright": "pyright:",
+    "mypy": "mypy:",
+    "complexipyignore": "complexipy: ignore",
+    "pragmanocover": "pragma: no cover",
+    "pragmanobranch": "pragma: no branch",
+}
+NOQA_KINDS: frozenset[str] = frozenset({"noqa", "ruff: noqa", "flake8: noqa"})
+BRACKETED_RULES: re.Pattern[str] = re.compile(r"\[([^\]]*)\]")
+
+
+@dataclass(frozen=True)
+class Suppression:
+    """One suppressed code; a comment naming several codes yields one each."""
+
+    kind: str
+    code: str
+
+    def label(self) -> str:
+        """Return the suppression as it reads in source."""
+        if self.kind in NOQA_KINDS:
+            return f"{self.kind}: {self.code}" if self.code else f"{self.kind} ({'blanket' if self.kind == 'noqa' else 'whole file'})"
+        if self.kind in {"pragma", "complexipy", "mypy", "pyright"}:
+            return f"{self.kind}: {self.code}"
+        return f"{self.kind}[{self.code}]" if self.code else self.kind
+
+
+@dataclass(frozen=True)
+class Allowed:
+    """The approved ``(path, code)`` pairs from the allow-list."""
+
+    pairs: set[tuple[str, str]]
+
+    def permits(self, path: str, suppression: Suppression) -> bool:
+        """Return whether this suppression in this file is approved."""
+        if suppression.kind == "pyright: ignore" and suppression.code == "reportPrivateUsage" and is_test(path):
+            return True
+        return bool(suppression.code) and (path, suppression.code) in self.pairs
+
+
+def is_test(path: str) -> bool:
+    """Return whether a path names a unit-test file."""
+    normalized: str = "/" + path.replace("\\", "/")
+    return "/tests/" in normalized or normalized.rsplit("/", 1)[-1].startswith("test_")
+
+
+def suppressions_in(line: str) -> list[Suppression]:
+    """Return every suppression a source line carries, one per code."""
+    found: list[Suppression] = []
+    directive: re.Match[str]
+    for directive in DIRECTIVE.finditer(line):
+        found.extend(parse_directive(CANONICAL[re.sub(r"[\s:]", "", directive.group(1).lower())], line[directive.end() :]))
+    return found
+
+
+def parse_directive(word: str, tail: str) -> list[Suppression]:
+    """Return the suppressions one directive carries, given its normalized word and the text after it."""
+    if word in NOQA_KINDS:
+        codes: re.Match[str] | None = NOQA_CODES.match(tail)
+        return [Suppression(word, code) for code in (CODE.findall(codes.group(1)) if codes else [""])]
+    if word in {"type: ignore", "pyright: ignore"}:
+        rules: re.Match[str] | None = BRACKETED_RULES.match(tail)
+        return [Suppression(word, rule.strip()) for rule in (rules.group(1).split(",") if rules else [""])]
+    if word in {"pyright:", "mypy:"}:
+        # The whole setting is the code, so approving one value never approves another.
+        return [Suppression(word.rstrip(":"), " ".join(tail.split()))]
+    if word == "complexipy: ignore":
+        return [Suppression("complexipy", "ignore")]
+    return [Suppression("pragma", word.removeprefix("pragma: "))]
+
+
+def load_allowed(path: Path) -> Allowed:
+    """Read the allow-list; a missing file approves nothing.
+
+    Raises:
+        ValueError: an entry lacks a non-empty path, code, or reason.
+    """
+    if not path.exists():
+        return Allowed(set())
+    entries: object = tomllib.loads(path.read_text(encoding="utf-8")).get("suppression", [])
+    pairs: set[tuple[str, str]] = set()
+    index: int
+    entry: object
+    for index, entry in enumerate(entries if isinstance(entries, list) else [], start=1):
+        fields: list[object] = [entry.get(key) for key in REQUIRED_KEYS] if isinstance(entry, dict) else []
+        if not fields or not all(isinstance(field, str) and field.strip() for field in fields):
+            message: str = f"{path}: [[suppression]] entry {index} needs a non-empty path, code, and reason"
+            raise ValueError(message)
+        pairs.add((str(fields[0]), str(fields[1])))
+    return Allowed(pairs)
+
+
+def read_file(path: str) -> str:
+    """Return a file's text."""
+    return Path(path).read_text(encoding="utf-8")
+
+
+def main(argv: list[str] | None = None, run: Runner = run_command, read: Callable[[str], str] = read_file, allow_list: Path = ALLOW_LIST) -> int:
+    """Report every unapproved suppression the change adds.
+
+    Args:
+        argv: Command-line arguments, defaulting to ``sys.argv[1:]``.
+        run: Executes git; replaced by a fake in tests.
+        read: Returns a file's text; replaced in tests.
+        allow_list: The approved suppressions.
+
+    Returns:
+        1 when any unapproved suppression is found or git fails, otherwise 0.
+    """
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--base", default=None, help="compare against the merge base with this ref instead of HEAD")
+    parser.add_argument("files", nargs="*", help="files to check; default: every file changed since --base")
+    args: argparse.Namespace = parser.parse_args(argv)
+    findings: list[str]
+    try:
+        allowed: Allowed = load_allowed(allow_list)
+        commit: str = base_commit(args.base, run)
+        files: list[str] = args.files or changed_files(commit, run)
+        findings = unapproved(files, commit, run, read, allowed)
+    except GitError as error:
+        print(f"`{' '.join(error.command)}` failed, so the change cannot be checked:\n{error.result.output}")
+        return 1
+    except ValueError as error:
+        print(error)
+        return 1
+    finding: str
+    for finding in findings:
+        print(finding)
+    return 1 if findings else 0
+
+
+def unapproved(files: list[str], commit: str, run: Runner, read: Callable[[str], str], allowed: Allowed) -> list[str]:
+    """Return one message per unapproved suppression on an added line of a Python file.
+
+    In a module only real comments are scanned, so directive text inside a string
+    or docstring is not a suppression. A notebook (JSON) or a module Python cannot
+    tokenize (mid-edit) is scanned as text, which errs toward reporting.
+    """
+    findings: list[str] = []
+    path: str
+    for path in files:
+        if not path.endswith(PYTHON_SUFFIXES):
+            continue
+        lines: list[tuple[int, str]] = added_lines(path, commit, run, read)
+        comments: dict[int, str] | None = comments_by_line(read(path)) if lines and path.endswith(".py") else None
+        number: int
+        text: str
+        for number, text in lines:
+            findings.extend(
+                f"{path}:{number}: new suppression `{suppression.label()}` needs the user's approval. Fix the code instead, or ask the user to approve a [[suppression]] entry (path, code, reason) in suppressions.toml."
+                for suppression in suppressions_in(text if comments is None else comments.get(number, ""))
+                if not allowed.permits(path, suppression)
+            )
+    return findings
+
+
+def comments_by_line(source: str) -> dict[int, str] | None:
+    """Return each line's comment text by line number, or None when the source cannot be tokenized."""
+    try:
+        return {token.start[0]: token.string for token in tokenize.generate_tokens(io.StringIO(source).readline) if token.type == tokenize.COMMENT}
+    except (tokenize.TokenError, SyntaxError):
+        return None
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+SUPPRESSEOF
+
+write_file tools/check_coverage_records.py <<'COVRECEOF'
+"""CI: fail when a Python module changed on this branch has no coverage record.
+
+A module no test imports is never recorded in ``coverage.xml``, and diff-cover
+silently skips files without a record, so an entirely untested new module
+would pass the 100%-of-changed-lines gate. This closes that gap with the same
+check the Stop hook runs locally (``unrecorded_modules``). Notebooks are exempt:
+pytest-cov never measures them.
+
+Usage, after the test step has written coverage.xml:
+    uv run python -m tools.check_coverage_records --base origin/main
+Exit status is 1 when a changed module has no record or git fails.
+"""
+
+from __future__ import annotations
+
+import argparse
+from collections.abc import Callable
+from pathlib import Path
+
+from .changes import base_commit, changed_files
+from .hooks.stop_gate import COVERAGE_XML, GitError, Runner, read_coverage_xml, run_command, unrecorded_modules
+
+
+def main(argv: list[str] | None = None, run: Runner = run_command, read_coverage: Callable[[Path], str] = read_coverage_xml) -> int:
+    """Report every module changed since the merge base that coverage.xml does not record.
+
+    Args:
+        argv: Command-line arguments, defaulting to ``sys.argv[1:]``.
+        run: Executes git; replaced by a fake in tests.
+        read_coverage: Returns a coverage report's text; replaced in tests.
+
+    Returns:
+        1 when a changed module has no coverage record or git fails, otherwise 0.
+    """
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--base", required=True, help="the branch's base ref, e.g. origin/main")
+    parser.add_argument("--coverage", type=Path, default=COVERAGE_XML, help="the Cobertura report pytest-cov wrote")
+    args: argparse.Namespace = parser.parse_args(argv)
+    files: list[str]
+    try:
+        files = changed_files(base_commit(args.base, run), run)
+    except GitError as error:
+        print(f"`{' '.join(error.command)}` failed, so the change cannot be checked:\n{error.result.output}")
+        return 1
+    missing: list[str] = unrecorded_modules(files, read_coverage(args.coverage))
+    path: str
+    for path in missing:
+        print(f"{path}: no coverage record. No test imports this module, so none of its lines are measured and diff-cover skips it. Add a test that exercises it.")
+    return 1 if missing else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+COVRECEOF
+
+write_file suppressions.toml <<'ALLOWEOF'
+# Suppressions the user has approved. tools/check_suppressions.py fails on any
+# suppression comment a change adds that is not listed here by file and code.
+# The Claude Code guard hook asks the user before this file changes, so a new
+# entry is approved at the moment it is written. Every entry needs a reason.
+
+[[suppression]]
+path = "tools/hooks/stop_gate.py"
+code = "S603"
+reason = "subprocess argv comes from the hook's fixed gate list, never a shell"
+
+[[suppression]]
+path = "tools/check_declarations.py"
+code = "arg-type"
+reason = "the async visitors reuse the sync ones; async nodes carry the same fields"
+ALLOWEOF
 
 # --------------------------------------------------------------------------- #
 # Claude Code hooks -- .claude/settings.json and tools/hooks/, kept
@@ -910,16 +1361,28 @@ PROTECTED_NAMES: frozenset[str] = frozenset(
         "tox.ini",
         ".coveragerc",
         ".pre-commit-config.yaml",
+        "suppressions.toml",
     }
 )
-PROTECTED_SUFFIXES: tuple[str, ...] = ("/tools/check_declarations.py", "/.claude/settings.json", "/.claude/settings.local.json")
+PROTECTED_SUFFIXES: tuple[str, ...] = (
+    "/tools/check_declarations.py",
+    "/tools/check_suppressions.py",
+    "/tools/check_coverage_records.py",
+    "/tools/changes.py",
+    "/.claude/settings.json",
+    "/.claude/settings.local.json",
+)
 PROTECTED_DIRECTORIES: tuple[str, ...] = ("/.github/workflows/", "/tools/hooks/")
 FILE_TOOLS: frozenset[str] = frozenset({"Edit", "Write", "MultiEdit"})
 SHELL_TOOLS: frozenset[str] = frozenset({"Bash", "PowerShell"})
 
 # Every protected file as it can appear in a command. One alternation serves both
 # patterns below, so a redirect is checked against exactly the files that are named.
-PROTECTED_TARGETS: str = "(?:" + "|".join(re.escape(name) for name in sorted(PROTECTED_NAMES)) + r"|\.github[/\\]workflows|tools[/\\]check_declarations\.py|tools[/\\]hooks|\.claude[/\\]settings)"
+PROTECTED_TARGETS: str = (
+    "(?:"
+    + "|".join(re.escape(name) for name in sorted(PROTECTED_NAMES))
+    + r"|\.github[/\\]workflows|tools[/\\](?:check_declarations|check_suppressions|check_coverage_records|changes)\.py|tools[/\\]hooks|\.claude[/\\]settings)"
+)
 # A protected file named anywhere in a command: a bare name, or a path ending in one.
 PROTECTED_IN_COMMAND: re.Pattern[str] = re.compile(r"(?:^|[\s'\"=/\\])" + PROTECTED_TARGETS, re.IGNORECASE)
 # Commands that write, move, or delete the files they name. A redirect only
@@ -1026,6 +1489,22 @@ PYTHON_SUFFIXES: tuple[str, ...] = (".py", ".ipynb")
 TESTS: tuple[str, ...] = ("uv", "run", "pytest", "-q", "--cov", "--cov-branch", "--cov-report=xml")
 CHANGED_LINES: tuple[str, ...] = ("uv", "run", "diff-cover", "coverage.xml", "--compare-branch=main", "--include-untracked", "--fail-under=100")
 COVERAGE_XML: Path = Path("coverage.xml")
+# The gate tooling setup-standards.sh vendors. It is tested at 100% where it is
+# maintained and kept byte-identical there, so a project's tests never import it;
+# requiring a coverage record would fail every adoption. A project's own tools
+# are not on this list and stay gated.
+VENDORED_TOOLS: frozenset[str] = frozenset(
+    {
+        "tools/__init__.py",
+        "tools/changes.py",
+        "tools/check_coverage_records.py",
+        "tools/check_declarations.py",
+        "tools/check_suppressions.py",
+        "tools/hooks/__init__.py",
+        "tools/hooks/guard_protected.py",
+        "tools/hooks/stop_gate.py",
+    }
+)
 # Each measured file's path, relative to the project root because TESTS runs a bare
 # --cov from there. Read by pattern: xml.etree would trip Ruff's S314 for no gain.
 COVERAGE_FILENAME: re.Pattern[str] = re.compile(r'<class\b[^>]*\bfilename="([^"]*)"')
@@ -1185,10 +1664,11 @@ def first_failure(files: list[str], run: Runner, read_coverage: Callable[[], str
 def unrecorded_modules(files: list[str], report: str) -> list[str]:
     """Return the changed ``.py`` files the coverage report has no record of.
 
-    Notebooks are exempt: pytest-cov never measures them.
+    Notebooks are exempt: pytest-cov never measures them. So is the vendored gate
+    tooling (``VENDORED_TOOLS``), which no project test imports.
     """
     recorded: set[str] = {html.unescape(name) for name in COVERAGE_FILENAME.findall(report)}
-    return [path for path in files if path.endswith(".py") and path not in recorded]
+    return [path for path in files if path.endswith(".py") and path not in recorded and path not in VENDORED_TOOLS]
 
 
 if __name__ == "__main__":

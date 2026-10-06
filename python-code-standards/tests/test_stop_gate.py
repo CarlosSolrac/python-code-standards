@@ -124,6 +124,17 @@ def test_changed_module_without_a_coverage_record_blocks() -> None:
     assert not runner.ran("uv run diff-cover")
 
 
+def test_vendored_tooling_needs_no_coverage_record() -> None:
+    """Setup vendors the gate tools, tested upstream; a project's own tools stay gated."""
+    runner: FakeRunner = FakeRunner(changed(modified=["tools/check_declarations.py", "tools/hooks/stop_gate.py", "tools/report.py"]))
+    output: dict[str, object] | None = stop(runner, covered=[])
+    assert output is not None
+    reason: str = str(output["reason"])
+    assert "tools/report.py" in reason
+    assert "check_declarations" not in reason
+    assert "tools/hooks/stop_gate.py" not in reason
+
+
 def test_coverage_record_matches_escaped_file_names() -> None:
     names: list[str] = ['a&b "q".py']
     runner: FakeRunner = FakeRunner(changed(modified=names))

@@ -34,16 +34,28 @@ PROTECTED_NAMES: frozenset[str] = frozenset(
         "tox.ini",
         ".coveragerc",
         ".pre-commit-config.yaml",
+        "suppressions.toml",
     }
 )
-PROTECTED_SUFFIXES: tuple[str, ...] = ("/tools/check_declarations.py", "/.claude/settings.json", "/.claude/settings.local.json")
+PROTECTED_SUFFIXES: tuple[str, ...] = (
+    "/tools/check_declarations.py",
+    "/tools/check_suppressions.py",
+    "/tools/check_coverage_records.py",
+    "/tools/changes.py",
+    "/.claude/settings.json",
+    "/.claude/settings.local.json",
+)
 PROTECTED_DIRECTORIES: tuple[str, ...] = ("/.github/workflows/", "/tools/hooks/")
 FILE_TOOLS: frozenset[str] = frozenset({"Edit", "Write", "MultiEdit"})
 SHELL_TOOLS: frozenset[str] = frozenset({"Bash", "PowerShell"})
 
 # Every protected file as it can appear in a command. One alternation serves both
 # patterns below, so a redirect is checked against exactly the files that are named.
-PROTECTED_TARGETS: str = "(?:" + "|".join(re.escape(name) for name in sorted(PROTECTED_NAMES)) + r"|\.github[/\\]workflows|tools[/\\]check_declarations\.py|tools[/\\]hooks|\.claude[/\\]settings)"
+PROTECTED_TARGETS: str = (
+    "(?:"
+    + "|".join(re.escape(name) for name in sorted(PROTECTED_NAMES))
+    + r"|\.github[/\\]workflows|tools[/\\](?:check_declarations|check_suppressions|check_coverage_records|changes)\.py|tools[/\\]hooks|\.claude[/\\]settings)"
+)
 # A protected file named anywhere in a command: a bare name, or a path ending in one.
 PROTECTED_IN_COMMAND: re.Pattern[str] = re.compile(r"(?:^|[\s'\"=/\\])" + PROTECTED_TARGETS, re.IGNORECASE)
 # Commands that write, move, or delete the files they name. A redirect only

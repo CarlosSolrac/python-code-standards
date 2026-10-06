@@ -230,8 +230,8 @@ def test_count_ruff_keeps_existing_run_config(tmp_path: Path, monkeypatch: pytes
 
 @pytest.mark.parametrize(
     ("status", "output"),
-    [(2, "error: pyright crashed"), (0, "[]"), (0, '{"summary": []}')],
-    ids=["crashed", "array-not-object", "summary-not-object"],
+    [(2, "error: pyright crashed"), (0, "[]"), (0, '{"summary": []}'), (0, '{"summary": {"errorCount": "3"}}')],
+    ids=["crashed", "array-not-object", "summary-not-object", "count-not-integer"],
 )
 def test_count_pyright_reports_failure_as_negative(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int, output: str) -> None:
     """A Pyright run without a usable summary scores -1, never zero."""

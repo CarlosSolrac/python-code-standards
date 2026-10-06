@@ -7,9 +7,12 @@ script's own check must also leave the repository's existing files unmodified.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
+
+from skill.tools.hooks.stop_gate import VENDORED_TOOLS
 
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent
 SETUP_SCRIPT: Path = REPO_ROOT / "skill" / "assets" / "setup-standards.sh"
@@ -58,8 +61,26 @@ def heredoc(delimiter: str) -> str:
         ("STOPEOF", "skill/tools/hooks/stop_gate.py"),
         ("HOOKSINIT", "skill/tools/hooks/__init__.py"),
         ("SETTINGS", "skill/assets/claude-settings.json"),
+        ("CHANGESEOF", "skill/tools/changes.py"),
+        ("SUPPRESSEOF", "skill/tools/check_suppressions.py"),
+        ("COVRECEOF", "skill/tools/check_coverage_records.py"),
+        ("ALLOWEOF", "skill/assets/suppressions.toml"),
     ],
-    ids=["check_declarations", "pyproject", "pre-commit", "gitattributes", "ci", "guard_protected", "stop_gate", "hooks-init", "claude-settings"],
+    ids=[
+        "check_declarations",
+        "pyproject",
+        "pre-commit",
+        "gitattributes",
+        "ci",
+        "guard_protected",
+        "stop_gate",
+        "hooks-init",
+        "claude-settings",
+        "changes",
+        "check_suppressions",
+        "check_coverage_records",
+        "suppressions-allow-list",
+    ],
 )
 def test_embedded_template_matches_source(delimiter: str, asset: str) -> None:
     """Each embedded heredoc is identical to the file it vendors.
@@ -69,6 +90,12 @@ def test_embedded_template_matches_source(delimiter: str, asset: str) -> None:
     """
     source: str = (REPO_ROOT / asset).read_text(encoding="utf-8")
     assert heredoc(delimiter) == source
+
+
+def test_vendored_tools_list_matches_what_setup_writes() -> None:
+    """The coverage-record exemption covers exactly the Python files setup vendors."""
+    written: set[str] = set(re.findall(r"^write_file (tools/\S+\.py) ", SETUP_SCRIPT.read_text(encoding="utf-8"), re.MULTILINE))
+    assert written == VENDORED_TOOLS
 
 
 def script_commands() -> list[str]:

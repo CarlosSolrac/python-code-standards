@@ -39,6 +39,25 @@ What follows for the gates:
 - **Keep the study in proportion:** it was small, its subjects were novices, it used Java,
   and its effects were modest.
 
+## Baseline gates
+
+Each gate targets a failure mode that matters in AI-written code. There are deliberately
+no new style rules.
+
+| Gate | Runs in | Why |
+|---|---|---|
+| Ruff `BLE`, `TRY`, `RSE`, `EM` | pre-commit, CI | Swallowed or blind exceptions are the classic silent failure. |
+| Ruff `C90` (max 10) and `complexipy` (max 15) | pre-commit, CI | The paper's two complexity metrics, used as caps that bound what one review has to hold. Ruff's `PLR` adds limits on branches, arguments and returns. |
+| Ruff `FBT`, `PERF`, `PIE`, `FURB` | pre-commit, CI | Boolean traps, slow idioms and dead constructs that are cheap to catch mechanically. |
+| `PLR2004` magic values | source only | In tests a literal expected value *is* the specification, so tests are exempt. |
+| `check_suppressions.py` | pre-commit (added since `HEAD`), CI (`--base`) | Makes "suppressions need approval" mechanical. It covers line comments (`noqa`, `type: ignore`, `pyright: ignore`, `pragma: no cover`, `pragma: no branch`) and file- or function-level ones (`ruff: noqa`, `flake8: noqa`, `mypy:` and `pyright:` settings, `complexipy: ignore`). Every code needs approval, whether separated by commas or spaces, and a setting's approval covers only its exact value. Spelling variants the tools accept (`type:ignore`, `pragma no cover` without a colon) count as the same directive. In a module only real comments count (read with `tokenize`), so directive text inside a string or docstring is ignored. Notebooks, and modules that cannot be tokenized mid-edit, are scanned as text, which errs toward reporting. |
+| `suppressions.toml` | read by the check above | Approved `(path, code, reason)` entries. The guard hook protects the file, so writing an entry triggers the user's permission prompt, and that prompt is the approval. A blanket suppression has no code and cannot be approved. Unit tests may suppress `reportPrivateUsage` without an entry. |
+| `check_coverage_records.py` | CI | The CI twin of the Stop hook's check: a changed module that no test imports has no coverage record, and diff-cover would skip it. The vendored gate tooling (`VENDORED_TOOLS` in `stop_gate.py`) is exempt: it is tested here at 100%, kept byte-identical by the drift test, and protected by the guard. Without the exemption every adoption PR would fail. A project's own `tools/` scripts stay gated. |
+| `deptry` | pre-commit, CI | Imports must match declared dependencies. It catches a hallucinated or typo-squatted package before install time. |
+| `pip-audit` | CI | Dependencies with known vulnerabilities. It needs the network, so it runs in CI only. |
+| gitleaks | pre-commit | Hardcoded secrets. It scans staged content, so it guards commits, not CI's `--all-files` run. |
+| pytest `xfail_strict`, `filterwarnings = error`; Pyright `reportUnnecessaryTypeIgnoreComment` | every test and type-check run | An xfail that passes, an ignored warning, or a dead suppression is a check that quietly stopped checking. |
+
 ## Claude Code hooks
 
 `setup-standards.sh` installs both into a target repository: `.claude/settings.json`

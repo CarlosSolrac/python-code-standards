@@ -34,6 +34,22 @@ PYTHON_SUFFIXES: tuple[str, ...] = (".py", ".ipynb")
 TESTS: tuple[str, ...] = ("uv", "run", "pytest", "-q", "--cov", "--cov-branch", "--cov-report=xml")
 CHANGED_LINES: tuple[str, ...] = ("uv", "run", "diff-cover", "coverage.xml", "--compare-branch=main", "--include-untracked", "--fail-under=100")
 COVERAGE_XML: Path = Path("coverage.xml")
+# The gate tooling setup-standards.sh vendors. It is tested at 100% where it is
+# maintained and kept byte-identical there, so a project's tests never import it;
+# requiring a coverage record would fail every adoption. A project's own tools
+# are not on this list and stay gated.
+VENDORED_TOOLS: frozenset[str] = frozenset(
+    {
+        "tools/__init__.py",
+        "tools/changes.py",
+        "tools/check_coverage_records.py",
+        "tools/check_declarations.py",
+        "tools/check_suppressions.py",
+        "tools/hooks/__init__.py",
+        "tools/hooks/guard_protected.py",
+        "tools/hooks/stop_gate.py",
+    }
+)
 # Each measured file's path, relative to the project root because TESTS runs a bare
 # --cov from there. Read by pattern: xml.etree would trip Ruff's S314 for no gain.
 COVERAGE_FILENAME: re.Pattern[str] = re.compile(r'<class\b[^>]*\bfilename="([^"]*)"')
@@ -193,10 +209,11 @@ def first_failure(files: list[str], run: Runner, read_coverage: Callable[[], str
 def unrecorded_modules(files: list[str], report: str) -> list[str]:
     """Return the changed ``.py`` files the coverage report has no record of.
 
-    Notebooks are exempt: pytest-cov never measures them.
+    Notebooks are exempt: pytest-cov never measures them. So is the vendored gate
+    tooling (``VENDORED_TOOLS``), which no project test imports.
     """
     recorded: set[str] = {html.unescape(name) for name in COVERAGE_FILENAME.findall(report)}
-    return [path for path in files if path.endswith(".py") and path not in recorded]
+    return [path for path in files if path.endswith(".py") and path not in recorded and path not in VENDORED_TOOLS]
 
 
 if __name__ == "__main__":

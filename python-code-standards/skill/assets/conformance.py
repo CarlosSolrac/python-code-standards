@@ -52,25 +52,30 @@ class EventCounter:
         self.seen.add(name)
 
 
-def classify(payload: object) -> str:
+type Json = None | bool | int | float | str | list[Json] | dict[str, Json]
+
+
+def classify(payload: Json) -> str:
     """Describe a payload using structural pattern matching.
 
-    Match captures are bindings, so each is declared before the statement.
+    Match captures are bindings, so each is declared before the statement. A
+    precise subject type is what lets strict Pyright type the captures: matched
+    against ``object``, a sequence pattern captures ``Unknown``.
 
     Args:
-        payload: Any decoded value.
+        payload: A decoded JSON value.
 
     Returns:
         A short description of the payload's shape.
     """
-    head: object
-    rest: list[object]
+    head: Json
+    rest: list[Json]
     name: str
-    other: object
+    other: Json
     match payload:
         case [head, *rest]:
             return f"sequence of {len(rest) + 1} starting with {head!r}"
-        case {"name": name}:
+        case {"name": str() as name}:
             return f"mapping for {name}"
         case other:
             return f"scalar {type(other).__name__}"

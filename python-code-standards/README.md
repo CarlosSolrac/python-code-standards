@@ -44,7 +44,9 @@ CI and pre-commit run inside the target repository and cannot see the skill dire
 repository that adopts the tooling vendors its own copy of every config file and the checker.
 `skill/assets/setup-standards.sh` does that in one step: it writes `pyproject.toml`,
 `.pre-commit-config.yaml`, `.gitattributes`, a `.gitignore` (only when the repo has none),
-`.github/workflows/ci.yml`, `tools/check_declarations.py`, and the Claude Code hooks
+`.github/workflows/ci.yml`, `tools/check_declarations.py`, the change-scoped checks
+(`tools/check_suppressions.py`, `tools/check_coverage_records.py`, and their approved-suppression
+list `suppressions.toml`), and the Claude Code hooks
 (`.claude/settings.json` and `tools/hooks/`, see [docs/quality-gates.md](docs/quality-gates.md)),
 then pins Python 3.13, runs
 `uv sync --all-groups`, installs the pre-commit hook, and runs the full check once. The check
@@ -87,18 +89,22 @@ The repository copy is authoritative wherever both exist: it is the one CI runs.
 
 ```bash
 uv sync --all-groups
-uv run pytest --cov=skill.tools.check_declarations --cov=skill.tools.hooks --cov=evals.grade --cov-branch
+uv run pytest --cov=skill.tools --cov=evals.grade --cov-branch
 uv run ruff check skill/tools skill/assets/conformance.py tests evals/grade.py
 # evals/fixtures/ is deliberately non-conforming — it is a baseline input, not source
 uv run python skill/tools/check_declarations.py skill/tools skill/assets/conformance.py tests evals/grade.py
+uv run complexipy skill/tools tests evals/grade.py
+uv run deptry .
 ```
 
 ```cmd
 uv sync --all-groups
-uv run pytest --cov=skill.tools.check_declarations --cov=skill.tools.hooks --cov=evals.grade --cov-branch
+uv run pytest --cov=skill.tools --cov=evals.grade --cov-branch
 uv run ruff check skill/tools skill/assets/conformance.py tests evals/grade.py
 REM evals/fixtures/ is deliberately non-conforming - it is a baseline input, not source
 uv run python skill\tools\check_declarations.py skill\tools skill\assets\conformance.py tests evals\grade.py
+uv run complexipy skill\tools tests evals\grade.py
+uv run deptry .
 ```
 
 `conformance.py` is the drift check: it is the executable form of these standards, so when a
