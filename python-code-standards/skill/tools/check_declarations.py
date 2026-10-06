@@ -199,14 +199,15 @@ class ScopeChecker(ast.NodeVisitor):
         self.visit(node.value)
 
     def _visit_comprehension(self, generators: list[ast.comprehension]) -> None:
-        """Exempt comprehension targets, which occupy their own scope."""
+        """Check each iterable; the targets are exempt and declare nothing here.
+
+        A comprehension's targets occupy its own scope, so they are never bindings
+        of the enclosing scope, and a later binding of the same name still needs
+        its own annotation.
+        """
         generator: ast.comprehension
         for generator in generators:
             self.visit(generator.iter)
-            target: ast.AST
-            for target in ast.walk(generator.target):
-                if isinstance(target, ast.Name):
-                    self.declared.add(target.id)
 
     def visit_ListComp(self, node: ast.ListComp) -> None:
         """Handle list comprehensions."""
@@ -377,7 +378,7 @@ def read_source(path: Path) -> str:
         return text
 
     document: dict[str, object] = json.loads(text)
-    cells: object = document.get("cells", [])
+    cells: object = document.get("cells")
     if not isinstance(cells, list):
         return ""
     return "\n".join(_cell_code(cell) for cell in cells if isinstance(cell, dict) and cell.get("cell_type") == "code")

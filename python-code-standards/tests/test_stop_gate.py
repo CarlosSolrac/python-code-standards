@@ -16,7 +16,7 @@ from xml.sax.saxutils import escape
 
 import pytest
 
-from skill.tools.hooks.stop_gate import Result, main, read_coverage_xml, run_command
+from skill.tools.hooks.stop_gate import GitError, Result, main, read_coverage_xml, run_command
 
 STOP_GATE: Path = Path(__file__).resolve().parent.parent / "skill" / "tools" / "hooks" / "stop_gate.py"
 PASS: Result = Result(returncode=0, output="")
@@ -208,7 +208,39 @@ def test_later_gate_failure_is_reported() -> None:
     runner: FakeRunner = FakeRunner({**changed(modified=["a.py"]), "uv run diff-cover": Result(1, "a.py (50.0%): Missing lines 4")})
     output: dict[str, object] | None = stop(runner)
     assert output is not None
-    assert "diff-cover" in str(output["reason"])
+    assert "Quality gate failed: `uv run diff-cover coverage.xml --compare-branch=main --include-untracked --fail-under=100` (exit 1)." in str(output["reason"])
+
+
+def test_test_failure_names_the_exact_command() -> None:
+    runner: FakeRunner = FakeRunner({**changed(modified=["a.py"]), "uv run pytest": Result(1, "1 failed")})
+    output: dict[str, object] | None = stop(runner)
+    assert output is not None
+    assert "Quality gate failed: `uv run pytest -q --cov --cov-branch --cov-report=xml` (exit 1)." in str(output["reason"])
+
+
+def test_coverage_record_failure_lists_each_module_on_its_own_line() -> None:
+    runner: FakeRunner = FakeRunner(changed(modified=["calc/a.py", "calc/b.py"]))
+    output: dict[str, object] | None = stop(runner, covered=[])
+    assert output is not None
+    reason: str = str(output["reason"])
+    assert "Quality gate failed: `coverage record check` (exit 1)." in reason
+    assert "No coverage record for:\n  calc/a.py\n  calc/b.py\nNo test imports these modules" in reason
+
+
+def test_git_listings_use_the_exact_commands() -> None:
+    """Every flag matters: without --exclude-standard, ignored files (.venv, build output) would be gated."""
+    runner: FakeRunner = FakeRunner(changed(modified=["README.md"]))
+    stop(runner)
+    assert runner.calls == [
+        ["git", "ls-files", "-z", "--modified", "--others", "--exclude-standard"],
+        ["git", "diff", "-z", "--cached", "--name-only", "--relative", "--diff-filter=d"],
+        ["git", "ls-files", "-z", "--deleted"],
+        ["git", "diff", "-z", "--cached", "--name-only", "--relative", "--diff-filter=D"],
+    ]
+
+
+def test_git_error_message_is_the_command() -> None:
+    assert str(GitError(["git", "ls-files", "-z"], Result(128, "fatal"))) == "git ls-files -z"
 
 
 def test_long_output_keeps_only_the_tail() -> None:
@@ -240,6 +272,12 @@ def test_run_command_decodes_output_as_utf8() -> None:
     """Git prints paths as UTF-8 bytes; a locale decode (cp1252 on Windows) would garble them."""
     result: Result = run_command([sys.executable, "-c", "import sys; sys.stdout.buffer.write('tests/test_café.py'.encode('utf-8'))"])
     assert result.output == "tests/test_café.py"
+
+
+def test_run_command_replaces_undecodable_bytes() -> None:
+    """A tool printing invalid UTF-8 must not crash the gate; the bad byte becomes U+FFFD."""
+    result: Result = run_command([sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'ok \\xff end')"])
+    assert result.output == "ok � end"
 
 
 def test_runs_as_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

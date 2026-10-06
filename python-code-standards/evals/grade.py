@@ -27,13 +27,15 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import cast
 
-GRADER_VERSION: str = "4.0.0"
+GRADER_VERSION: str = "4.1.0"
 """Bump on any change to what is counted.
 
 Scores from different grader versions are not comparable: v3.0.0 dropped the
 ``used_uv`` field and began copying the config into the run directory, which
 changed which Ruff rules fire. v4.0.0 counts against the expanded rule set
-(complexity, exception handling, boolean traps, performance), so Ruff totals rise. The version is recorded in every result so a
+(complexity, exception handling, boolean traps, performance), so Ruff totals rise.
+v4.1.0 stops treating comprehension variables as declared in the enclosing scope,
+so a later unannotated binding of the same name now counts as a violation. The version is recorded in every result so a
 cross-run comparison can be checked rather than assumed.
 """
 

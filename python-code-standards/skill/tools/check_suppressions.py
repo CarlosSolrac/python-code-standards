@@ -44,8 +44,9 @@ ALLOW_LIST: Path = Path("suppressions.toml")
 REQUIRED_KEYS: tuple[str, ...] = ("path", "code", "reason")
 # Line-level directives, then the file- and function-level ones (ruff and flake8
 # file noqa, mypy and pyright file comments, complexipy's ignore), which silence
-# more than a line. coverage.py honors both "no cover" and "no branch" pragmas.
-DIRECTIVE: re.Pattern[str] = re.compile(r"#\s*(ruff:\s*noqa|flake8:\s*noqa|noqa|type:\s*ignore|pyright:\s*ignore|pyright:|mypy:|complexipy:\s*ignore|pragma:?\s*no\s*(?:cover|branch))", re.IGNORECASE)
+# more than a line. coverage.py honors "no cover" and "no branch" pragmas, and
+# mutmut skips lines marked "no mutate".
+DIRECTIVE: re.Pattern[str] = re.compile(r"#\s*(ruff:\s*noqa|flake8:\s*noqa|noqa|type:\s*ignore|pyright:\s*ignore|pyright:|mypy:|complexipy:\s*ignore|pragma:?\s*no\s*(?:cover|branch|mutate))", re.IGNORECASE)
 # Ruff separates noqa codes with commas, spaces, or both; every code is captured.
 NOQA_CODES: re.Pattern[str] = re.compile(r":\s*([A-Z]+[0-9]+(?:[\s,]+[A-Z]+[0-9]+)*)")
 CODE: re.Pattern[str] = re.compile(r"[A-Z]+[0-9]+")
@@ -62,6 +63,7 @@ CANONICAL: dict[str, str] = {
     "complexipyignore": "complexipy: ignore",
     "pragmanocover": "pragma: no cover",
     "pragmanobranch": "pragma: no branch",
+    "pragmanomutate": "pragma: no mutate",
 }
 NOQA_KINDS: frozenset[str] = frozenset({"noqa", "ruff: noqa", "flake8: noqa"})
 BRACKETED_RULES: re.Pattern[str] = re.compile(r"\[([^\]]*)\]")
@@ -99,7 +101,7 @@ class Allowed:
 def is_test(path: str) -> bool:
     """Return whether a path names a unit-test file."""
     normalized: str = "/" + path.replace("\\", "/")
-    return "/tests/" in normalized or normalized.rsplit("/", 1)[-1].startswith("test_")
+    return "/tests/" in normalized or normalized.rpartition("/")[2].startswith("test_")
 
 
 def suppressions_in(line: str) -> list[Suppression]:
@@ -121,7 +123,7 @@ def parse_directive(word: str, tail: str) -> list[Suppression]:
         return [Suppression(word, rule.strip()) for rule in (rules.group(1).split(",") if rules else [""])]
     if word in {"pyright:", "mypy:"}:
         # The whole setting is the code, so approving one value never approves another.
-        return [Suppression(word.rstrip(":"), " ".join(tail.split()))]
+        return [Suppression(word.removesuffix(":"), " ".join(tail.split()))]
     if word == "complexipy: ignore":
         return [Suppression("complexipy", "ignore")]
     return [Suppression("pragma", word.removeprefix("pragma: "))]
@@ -135,7 +137,7 @@ def load_allowed(path: Path) -> Allowed:
     """
     if not path.exists():
         return Allowed(set())
-    entries: object = tomllib.loads(path.read_text(encoding="utf-8")).get("suppression", [])
+    entries: object = tomllib.loads(path.read_text(encoding="utf-8")).get("suppression")
     pairs: set[tuple[str, str]] = set()
     index: int
     entry: object

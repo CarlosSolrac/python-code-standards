@@ -85,7 +85,8 @@ def test_added_lines_of_a_tracked_file_come_from_the_diff() -> None:
 
 def test_every_line_of_an_untracked_file_is_added() -> None:
     git: Git = Git({("git", "ls-files", "-z", "--others", "--exclude-standard", "--", "new.py"): Result(0, "new.py\0")})
-    assert added_lines("new.py", "HEAD", git, lambda _: "a = 1\nb = 2\n") == [(1, "a = 1"), (2, "b = 2")]
+    files: dict[str, str] = {"new.py": "a = 1\nb = 2\n"}
+    assert added_lines("new.py", "HEAD", git, files.__getitem__) == [(1, "a = 1"), (2, "b = 2")]
 
 
 def test_every_line_is_added_before_the_first_commit() -> None:
@@ -94,5 +95,8 @@ def test_every_line_is_added_before_the_first_commit() -> None:
 
 def test_added_lines_raises_when_the_diff_fails() -> None:
     git: Git = Git({("git", "ls-files", "-z", "--others", "--exclude-standard", "--", "m.py"): Result(0, "")})
-    with pytest.raises(GitError):
+    error_info: pytest.ExceptionInfo[GitError]
+    with pytest.raises(GitError) as error_info:
         added_lines("m.py", "abc123", git, lambda _: "")
+    # The error carries git's own message, which the checks print.
+    assert error_info.value.result.output == "fatal: unexpected git diff -U0 --no-color --no-ext-diff abc123 -- m.py"

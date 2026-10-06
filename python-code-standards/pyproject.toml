@@ -147,7 +147,7 @@ pythonpath = ["."]
 # Mutation testing: a surviving mutant is a code change no test noticed.
 source_paths = ["skill/tools", "evals/grade.py"]
 pytest_add_cli_args_test_selection = ["tests/"]
-also_copy = ["conftest.py", "skill", "evals"]
+also_copy = ["conftest.py", "skill", "evals", "docs"]
 pytest_add_cli_args = ["-m", "not no_mutation"]
 
 [tool.complexipy]

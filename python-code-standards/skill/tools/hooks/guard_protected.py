@@ -108,8 +108,9 @@ def is_protected(path: str) -> bool:
     Matching ignores case: on Windows and macOS ``PyProject.toml`` *is* the
     protected file. On a case-sensitive filesystem the cost is an extra prompt.
     """
-    normalized: str = "/" + path.replace("\\", "/").lstrip("/").casefold()
-    name: str = normalized.rsplit("/", 1)[-1]
+    # The leading "/" anchors the suffix and directory checks for a relative path.
+    normalized: str = "/" + path.replace("\\", "/").casefold()
+    name: str = normalized.rpartition("/")[2]
     return name in PROTECTED_NAMES or normalized.endswith(PROTECTED_SUFFIXES) or any(directory in normalized for directory in PROTECTED_DIRECTORIES)
 
 
