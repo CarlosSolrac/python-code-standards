@@ -52,9 +52,10 @@ there without it.
 | Mutant | Change | Why it is equivalent |
 |---|---|---|
 | `x__sub_patterns__mutmut_1` | a bare capture (`case x:`) gets `[None]` as sub-patterns instead of `[]` | `_bind_pattern(None)` finds no sub-patterns and no target, so it binds nothing either way. |
-| `x_check_source__mutmut_5`, `_6` | `ast.parse` `filename` dropped or `"None"` | The filename only sets `SyntaxError.filename`, which `main` never prints; it reports its own path. |
-| `x_read_source__mutmut_2`, `_4` | `encoding="utf-8"` → `None`, `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_check_source__mutmut_6`, `_7` | `ast.parse` `filename` dropped or `"None"` | The filename only sets `SyntaxError.filename`, which `main` never prints; it reports its own path. |
+| `x_read_source__mutmut_2`, `_4`; `x_load_enum_bases__mutmut_16`, `_18` | `encoding="utf-8"` → `None`, `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
 | `x__cell_code__mutmut_11` | always `"".join(lines)` | Joining a string's characters returns the same string, and `source` is a list or a string. |
+| `xǁScopeCheckerǁ__init____mutmut_10` | `in_enum_body` default `False` → `None` | It is only tested for truth, and both are falsy. |
 
 ## `evals/grade.py`
 
