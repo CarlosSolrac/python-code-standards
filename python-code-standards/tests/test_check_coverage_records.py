@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import runpy
 import sys
 from collections.abc import Sequence
@@ -74,7 +75,41 @@ def test_reads_the_given_coverage_report() -> None:
 
 def test_git_failure_fails_closed(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--base", "origin/main"], Git({}), lambda _: REPORT) == 1
-    assert "fatal: unexpected git merge-base" in capsys.readouterr().out
+    out: str = capsys.readouterr().out
+    assert "`git merge-base origin/main HEAD` failed, so the change cannot be checked:" in out
+    assert "fatal: unexpected git merge-base" in out
+
+
+def test_reads_coverage_xml_by_default() -> None:
+    seen: list[Path] = []
+
+    def read(path: Path) -> str:
+        seen.append(path)
+        return REPORT
+
+    assert main(["--base", "origin/main"], branch_changes(["calc/ops.py"]), read) == 0
+    assert seen == [Path("coverage.xml")]
+
+
+def test_base_is_required(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_info: pytest.ExceptionInfo[SystemExit]
+    with pytest.raises(SystemExit) as exit_info:
+        main([], Git({}), lambda _: REPORT)
+    assert exit_info.value.code == 2
+    assert "--base" in capsys.readouterr().err
+
+
+def test_help_shows_the_module_docstring_and_option_help(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """The help is the tool's documentation: the docstring keeps its layout, and each option says what it takes."""
+    monkeypatch.setenv("COLUMNS", "200")
+    exit_info: pytest.ExceptionInfo[SystemExit]
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--help"], Git({}), lambda _: REPORT)
+    assert exit_info.value.code == 0
+    out: str = capsys.readouterr().out
+    assert "\n    uv run python -m tools.check_coverage_records --base origin/main\n" in out
+    assert re.search(r"--base BASE +the branch's base ref, e\.g\. origin/main\n", out)
+    assert re.search(r"--coverage COVERAGE +the Cobertura report pytest-cov wrote\n", out)
 
 
 def test_runs_as_module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

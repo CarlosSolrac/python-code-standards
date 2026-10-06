@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from evals.grade import GRADER_VERSION, Score, _payload, count_declarations, count_pyright, count_ruff, grade, main, third_party_imports  # pyright: ignore[reportPrivateUsage]
+from evals.grade import GRADER_VERSION, Score, _payload, _run, count_declarations, count_pyright, count_ruff, grade, main, third_party_imports  # pyright: ignore[reportPrivateUsage]
 
 
 @dataclass
@@ -50,6 +50,10 @@ class FakeRun:
         ('Downloading ruff (9.8MiB)\n[{"code": "F401"}]', "[", [{"code": "F401"}]),
         ("no payload at all", "{", None),
         ("", "{", None),
+        # After a failed opener the search resumes at the very next one: not the last
+        # (an inner object), and not one character later (an adjacent opener).
+        ('Resolved {2} {"summary": {"errorCount": 3}}', "{", {"summary": {"errorCount": 3}}),
+        ('{{"errorCount": 3}', "{", {"errorCount": 3}),
     ],
     ids=[
         "bare-object",
@@ -60,6 +64,8 @@ class FakeRun:
         "chatter-before-array",
         "no-payload",
         "empty-output",
+        "nested-after-failed-opener",
+        "adjacent-opener",
     ],
 )
 def test_payload_extraction(output: str, opener: str, expected: object) -> None:
@@ -290,3 +296,163 @@ def test_runs_as_script(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureF
         runpy.run_path(str(script), run_name="__main__")
     assert exit_info.value.code == 0
     assert "--checker" in capsys.readouterr().out
+
+
+class ScriptedRun:
+    """Stand-in for ``_run`` that answers per tool and records every command with its directory."""
+
+    def __init__(self, checker: tuple[int, str] = (0, ""), ruff: tuple[int, str] = (0, "[]"), pyright: tuple[int, str] = (0, '{"summary": {"errorCount": 0}}')) -> None:
+        """Initialize the fake.
+
+        Args:
+            checker: Result for the declaration checker.
+            ruff: Result for Ruff.
+            pyright: Result for Pyright.
+        """
+        self.checker: tuple[int, str] = checker
+        self.ruff: tuple[int, str] = ruff
+        self.pyright: tuple[int, str] = pyright
+        self.calls: list[tuple[list[str], Path]] = []
+
+    def __call__(self, command: list[str], cwd: Path) -> tuple[int, str]:
+        """Record the call and return the scripted result for its tool."""
+        self.calls.append((command, cwd))
+        if "ruff@latest" in command:
+            return self.ruff
+        if "pyright@latest" in command:
+            return self.pyright
+        return self.checker
+
+
+def test_run_returns_status_and_both_streams_as_text_from_cwd(tmp_path: Path) -> None:
+    status: int
+    output: str
+    status, output = _run([sys.executable, "-c", "import os, sys; print(os.getcwd()); print('err', file=sys.stderr)"], tmp_path)
+    assert status == 0
+    assert output == f"{tmp_path}\nerr\n"
+
+
+def test_count_declarations_runs_the_checker_beside_the_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake: ScriptedRun = ScriptedRun(checker=(1, "a.py:1:0: x bound before annotation\nnoise\nb.py:2:0: y bound before annotation\n"))
+    monkeypatch.setattr("evals.grade._run", fake)
+    target: Path = tmp_path / "run"
+    assert count_declarations(target, tmp_path / "check.py") == 2
+    assert fake.calls == [([sys.executable, str(tmp_path / "check.py"), str(target)], tmp_path)]
+
+
+def test_count_declarations_accepts_a_clean_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("evals.grade._run", ScriptedRun(checker=(0, "")))
+    assert count_declarations(tmp_path, tmp_path / "check.py") == 0
+
+
+def test_count_ruff_runs_in_the_target_with_a_copied_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    findings: str = json.dumps([{"code": "F401"}, {"code": "F401"}, {"code": None}, {}, {"code": "E501"}])
+    fake: ScriptedRun = ScriptedRun(ruff=(1, findings))
+    monkeypatch.setattr("evals.grade._run", fake)
+    config: Path = tmp_path / "standards.toml"
+    config.write_text("# standards\n", encoding="utf-8")
+    target: Path = tmp_path / "run"
+    target.mkdir()
+    total: int
+    by_rule: dict[str, int]
+    total, by_rule = count_ruff(target, config)
+    assert total == 5
+    assert list(by_rule.items()) == [("?", 2), ("E501", 1), ("F401", 2)]
+    assert (target / "pyproject.toml").read_text(encoding="utf-8") == "# standards\n"
+    assert fake.calls == [(["uvx", "ruff@latest", "check", "--no-cache", "--output-format", "json", "."], target)]
+
+
+def test_count_pyright_runs_with_imports_beside_the_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake: ScriptedRun = ScriptedRun(pyright=(1, '{"summary": {"errorCount": 3}}'))
+    monkeypatch.setattr("evals.grade._run", fake)
+    target: Path = tmp_path / "run"
+    target.mkdir()
+    (target / "m.py").write_text("import duckdb\n", encoding="utf-8")
+    config: Path = tmp_path / "pyproject.toml"
+    assert count_pyright(target, config) == 3
+    assert fake.calls == [(["uvx", "--with", "duckdb", "pyright@latest", "--project", str(config), "--outputjson", str(target)], tmp_path)]
+
+
+def test_count_pyright_without_an_error_count_scores_negative(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("evals.grade._run", ScriptedRun(pyright=(0, '{"summary": {}}')))
+    assert count_pyright(tmp_path, tmp_path / "pyproject.toml") == -1
+
+
+@pytest.mark.parametrize(
+    ("text", "notes"),
+    [
+        ("x: int = 1\n", []),
+        ("# pip install duckdb\n", ["mentions pip or venv; the standards require uv"]),
+        ("# python -m venv .venv\n", ["mentions pip or venv; the standards require uv"]),
+        ("import duckdb\nimport polars\n", ["pyright ran with: duckdb, polars"]),
+    ],
+    ids=["clean", "pip", "venv", "imports"],
+)
+def test_grade_scores_a_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str, notes: list[str]) -> None:
+    fake: ScriptedRun = ScriptedRun(checker=(1, "m.py:1:0: x bound before annotation\n"), ruff=(1, json.dumps([{"code": "F401"}])), pyright=(1, '{"summary": {"errorCount": 4}}'))
+    monkeypatch.setattr("evals.grade._run", fake)
+    run: Path = tmp_path / "sample"
+    (run / "sub").mkdir(parents=True)
+    (run / "m.py").write_text(text, encoding="utf-8")
+    (run / "sub" / "n.py").write_text("y: int = 2\nz: int = 3\n", encoding="utf-8")
+    checker: Path = tmp_path / "check.py"
+    config: Path = tmp_path / "pyproject.toml"
+    config.write_text("# standards\n", encoding="utf-8")
+    score: Score = grade(run, checker, config)
+    assert score == Score(
+        grader_version=GRADER_VERSION,
+        run="sample",
+        files=2,
+        lines=len(text.splitlines()) + 2,
+        declaration_violations=1,
+        ruff_violations=1,
+        ruff_by_rule={"F401": 1},
+        pyright_errors=4,
+        notes=notes,
+    )
+    assert any(str(checker) in command for command, _ in fake.calls)
+    assert any(str(config) in command for command, _ in fake.calls)
+
+
+def test_main_prints_the_table_and_writes_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr("evals.grade._run", ScriptedRun(ruff=(1, json.dumps([{"code": "F401"}]))))
+    run: Path = tmp_path / "sample"
+    run.mkdir()
+    (run / "m.py").write_text("# pip install x\n", encoding="utf-8")
+    out: Path = tmp_path / "scores.json"
+    (tmp_path / "pyproject.toml").write_text("# standards\n", encoding="utf-8")
+    assert main([str(run), "--checker", str(tmp_path / "check.py"), "--config", str(tmp_path / "pyproject.toml"), "--json", str(out)]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"grader {GRADER_VERSION} — scores are comparable only across runs of the same version",
+        "",
+        "run                      files  lines   decl   ruff  pyright",
+        "sample                       1      1      0      1        0",
+        "  ! mentions pip or venv; the standards require uv",
+        "",
+        f"wrote {out}",
+    ]
+    written: str = out.read_text(encoding="utf-8")
+    assert written == json.dumps(json.loads(written), indent=2)
+    assert json.loads(written)[0]["run"] == "sample"
+
+
+def test_main_defaults_to_the_repository_checker_and_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake: ScriptedRun = ScriptedRun()
+    monkeypatch.setattr("evals.grade._run", fake)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pyproject.toml").write_text("# standards\n", encoding="utf-8")
+    run: Path = tmp_path / "sample"
+    run.mkdir()
+    assert main([str(run)]) == 0
+    commands: list[str] = [part for command, _ in fake.calls for part in command]
+    assert str((tmp_path / "skill" / "tools" / "check_declarations.py").resolve()) in commands
+    assert str((tmp_path / "pyproject.toml").resolve()) in commands
+
+
+def test_help_shows_the_module_docstring(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
+    exit_info: pytest.ExceptionInfo[SystemExit]
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--help"])
+    assert exit_info.value.code == 0
+    assert "Score generated Python against the standards, mechanically." in capsys.readouterr().out

@@ -137,9 +137,12 @@ nudged) and reruns the tests. A **surviving mutant** is a change no test noticed
   test asserting `discount(25_000) == 2500` survived `total // 10` becoming
   `total / 10`, because `2500.0 == 2500`. Strict Pyright rejects that mutant through
   the `-> int` annotation, so typing and mutation testing complement each other.
-- **This repository (2026-10-06):** 1,446 mutants, 1,118 killed, 321 survived, 7
-  timeouts, a 77% score at 100% line and branch coverage. Killing them is follow-up
-  work.
+- **This repository (2026-10-06):** the first run killed 1,118 of 1,446 mutants (77%)
+  at 100% line and branch coverage. Writing tests for the survivors raised it to 1,360
+  of 1,425 killed (95%), plus 7 caught by timeout. Every remaining survivor is listed
+  as equivalent, with its reason, in [mutation-equivalents.md](mutation-equivalents.md).
+  The same work found one real bug: comprehension variables were wrongly treated as
+  declared in the enclosing scope.
 
 ## Metrics deliberately not used
 

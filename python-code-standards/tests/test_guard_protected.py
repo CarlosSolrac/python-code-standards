@@ -89,9 +89,40 @@ def test_file_tool_on_ordinary_path_is_silent(path: str) -> None:
 def test_reason_names_the_file_and_the_alternative() -> None:
     decision: dict[str, object] | None = decide("Edit", {"file_path": "/repo/pyproject.toml"})
     assert decision is not None
-    reason: str = str(decision["hookSpecificOutput"])
-    assert "/repo/pyproject.toml" in reason
-    assert "fix the code" in reason
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+    assert specific["permissionDecisionReason"] == (
+        "/repo/pyproject.toml defines a quality gate. Changing it can make a failing check pass without a fix, so the user must approve. If the goal is a passing check, fix the code instead."
+    )
+
+
+@pytest.mark.parametrize(
+    ("command", "reason"),
+    [
+        ("uv add requests", "This command changes the project's dependencies, which needs the user's approval. Ask before adding, removing, or upgrading a package."),
+        (
+            "rm pyproject.toml",
+            "This command appears to modify a file that defines a quality gate, which needs the user's approval. If the goal is a passing check, fix the code instead.",
+        ),
+    ],
+    ids=["dependencies", "gate-file"],
+)
+def test_shell_reason_is_exact(command: str, reason: str) -> None:
+    decision: dict[str, object] | None = decide("Bash", {"command": command})
+    assert decision is not None
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+    assert specific["permissionDecisionReason"] == reason
+
+
+@pytest.mark.parametrize(
+    "event",
+    [{"tool_name": "Read"}, {"tool_name": "Edit", "tool_input": {}}, {"tool_name": "Bash", "tool_input": {}}, {"tool_input": {"file_path": "pyproject.toml"}}],
+    ids=["no-tool-input", "no-file-path", "no-command", "no-tool-name"],
+)
+def test_incomplete_event_is_silent(event: dict[str, object]) -> None:
+    """A field missing from the event is never a crash; the hook stays silent."""
+    stdout: io.StringIO = io.StringIO()
+    assert main(io.StringIO(json.dumps(event)), stdout) == 0
+    assert stdout.getvalue() == ""
 
 
 @pytest.mark.parametrize(

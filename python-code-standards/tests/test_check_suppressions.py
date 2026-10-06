@@ -6,6 +6,7 @@ explicitly as the reported ones.
 
 from __future__ import annotations
 
+import re
 import runpy
 import sys
 from collections.abc import Sequence
@@ -54,6 +55,9 @@ NOQA: str = "# " + "noqa"  # split so this file holds no suppression of its own
         ("x  # type:ignore[arg-type]", [Suppression("type: ignore", "arg-type")]),
         ("x  # pyright:ignore[reportPrivateUsage]", [Suppression("pyright: ignore", "reportPrivateUsage")]),
         ("x  # ruff:noqa: E501", [Suppression("ruff: noqa", "E501")]),
+        # mutmut skips a line marked this way, hiding it from mutation testing.
+        ("x = 1  # pragma: no mutate", [Suppression("pragma", "no mutate")]),
+        ("x = 1  # pragma no mutate", [Suppression("pragma", "no mutate")]),
     ],
     ids=[
         "none",
@@ -83,6 +87,8 @@ NOQA: str = "# " + "noqa"  # split so this file holds no suppression of its own
         "type-ignore-compact",
         "pyright-ignore-compact",
         "ruff-noqa-compact",
+        "pragma-no-mutate",
+        "pragma-no-mutate-no-colon",
     ],
 )
 def test_suppressions_in(line: str, expected: list[Suppression]) -> None:
@@ -252,7 +258,81 @@ def test_base_mode_checks_every_file_changed_since_the_merge_base(tmp_path: Path
 
 def test_git_failure_fails_closed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--base", "origin/missing"], Git({}), lambda _: "", tmp_path / "suppressions.toml") == 1
-    assert "fatal: unexpected git merge-base" in capsys.readouterr().out
+    out: str = capsys.readouterr().out
+    assert "`git merge-base origin/missing HEAD` failed, so the change cannot be checked:" in out
+    assert "fatal: unexpected git merge-base" in out
+
+
+def test_only_added_lines_of_a_tracked_file_count(tmp_path: Path) -> None:
+    """A suppression already in the file is not the change's; only the diff's added lines are checked."""
+    diff: str = "--- a/src/app.py\n+++ b/src/app.py\n@@ -1,0 +2 @@\n+y: int = 2\n"
+    git: Git = Git(
+        {
+            ("git", "rev-parse", "--verify", "--quiet", "HEAD"): Result(0, "abc123\n"),
+            ("git", "ls-files", "-z", "--others", "--exclude-standard", "--", "src/app.py"): Result(0, ""),
+            ("git", "diff", "-U0", "--no-color", "--no-ext-diff", "HEAD", "--", "src/app.py"): Result(0, diff),
+        }
+    )
+    files: dict[str, str] = {"src/app.py": f"import os  {NOQA}: F401\ny: int = 2\n"}
+    assert main(["src/app.py"], git, files.__getitem__, tmp_path / "suppressions.toml") == 0
+
+
+def test_reads_the_checked_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    files: dict[str, str] = {"src/app.py": f"import os  {NOQA}: F401\n"}
+    assert main(["src/app.py"], Git(untracked("src/app.py")), files.__getitem__, tmp_path / "suppressions.toml") == 1
+    assert "src/app.py:1: new suppression `noqa: F401`" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["tests/helpers.py", r"tests\helpers.py", r"src\test_app.py", "pkg/tests/conftest.py"],
+    ids=["tests-dir", "tests-dir-windows", "test-file-windows", "nested-tests-dir"],
+)
+def test_test_files_may_suppress_private_usage(path: str) -> None:
+    assert Allowed(set()).permits(path, Suppression("pyright: ignore", "reportPrivateUsage"))
+
+
+@pytest.mark.parametrize("path", ["src/app.py", "src/contest.py", "latest/app.py"], ids=["source", "test-like-name", "test-like-dir"])
+def test_source_files_may_not_suppress_private_usage(path: str) -> None:
+    assert not Allowed(set()).permits(path, Suppression("pyright: ignore", "reportPrivateUsage"))
+
+
+def test_file_setting_label_reads_like_the_comment() -> None:
+    assert Suppression("pyright", "basic").label() == "pyright: basic"
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ('[[suppression]]\npath = "a.py"\ncode = "S603"\nreason = "r"\n\n[[suppression]]\npath = "b.py"\n', "entry 2 needs"),
+        ('suppression = ["a.py"]\n', "entry 1 needs"),
+    ],
+    ids=["second-entry-numbered", "entry-not-a-table"],
+)
+def test_load_allowed_names_the_bad_entry(tmp_path: Path, text: str, message: str) -> None:
+    allow: Path = tmp_path / "suppressions.toml"
+    allow.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        load_allowed(allow)
+
+
+def test_load_allowed_ignores_a_non_list_suppression_key(tmp_path: Path) -> None:
+    """A malformed key approves nothing, which is the safe direction."""
+    allow: Path = tmp_path / "suppressions.toml"
+    allow.write_text('suppression = "oops"\n', encoding="utf-8")
+    assert load_allowed(allow) == Allowed(set())
+
+
+def test_help_shows_the_module_docstring_and_option_help(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
+    exit_info: pytest.ExceptionInfo[SystemExit]
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--help"], Git({}), lambda _: "", Path("suppressions.toml"))
+    assert exit_info.value.code == 0
+    out: str = capsys.readouterr().out
+    assert '\n    [[suppression]]\n    path = "tools/hooks/stop_gate.py"\n' in out
+    assert re.search(r"--base BASE +compare against the merge base with this ref instead of HEAD\n", out)
+    assert re.search(r"files +files to check; default: every file changed since --base\n", out)
 
 
 def test_read_file(tmp_path: Path) -> None:

@@ -666,14 +666,15 @@ class ScopeChecker(ast.NodeVisitor):
         self.visit(node.value)
 
     def _visit_comprehension(self, generators: list[ast.comprehension]) -> None:
-        """Exempt comprehension targets, which occupy their own scope."""
+        """Check each iterable; the targets are exempt and declare nothing here.
+
+        A comprehension's targets occupy its own scope, so they are never bindings
+        of the enclosing scope, and a later binding of the same name still needs
+        its own annotation.
+        """
         generator: ast.comprehension
         for generator in generators:
             self.visit(generator.iter)
-            target: ast.AST
-            for target in ast.walk(generator.target):
-                if isinstance(target, ast.Name):
-                    self.declared.add(target.id)
 
     def visit_ListComp(self, node: ast.ListComp) -> None:
         """Handle list comprehensions."""
@@ -844,7 +845,7 @@ def read_source(path: Path) -> str:
         return text
 
     document: dict[str, object] = json.loads(text)
-    cells: object = document.get("cells", [])
+    cells: object = document.get("cells")
     if not isinstance(cells, list):
         return ""
     return "\n".join(_cell_code(cell) for cell in cells if isinstance(cell, dict) and cell.get("cell_type") == "code")
@@ -1044,8 +1045,9 @@ ALLOW_LIST: Path = Path("suppressions.toml")
 REQUIRED_KEYS: tuple[str, ...] = ("path", "code", "reason")
 # Line-level directives, then the file- and function-level ones (ruff and flake8
 # file noqa, mypy and pyright file comments, complexipy's ignore), which silence
-# more than a line. coverage.py honors both "no cover" and "no branch" pragmas.
-DIRECTIVE: re.Pattern[str] = re.compile(r"#\s*(ruff:\s*noqa|flake8:\s*noqa|noqa|type:\s*ignore|pyright:\s*ignore|pyright:|mypy:|complexipy:\s*ignore|pragma:?\s*no\s*(?:cover|branch))", re.IGNORECASE)
+# more than a line. coverage.py honors "no cover" and "no branch" pragmas, and
+# mutmut skips lines marked "no mutate".
+DIRECTIVE: re.Pattern[str] = re.compile(r"#\s*(ruff:\s*noqa|flake8:\s*noqa|noqa|type:\s*ignore|pyright:\s*ignore|pyright:|mypy:|complexipy:\s*ignore|pragma:?\s*no\s*(?:cover|branch|mutate))", re.IGNORECASE)
 # Ruff separates noqa codes with commas, spaces, or both; every code is captured.
 NOQA_CODES: re.Pattern[str] = re.compile(r":\s*([A-Z]+[0-9]+(?:[\s,]+[A-Z]+[0-9]+)*)")
 CODE: re.Pattern[str] = re.compile(r"[A-Z]+[0-9]+")
@@ -1062,6 +1064,7 @@ CANONICAL: dict[str, str] = {
     "complexipyignore": "complexipy: ignore",
     "pragmanocover": "pragma: no cover",
     "pragmanobranch": "pragma: no branch",
+    "pragmanomutate": "pragma: no mutate",
 }
 NOQA_KINDS: frozenset[str] = frozenset({"noqa", "ruff: noqa", "flake8: noqa"})
 BRACKETED_RULES: re.Pattern[str] = re.compile(r"\[([^\]]*)\]")
@@ -1099,7 +1102,7 @@ class Allowed:
 def is_test(path: str) -> bool:
     """Return whether a path names a unit-test file."""
     normalized: str = "/" + path.replace("\\", "/")
-    return "/tests/" in normalized or normalized.rsplit("/", 1)[-1].startswith("test_")
+    return "/tests/" in normalized or normalized.rpartition("/")[2].startswith("test_")
 
 
 def suppressions_in(line: str) -> list[Suppression]:
@@ -1121,7 +1124,7 @@ def parse_directive(word: str, tail: str) -> list[Suppression]:
         return [Suppression(word, rule.strip()) for rule in (rules.group(1).split(",") if rules else [""])]
     if word in {"pyright:", "mypy:"}:
         # The whole setting is the code, so approving one value never approves another.
-        return [Suppression(word.rstrip(":"), " ".join(tail.split()))]
+        return [Suppression(word.removesuffix(":"), " ".join(tail.split()))]
     if word == "complexipy: ignore":
         return [Suppression("complexipy", "ignore")]
     return [Suppression("pragma", word.removeprefix("pragma: "))]
@@ -1135,7 +1138,7 @@ def load_allowed(path: Path) -> Allowed:
     """
     if not path.exists():
         return Allowed(set())
-    entries: object = tomllib.loads(path.read_text(encoding="utf-8")).get("suppression", [])
+    entries: object = tomllib.loads(path.read_text(encoding="utf-8")).get("suppression")
     pairs: set[tuple[str, str]] = set()
     index: int
     entry: object
@@ -1534,8 +1537,9 @@ def is_protected(path: str) -> bool:
     Matching ignores case: on Windows and macOS ``PyProject.toml`` *is* the
     protected file. On a case-sensitive filesystem the cost is an extra prompt.
     """
-    normalized: str = "/" + path.replace("\\", "/").lstrip("/").casefold()
-    name: str = normalized.rsplit("/", 1)[-1]
+    # The leading "/" anchors the suffix and directory checks for a relative path.
+    normalized: str = "/" + path.replace("\\", "/").casefold()
+    name: str = normalized.rpartition("/")[2]
     return name in PROTECTED_NAMES or normalized.endswith(PROTECTED_SUFFIXES) or any(directory in normalized for directory in PROTECTED_DIRECTORIES)
 
 
