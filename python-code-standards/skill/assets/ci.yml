@@ -40,5 +40,18 @@ jobs:
       - name: Tests and coverage
         run: uv run pytest --cov --cov-report=term-missing --cov-report=xml --cov-branch
 
+      # A module no test imports never reaches coverage.xml, and diff-cover
+      # silently skips files without a record, so it would pass untested code.
+      - name: Every changed module has a coverage record
+        run: uv run python -m tools.check_coverage_records --base origin/${{ github.base_ref || 'main' }}
+
       - name: Coverage of changed lines
         run: uv run diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref || 'main' }} --fail-under=100
+
+      # In CI the tree is HEAD, so pre-commit's suppression check sees no added
+      # lines; this compares the branch against its merge base instead.
+      - name: No unapproved suppressions on this branch
+        run: uv run python -m tools.check_suppressions --base origin/${{ github.base_ref || 'main' }}
+
+      - name: Dependencies with known vulnerabilities
+        run: uv run pip-audit

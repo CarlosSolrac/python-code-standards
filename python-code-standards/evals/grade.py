@@ -25,13 +25,15 @@ import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import cast
 
-GRADER_VERSION: str = "3.0.0"
+GRADER_VERSION: str = "4.0.0"
 """Bump on any change to what is counted.
 
 Scores from different grader versions are not comparable: v3.0.0 dropped the
 ``used_uv`` field and began copying the config into the run directory, which
-changed which Ruff rules fire. The version is recorded in every result so a
+changed which Ruff rules fire. v4.0.0 counts against the expanded rule set
+(complexity, exception handling, boolean traps, performance), so Ruff totals rise. The version is recorded in every result so a
 cross-run comparison can be checked rather than assumed.
 """
 
@@ -121,7 +123,8 @@ def count_ruff(target: Path, config: Path) -> tuple[int, dict[str, int]]:
     payload: object = _payload(output, "[")
     if not isinstance(payload, list):
         return -1, {}
-    findings: list[dict[str, object]] = payload
+    # Ruff's JSON output is a list of finding objects; the cast states that shape.
+    findings: list[dict[str, object]] = cast("list[dict[str, object]]", payload)
     by_rule: dict[str, int] = {}
     finding: dict[str, object]
     for finding in findings:
@@ -178,10 +181,11 @@ def count_pyright(target: Path, config: Path) -> int:
     report: object = _payload(output, "{")
     if not isinstance(report, dict):
         return -1
-    summary: object = report.get("summary", {})
-    if isinstance(summary, dict):
-        return int(summary.get("errorCount", -1))
-    return -1
+    summary: object = cast("dict[str, object]", report).get("summary", {})
+    if not isinstance(summary, dict):
+        return -1
+    count: object = cast("dict[str, object]", summary).get("errorCount", -1)
+    return count if isinstance(count, int) else -1
 
 
 def grade(run: Path, checker: Path, config: Path) -> Score:
@@ -241,12 +245,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", type=Path, default=None)
     args: argparse.Namespace = parser.parse_args(argv)
 
-    scores: list[Score] = []
-    run: Path
-    for run in args.runs:
-        # Resolve every path: the tools below run with a different working
-        # directory, so a relative run path would resolve twice and match nothing.
-        scores.append(grade(run.resolve(), args.checker.resolve(), args.config.resolve()))
+    # Resolve every path: the tools below run with a different working
+    # directory, so a relative run path would resolve twice and match nothing.
+    scores: list[Score] = [grade(run.resolve(), args.checker.resolve(), args.config.resolve()) for run in args.runs]
 
     print(f"grader {GRADER_VERSION} — scores are comparable only across runs of the same version\n")
     print(f"{'run':<24}{'files':>6}{'lines':>7}{'decl':>7}{'ruff':>7}{'pyright':>9}")

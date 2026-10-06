@@ -167,36 +167,15 @@ class ScopeChecker(ast.NodeVisitor):
         """Record every name a structural pattern binds.
 
         ``MatchAs``, ``MatchStar``, and ``MatchMapping`` rest-targets are ordinary
-        bindings and can be pre-declared, so the rule applies to them.
+        bindings and can be pre-declared, so the rule applies to them. Sub-patterns
+        bind before the pattern's own name, matching their order in source.
         """
-        if isinstance(node, ast.MatchAs):
-            if node.pattern is not None:
-                self._bind_pattern(node.pattern)
-            if node.name is not None:
-                self._bind(ast.Name(id=node.name, lineno=node.lineno, col_offset=node.col_offset))
-            return
-        if isinstance(node, ast.MatchStar):
-            if node.name is not None:
-                self._bind(ast.Name(id=node.name, lineno=node.lineno, col_offset=node.col_offset))
-            return
-        if isinstance(node, ast.MatchMapping):
-            sub: ast.pattern
-            for sub in node.patterns:
-                self._bind_pattern(sub)
-            if node.rest is not None:
-                # ``**rest`` has no AST node of its own; report it at the end of
-                # the mapping so it sorts after the keys it follows in source.
-                self._bind(ast.Name(id=node.rest, lineno=node.end_lineno or node.lineno, col_offset=node.end_col_offset or node.col_offset))
-            return
-        if isinstance(node, (ast.MatchSequence, ast.MatchOr)):
-            element: ast.pattern
-            for element in node.patterns:
-                self._bind_pattern(element)
-            return
-        if isinstance(node, ast.MatchClass):
-            positional: ast.pattern
-            for positional in [*node.patterns, *node.kwd_patterns]:
-                self._bind_pattern(positional)
+        sub: ast.pattern
+        for sub in _sub_patterns(node):
+            self._bind_pattern(sub)
+        target: ast.Name | None = _pattern_target(node)
+        if target is not None:
+            self._bind(target)
 
     def visit_Match(self, node: ast.Match) -> None:
         """Check every case pattern, then each case body."""
@@ -343,6 +322,28 @@ class ScopeChecker(ast.NodeVisitor):
             self.visit(statement)
 
 
+def _sub_patterns(node: ast.pattern) -> list[ast.pattern]:
+    """Return a structural pattern's direct sub-patterns, in source order."""
+    if isinstance(node, ast.MatchAs):
+        return [] if node.pattern is None else [node.pattern]
+    if isinstance(node, (ast.MatchMapping, ast.MatchSequence, ast.MatchOr)):
+        return list(node.patterns)
+    if isinstance(node, ast.MatchClass):
+        return [*node.patterns, *node.kwd_patterns]
+    return []
+
+
+def _pattern_target(node: ast.pattern) -> ast.Name | None:
+    """Return the name a pattern binds itself, apart from its sub-patterns, as a reportable node."""
+    if isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name is not None:
+        return ast.Name(id=node.name, lineno=node.lineno, col_offset=node.col_offset)
+    if isinstance(node, ast.MatchMapping) and node.rest is not None:
+        # ``**rest`` has no AST node of its own; report it at the end of
+        # the mapping so it sorts after the keys it follows in source.
+        return ast.Name(id=node.rest, lineno=node.end_lineno or node.lineno, col_offset=node.end_col_offset or node.col_offset)
+    return None
+
+
 def check_source(path: Path, source: str) -> list[Violation]:
     """Return every declaration violation in one module.
 
@@ -377,15 +378,16 @@ def read_source(path: Path) -> str:
 
     document: dict[str, object] = json.loads(text)
     cells: object = document.get("cells", [])
-    sources: list[str] = []
-    if isinstance(cells, list):
-        cell: object
-        for cell in cells:
-            if isinstance(cell, dict) and cell.get("cell_type") == "code":
-                lines: object = cell.get("source", "")
-                joined: str = "".join(lines) if isinstance(lines, list) else str(lines)
-                sources.append("\n".join(line for line in joined.splitlines() if not line.lstrip().startswith(("%", "!"))))
-    return "\n".join(sources)
+    if not isinstance(cells, list):
+        return ""
+    return "\n".join(_cell_code(cell) for cell in cells if isinstance(cell, dict) and cell.get("cell_type") == "code")
+
+
+def _cell_code(cell: dict[str, object]) -> str:
+    """Return one notebook code cell's source, without IPython magics or shell escapes."""
+    lines: object = cell.get("source", "")
+    joined: str = "".join(lines) if isinstance(lines, list) else str(lines)
+    return "\n".join(line for line in joined.splitlines() if not line.lstrip().startswith(("%", "!")))
 
 
 def iter_python_files(roots: list[Path]) -> Iterator[Path]:
