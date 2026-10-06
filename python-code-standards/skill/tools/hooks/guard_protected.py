@@ -43,6 +43,7 @@ PROTECTED_SUFFIXES: tuple[str, ...] = (
     "/tools/check_coverage_records.py",
     "/tools/changes.py",
     "/tools/mutation.sh",
+    "/tools/review_brief.py",
     "/.claude/settings.json",
     "/.claude/settings.local.json",
 )
@@ -55,7 +56,7 @@ SHELL_TOOLS: frozenset[str] = frozenset({"Bash", "PowerShell"})
 PROTECTED_TARGETS: str = (
     "(?:"
     + "|".join(re.escape(name) for name in sorted(PROTECTED_NAMES))
-    + r"|\.github[/\\]workflows|tools[/\\](?:check_declarations|check_suppressions|check_coverage_records|changes)\.py|tools[/\\]mutation\.sh|tools[/\\]hooks|\.claude[/\\]settings)"
+    + r"|\.github[/\\]workflows|tools[/\\](?:check_declarations|check_suppressions|check_coverage_records|changes|review_brief)\.py|tools[/\\]mutation\.sh|tools[/\\]hooks|\.claude[/\\]settings)"
 )
 # A protected file named anywhere in a command: a bare name, or a path ending in one.
 PROTECTED_IN_COMMAND: re.Pattern[str] = re.compile(r"(?:^|[\s'\"=/\\])" + PROTECTED_TARGETS, re.IGNORECASE)

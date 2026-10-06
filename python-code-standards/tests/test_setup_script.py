@@ -67,6 +67,7 @@ def heredoc(delimiter: str) -> str:
         ("ALLOWEOF", "skill/assets/suppressions.toml"),
         ("MUTEOF", "skill/tools/mutation.sh"),
         ("MUTCI", "skill/assets/mutation.yml"),
+        ("BRIEFEOF", "skill/tools/review_brief.py"),
     ],
     ids=[
         "check_declarations",
@@ -84,6 +85,7 @@ def heredoc(delimiter: str) -> str:
         "suppressions-allow-list",
         "mutation-runner",
         "mutation-workflow",
+        "review-brief",
     ],
 )
 @pytest.mark.no_mutation

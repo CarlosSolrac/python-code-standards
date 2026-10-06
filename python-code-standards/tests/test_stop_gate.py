@@ -186,11 +186,24 @@ def test_paths_git_would_quote_are_still_gated() -> None:
     assert all("-z" in call for call in git_calls)
 
 
-def test_passing_gates_stay_silent_and_run_in_order() -> None:
+def test_passing_gates_run_in_order_then_the_brief() -> None:
+    """An empty brief adds nothing, so passing gates stay silent."""
     runner: FakeRunner = FakeRunner(changed(modified=["a.py"]))
     assert stop(runner) is None
-    gates: list[str] = [call[2] for call in runner.calls if call[0] == "uv"]
-    assert gates == ["pre-commit", "pytest", "diff-cover"]
+    uv_calls: list[list[str]] = [call for call in runner.calls if call[0] == "uv"]
+    assert [call[2] for call in uv_calls[:3]] == ["pre-commit", "pytest", "diff-cover"]
+    assert uv_calls[3] == ["uv", "run", "--no-sync", "python", "-m", "tools.review_brief"]
+
+
+def test_passing_gates_show_the_user_the_review_brief() -> None:
+    brief: str = "# Review brief: changes since HEAD\n\n## Size: 1 files, +2 / -0\n"
+    runner: FakeRunner = FakeRunner({**changed(modified=["a.py"]), "uv run --no-sync python -m tools.review_brief": Result(0, brief)})
+    assert stop(runner) == {"systemMessage": brief.rstrip()}
+
+
+def test_a_failing_brief_never_blocks_the_stop() -> None:
+    runner: FakeRunner = FakeRunner({**changed(modified=["a.py"]), "uv run --no-sync python -m tools.review_brief": Result(1, "`git ...` failed")})
+    assert stop(runner) is None
 
 
 def test_failing_gate_blocks_the_stop_with_its_output() -> None:

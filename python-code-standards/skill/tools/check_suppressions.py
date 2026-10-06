@@ -137,14 +137,23 @@ def load_allowed(path: Path) -> Allowed:
     """
     if not path.exists():
         return Allowed(set())
-    entries: object = tomllib.loads(path.read_text(encoding="utf-8")).get("suppression")
+    return allowed_from_text(path.read_text(encoding="utf-8"), str(path))
+
+
+def allowed_from_text(text: str, source: str) -> Allowed:
+    """Parse allow-list text; ``source`` names it in error messages.
+
+    Raises:
+        ValueError: an entry lacks a non-empty path, code, or reason.
+    """
+    entries: object = tomllib.loads(text).get("suppression")
     pairs: set[tuple[str, str]] = set()
     index: int
     entry: object
     for index, entry in enumerate(entries if isinstance(entries, list) else [], start=1):
         fields: list[object] = [entry.get(key) for key in REQUIRED_KEYS] if isinstance(entry, dict) else []
         if not fields or not all(isinstance(field, str) and field.strip() for field in fields):
-            message: str = f"{path}: [[suppression]] entry {index} needs a non-empty path, code, and reason"
+            message: str = f"{source}: [[suppression]] entry {index} needs a non-empty path, code, and reason"
             raise ValueError(message)
         pairs.add((str(fields[0]), str(fields[1])))
     return Allowed(pairs)
