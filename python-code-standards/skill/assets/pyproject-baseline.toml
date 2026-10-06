@@ -14,6 +14,7 @@ dev = [
     "complexipy>=8,<9",           # cognitive complexity cap, see [tool.complexipy]
     "deptry>=0.25,<0.26",         # unused, missing, and transitive dependencies
     "diff-cover>=10,<11",        # CI: 100% coverage of changed lines
+    "mutmut>=3.8,<4; sys_platform != 'win32'",  # needs os.fork; on Windows run it through WSL
     "mypy>=1.18,<2",
     "pip-audit>=2.10,<3",         # CI: dependencies with known vulnerabilities
     "pre-commit>=4,<5",
@@ -131,12 +132,23 @@ disallow_any_explicit = false
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers"
+# Mutation runs skip these: they run code in a child process, where mutants
+# cannot be switched on, or compare source bytes that mutmut rewrites.
+markers = ["no_mutation: needs the unmutated source or a child process; skipped by mutmut"]
 # An xfail that starts passing, or a warning nobody reads, is a test that stopped testing.
 xfail_strict = true
 filterwarnings = ["error"]
 testpaths = ["tests"]
 # No build system, so the project is never installed; tests import it from the root.
 pythonpath = ["."]
+
+[tool.mutmut]
+# Mutation testing (tools/mutation.sh): a surviving mutant is a code change no
+# test noticed. Required before the first run: list the code to mutate, e.g.
+#   source_paths = ["mypackage"]
+# mutmut's own guess uses the checkout folder's name, which breaks in clones and CI.
+pytest_add_cli_args_test_selection = ["tests/"]
+pytest_add_cli_args = ["-m", "not no_mutation"]
 
 [tool.complexipy]
 # Cognitive complexity per function; Ruff's C90 caps cyclomatic complexity at 10.

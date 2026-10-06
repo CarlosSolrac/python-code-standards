@@ -111,6 +111,36 @@ The first failure blocks the stop, and the tail of its output goes back to the a
 - **Assumption:** the base branch is `main`. Elsewhere, diff-cover's error says so and the
   stop is blocked once.
 
+## Mutation testing
+
+100% coverage proves every line ran, not that any test checked the result. mutmut
+changes the code one small step at a time (`>=` to `>`, `//` to `/`, a constant
+nudged) and reruns the tests. A **surviving mutant** is a change no test noticed.
+
+- **Run:** `bash tools/mutation.sh`, optionally with a mutant name pattern. Always
+  through `bash`: the script is not marked executable, and Windows commits cannot
+  mark it. mutmut needs `os.fork`, so on Windows it runs in WSL:
+  `wsl -e bash tools/mutation.sh`. The
+  script keeps the Linux environment outside the checkout, under
+  `~/.venvs/<project>`, so it never replaces the Windows `.venv` in a shared
+  folder. CI runs it nightly and on demand (`mutation.yml`).
+- **Configure:** list the code in `[tool.mutmut] source_paths`. The script refuses
+  to run without it, because mutmut's own guess uses the checkout folder's name and
+  breaks in clones and CI.
+- **Report-only.** Survivors go to `mutants/survivors.txt` and the CI artifact and
+  never fail a build. Some survivors are *equivalent* (no observable change), which
+  makes any fixed threshold arbitrary.
+- **Tests mutmut cannot use** carry `@pytest.mark.no_mutation`: a test that runs
+  project code in a child process (mutants are only switched on in-process) or that
+  compares source bytes (mutmut rewrites them).
+- **Reading a survivor:** `mutmut show <name>` prints the diff. In a live check a
+  test asserting `discount(25_000) == 2500` survived `total // 10` becoming
+  `total / 10`, because `2500.0 == 2500`. Strict Pyright rejects that mutant through
+  the `-> int` annotation, so typing and mutation testing complement each other.
+- **This repository (2026-10-06):** 1,446 mutants, 1,118 killed, 321 survived, 7
+  timeouts, a 77% score at 100% line and branch coverage. Killing them is follow-up
+  work.
+
 ## Metrics deliberately not used
 
 - **Coverage percentage as a goal on its own.** It proves lines ran, not that tests assert

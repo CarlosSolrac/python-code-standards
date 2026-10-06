@@ -105,6 +105,7 @@ def test_third_party_imports_skips_unparseable_files(tmp_path: Path) -> None:
     assert third_party_imports(tmp_path) == ["duckdb"]
 
 
+@pytest.mark.no_mutation
 def test_count_declarations_uses_absolute_paths(tmp_path: Path) -> None:
     """Counting must not depend on the caller's working directory.
 
@@ -118,6 +119,7 @@ def test_count_declarations_uses_absolute_paths(tmp_path: Path) -> None:
     assert count_declarations(run.resolve(), checker.resolve()) == 2
 
 
+@pytest.mark.no_mutation
 def test_grade_records_version_and_counts(tmp_path: Path) -> None:
     """A graded run carries the grader version and the declaration count."""
     run: Path = tmp_path / "sample"
@@ -132,6 +134,7 @@ def test_grade_records_version_and_counts(tmp_path: Path) -> None:
     assert score.files == 1
 
 
+@pytest.mark.no_mutation
 def test_grade_notes_missing_python_files(tmp_path: Path) -> None:
     """An empty run directory is called out rather than scored as clean."""
     run: Path = tmp_path / "empty"
@@ -143,6 +146,7 @@ def test_grade_notes_missing_python_files(tmp_path: Path) -> None:
     assert any("no Python files" in note for note in score.notes)
 
 
+@pytest.mark.no_mutation
 def test_grade_flags_pip_usage(tmp_path: Path) -> None:
     """The standards require uv, so a pip invocation in the output is noted."""
     run: Path = tmp_path / "sample"
@@ -155,6 +159,7 @@ def test_grade_flags_pip_usage(tmp_path: Path) -> None:
     assert any("pip" in note for note in score.notes)
 
 
+@pytest.mark.no_mutation
 def test_score_serializes_to_json(tmp_path: Path) -> None:
     """Scores must round-trip through the --json output path."""
     run: Path = tmp_path / "sample"
@@ -168,6 +173,7 @@ def test_score_serializes_to_json(tmp_path: Path) -> None:
     assert restored["grader_version"] == GRADER_VERSION
 
 
+@pytest.mark.no_mutation
 def test_main_prints_table_and_returns_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """The CLI reports rather than gates, so it exits zero even with violations."""
     run: Path = tmp_path / "sample"
@@ -182,6 +188,7 @@ def test_main_prints_table_and_returns_zero(tmp_path: Path, capsys: pytest.Captu
     assert "decl" in captured
 
 
+@pytest.mark.no_mutation
 def test_main_writes_json_with_version(tmp_path: Path) -> None:
     """The --json path records the grader version for cross-run comparison."""
     run: Path = tmp_path / "sample"

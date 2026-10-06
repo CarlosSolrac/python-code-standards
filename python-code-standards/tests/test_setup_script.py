@@ -65,6 +65,8 @@ def heredoc(delimiter: str) -> str:
         ("SUPPRESSEOF", "skill/tools/check_suppressions.py"),
         ("COVRECEOF", "skill/tools/check_coverage_records.py"),
         ("ALLOWEOF", "skill/assets/suppressions.toml"),
+        ("MUTEOF", "skill/tools/mutation.sh"),
+        ("MUTCI", "skill/assets/mutation.yml"),
     ],
     ids=[
         "check_declarations",
@@ -80,8 +82,11 @@ def heredoc(delimiter: str) -> str:
         "check_suppressions",
         "check_coverage_records",
         "suppressions-allow-list",
+        "mutation-runner",
+        "mutation-workflow",
     ],
 )
+@pytest.mark.no_mutation
 def test_embedded_template_matches_source(delimiter: str, asset: str) -> None:
     """Each embedded heredoc is identical to the file it vendors.
 

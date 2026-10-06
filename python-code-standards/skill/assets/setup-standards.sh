@@ -28,6 +28,8 @@
 #   tools/check_coverage_records.py  CI: fails on a changed module no test imports
 #   tools/changes.py            git helpers shared by the two checks above
 #   suppressions.toml           the approved suppressions (path, code, reason)
+#   tools/mutation.sh           mutation testing (mutmut); on Windows run it in WSL
+#   .github/workflows/mutation.yml  nightly, report-only mutation run
 #   tools/hooks/                Claude Code hooks: ask before a gate changes; block
 #                               "done" until the gates pass on changed files
 #   .claude/settings.json       registers those hooks for this project
@@ -147,6 +149,7 @@ dev = [
     "complexipy>=8,<9",           # cognitive complexity cap, see [tool.complexipy]
     "deptry>=0.25,<0.26",         # unused, missing, and transitive dependencies
     "diff-cover>=10,<11",        # CI: 100% coverage of changed lines
+    "mutmut>=3.8,<4; sys_platform != 'win32'",  # needs os.fork; on Windows run it through WSL
     "mypy>=1.18,<2",
     "pip-audit>=2.10,<3",         # CI: dependencies with known vulnerabilities
     "pre-commit>=4,<5",
@@ -264,12 +267,23 @@ disallow_any_explicit = false
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers"
+# Mutation runs skip these: they run code in a child process, where mutants
+# cannot be switched on, or compare source bytes that mutmut rewrites.
+markers = ["no_mutation: needs the unmutated source or a child process; skipped by mutmut"]
 # An xfail that starts passing, or a warning nobody reads, is a test that stopped testing.
 xfail_strict = true
 filterwarnings = ["error"]
 testpaths = ["tests"]
 # No build system, so the project is never installed; tests import it from the root.
 pythonpath = ["."]
+
+[tool.mutmut]
+# Mutation testing (tools/mutation.sh): a surviving mutant is a code change no
+# test noticed. Required before the first run: list the code to mutate, e.g.
+#   source_paths = ["mypackage"]
+# mutmut's own guess uses the checkout folder's name, which breaks in clones and CI.
+pytest_add_cli_args_test_selection = ["tests/"]
+pytest_add_cli_args = ["-m", "not no_mutation"]
 
 [tool.complexipy]
 # Cognitive complexity per function; Ruff's C90 caps cyclomatic complexity at 10.
@@ -378,6 +392,7 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+mutants/
 IGNORE
 
 # --------------------------------------------------------------------------- #
@@ -1283,6 +1298,90 @@ reason = "the async visitors reuse the sync ones; async nodes carry the same fie
 ALLOWEOF
 
 # --------------------------------------------------------------------------- #
+# Mutation testing -- report-only, nightly in CI and on demand. Kept
+# byte-identical to skill/ by tests/test_setup_script.py.
+# --------------------------------------------------------------------------- #
+
+write_file tools/mutation.sh <<'MUTEOF'
+#!/usr/bin/env bash
+#
+# mutation.sh -- run mutation testing (mutmut) and list the surviving mutants.
+#
+# A surviving mutant is a change to the code that no test noticed: the line ran,
+# but nothing checked its result. Report-only: survivors never fail this script;
+# mutmut errors do.
+#
+# Run it through bash: setup writes it without the executable bit, and commits
+# made on Windows never record one.
+#   bash tools/mutation.sh
+# mutmut needs os.fork, so it runs on Linux and macOS. On Windows, run it in WSL:
+#   wsl -e bash tools/mutation.sh
+# Pass a mutant name pattern to narrow a local run:
+#   bash tools/mutation.sh 'mypackage.module*'
+#
+# Results: mutants/mutmut-cicd-stats.json (counts) and mutants/survivors.txt.
+
+set -euo pipefail
+
+# The project root is the nearest directory holding pyproject.toml, which is not
+# always the git root.
+cd "$(dirname "$0")"
+while [ ! -f pyproject.toml ] && [ "$PWD" != / ]; do cd ..; done
+
+# mutmut's own guess uses the checkout folder's name, so it breaks in a clone or a
+# CI checkout under another name. Require the code to be listed explicitly.
+if ! grep -q '^source_paths *=' pyproject.toml; then
+    printf 'mutation.sh: list the code to mutate in pyproject.toml, e.g.\n  [tool.mutmut]\n  source_paths = ["mypackage"]\n' >&2
+    exit 2
+fi
+
+# Keep the Linux environment outside the checkout: under WSL this folder is shared
+# with Windows, and syncing here would replace the Windows .venv.
+export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$HOME/.venvs/$(basename "$PWD")}"
+
+uv sync --all-groups --quiet
+uv run --no-sync mutmut run "$@"
+uv run --no-sync mutmut export-cicd-stats
+uv run --no-sync mutmut results | tee mutants/survivors.txt
+MUTEOF
+
+write_file .github/workflows/mutation.yml <<'MUTCI'
+name: mutation
+
+# Report-only mutation testing. Surviving mutants (code changes no test noticed)
+# are listed in the job log and uploaded as an artifact; they never fail the run.
+# It takes too long for every push, so it runs nightly and on demand.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Mutation testing
+        run: bash tools/mutation.sh
+
+      - name: Upload survivors
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: |
+            mutants/mutmut-cicd-stats.json
+            mutants/survivors.txt
+          if-no-files-found: warn
+MUTCI
+
+# --------------------------------------------------------------------------- #
 # Claude Code hooks -- .claude/settings.json and tools/hooks/, kept
 # byte-identical to skill/ by tests/test_setup_script.py in the standards repo.
 # guard_protected.py asks before a quality gate is changed; stop_gate.py keeps
@@ -1369,6 +1468,7 @@ PROTECTED_SUFFIXES: tuple[str, ...] = (
     "/tools/check_suppressions.py",
     "/tools/check_coverage_records.py",
     "/tools/changes.py",
+    "/tools/mutation.sh",
     "/.claude/settings.json",
     "/.claude/settings.local.json",
 )
@@ -1381,7 +1481,7 @@ SHELL_TOOLS: frozenset[str] = frozenset({"Bash", "PowerShell"})
 PROTECTED_TARGETS: str = (
     "(?:"
     + "|".join(re.escape(name) for name in sorted(PROTECTED_NAMES))
-    + r"|\.github[/\\]workflows|tools[/\\](?:check_declarations|check_suppressions|check_coverage_records|changes)\.py|tools[/\\]hooks|\.claude[/\\]settings)"
+    + r"|\.github[/\\]workflows|tools[/\\](?:check_declarations|check_suppressions|check_coverage_records|changes)\.py|tools[/\\]mutation\.sh|tools[/\\]hooks|\.claude[/\\]settings)"
 )
 # A protected file named anywhere in a command: a bare name, or a path ending in one.
 PROTECTED_IN_COMMAND: re.Pattern[str] = re.compile(r"(?:^|[\s'\"=/\\])" + PROTECTED_TARGETS, re.IGNORECASE)

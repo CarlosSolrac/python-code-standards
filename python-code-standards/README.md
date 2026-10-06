@@ -46,7 +46,8 @@ repository that adopts the tooling vendors its own copy of every config file and
 `.pre-commit-config.yaml`, `.gitattributes`, a `.gitignore` (only when the repo has none),
 `.github/workflows/ci.yml`, `tools/check_declarations.py`, the change-scoped checks
 (`tools/check_suppressions.py`, `tools/check_coverage_records.py`, and their approved-suppression
-list `suppressions.toml`), and the Claude Code hooks
+list `suppressions.toml`), report-only mutation testing (`tools/mutation.sh` and a nightly
+`mutation.yml`), and the Claude Code hooks
 (`.claude/settings.json` and `tools/hooks/`, see [docs/quality-gates.md](docs/quality-gates.md)),
 then pins Python 3.13, runs
 `uv sync --all-groups`, installs the pre-commit hook, and runs the full check once. The check
@@ -106,6 +107,9 @@ uv run python skill\tools\check_declarations.py skill\tools skill\assets\conform
 uv run complexipy skill\tools tests evals\grade.py
 uv run deptry .
 ```
+
+Mutation testing needs `os.fork`, so on Windows it runs in WSL: `wsl -e bash skill/tools/mutation.sh`
+(see [docs/quality-gates.md](docs/quality-gates.md#mutation-testing)).
 
 `conformance.py` is the drift check: it is the executable form of these standards, so when a
 Ruff upgrade changes which rules fire, it fails here.
