@@ -54,14 +54,8 @@ then pins Python 3.13, runs
 is read-only: each tool runs directly in report mode, never through pre-commit, so existing
 code is reported on, never rewritten, and no hook from an existing config runs.
 
-Existing files are compared with their templates (`skill/tools/setup_files.py`). A file an
-earlier version of the script wrote and nobody edited since is safe to replace: an interactive
-run lists those and asks once, and `-y` replaces them only with `--update`. An edited file is
-kept, unless `--force` replaces it after saving `<file>.orig`; the backups are never staged.
-`pyproject.toml` is compared one `[tool.*]` table at a time, and a replaced table is swapped in
-place, so `[project]`, dependencies, and tables the baseline does not define are untouched. The
-file is backed up to `pyproject.toml.orig` before any swap, because a comment added inside a
-table does not change its value and so does not count as an edit.
+Existing files are compared with their templates (`skill/tools/setup_files.py`); see
+[what the script reports](skill/references/setup.md#what-the-script-reports).
 Missing `[dependency-groups] dev` tools are reported, never added; until they are installed,
 the check lists them as not run.
 
@@ -72,8 +66,14 @@ versions by digests of every template the script has ever written; after changin
 regenerate them with `uv run python -m skill.tools.template_history`, or that test fails.
 
 Run it from inside the target repository; it configures the repo your current directory is in,
-not wherever the script lives. `-y` skips the prompts, `--update` and `--force` allow
-replacements (`--help` lists them).
+not wherever the script lives. Pick the options for your task:
+
+- **New repository:** no options, or `-y` to skip the prompts. See
+  [Set up a new repository](skill/references/setup.md#set-up-a-new-repository).
+- **Upgrade a repository set up earlier:** `-y --update`. See
+  [Upgrade a repository set up earlier](skill/references/setup.md#upgrade-a-repository-set-up-earlier).
+- **Replace files you edited:** `-y --force`. See
+  [Replace files the user edited](skill/references/setup.md#replace-files-the-user-edited).
 
 ```bash
 cd <target-repo>

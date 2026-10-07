@@ -1,16 +1,55 @@
 # Setting up a repository
 
-Read when asked to set up or configure a repository to follow these standards, or to start a new project.
+Read when asked to set up, configure, or upgrade a repository to follow these standards, or to start a new project.
 
 ## The setup script
 
-Use `assets/setup-standards.sh` rather than copying templates by hand. It writes CI and hook configuration, installs a git hook, and runs `git add -A`, so first tell the user exactly that and wait for approval; `-y` only skips the script's own prompt, which cannot be answered from a non-interactive shell. Then run it from the repository root:
+Use `assets/setup-standards.sh` rather than copying templates by hand. It writes CI and hook configuration, installs a git hook, and runs `git add -A`, so first tell the user exactly that and wait for approval; `-y` only skips the script's own prompt, which cannot be answered from a non-interactive shell. Then run it from the repository root, with the options for the task below:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/assets/setup-standards.sh" -y
 ```
 
-With `-y` alone it never replaces an existing file; it lists each as current, outdated (an earlier version of the script wrote it and nobody edited it since), or edited, and `pyproject.toml` one `[tool.*]` table at a time. To update a repository set up by an earlier version, add `--update`, which replaces only outdated files and tables; `pyproject.toml` is saved as `pyproject.toml.orig` before any table changes. `--force` also replaces edited ones, saving each file as `<file>.orig`; it discards the user's changes, so pass it only when the user asks for exactly that. Merge kept edits, such as the `"hooks"` block of `.claude/settings.json`, by hand. Its check is read-only: Ruff in report mode, the declaration checker, Pyright, and MyPy run directly, never through pre-commit, so no hook from an existing config runs and problems in existing code are listed, not fixed. A tool the project's own `pyproject.toml` does not install is reported as not run; add the baseline's dev dependencies and re-run. Fixing them is a separate change for the user to approve; `uv run pre-commit run --all-files` applies Ruff's fixes and formatting. The hook it installs does apply them, but only to files in each later commit. Tests and coverage are separate checks.
+## Set up a new repository
+
+- Run `setup-standards.sh -y`.
+- Every missing file is created. Existing files are never replaced, only [reported](#what-the-script-reports).
+
+## Upgrade a repository set up earlier
+
+- Run `setup-standards.sh -y --update`.
+- Use it to pick up newer templates and tools, for example a fixed `tools/check_declarations.py`.
+- Replaces only **outdated** files and `[tool.*]` tables. **Edited** ones are kept and listed.
+- `pyproject.toml` is saved as `pyproject.toml.orig` before any table changes, because a comment added inside a table does not count as an edit.
+
+## Replace files the user edited
+
+- Run `setup-standards.sh -y --force`.
+- Only when the user asks to discard their changes to these files.
+- Replaces **outdated** and **edited** items. Each edited file is saved as `<file>.orig` first.
+
+## Run it in a terminal
+
+- No options: lists the outdated items and asks once before replacing them. Edited ones are kept.
+- `--force`: also asks, separately, before replacing edited ones.
+- Claude's shell cannot answer a prompt, so Claude always passes `-y`.
+
+## What the script reports
+
+A missing file is created. An existing one is listed with one of three statuses; `pyproject.toml` is compared one `[tool.*]` table at a time, and its `[project]`, dependencies, and tables the baseline does not define are never touched.
+
+| Status | Meaning |
+| --- | --- |
+| current | Identical to the template; nothing to do. |
+| outdated | An earlier version of the script wrote it and nobody edited it since, so replacing it loses nothing. |
+| edited | Differs from every version the script has written: the user changed it, or the script never wrote it. |
+
+- Backups are never staged. Compare each `.orig` file with its file, then delete it.
+- Merge kept edits, such as the `"hooks"` block of `.claude/settings.json`, by hand.
+
+## The first check
+
+After installing, the script checks the whole repository once. The check is read-only: Ruff in report mode, the declaration checker, Pyright, and MyPy run directly, never through pre-commit, so no hook from an existing config runs and problems in existing code are listed, not fixed. A tool the project's own `pyproject.toml` does not install is reported as not run; add the baseline's dev dependencies and re-run. Fixing them is a separate change for the user to approve; `uv run pre-commit run --all-files` applies Ruff's fixes and formatting. The hook it installs does apply them, but only to files in each later commit. Tests and coverage are separate checks.
 
 ## Templates
 

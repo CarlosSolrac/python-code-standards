@@ -105,10 +105,8 @@ you approve. The script writes `pyproject.toml`, `.pre-commit-config.yaml`, `.gi
 repository, and checks every file once: Ruff, formatting, the declaration checker, Pyright,
 and MyPy. The check is read-only — problems in code you already have are reported, not
 fixed, so nothing you wrote changes without your review. It does not run tests or coverage;
-those run in CI and whenever you run `uv run pytest`. An existing file is replaced only when
-an earlier version of the script wrote it and nobody edited it since; files you edited are
-kept unless you ask for `--force`, which saves each as `<file>.orig` first. Claude asks
-before committing the result.
+those run in CI and whenever you run `uv run pytest`. Claude asks before committing the
+result.
 
 The project needs `git` and `uv` on `PATH`, `bash` (Git Bash or WSL on Windows), and a git
 repository — in an empty folder, run `git init` first.
@@ -120,8 +118,36 @@ Recommended model and effort:
 | New, empty | Sonnet 5.5 (`/model sonnet`) | medium (`/effort medium`) | The script makes every decision, so the session only runs it and reads the output — a faster, cheaper model loses nothing. |
 | Existing code | Opus 5.5 (`/model opus`) | high (`/effort high`) | Merging an existing `pyproject.toml` and fixing the violations the first check reports are judgment calls, where the stronger model makes fewer wrong edits. |
 
-To run the script yourself instead, see
-[Configuring a repository](python-code-standards/README.md#configuring-a-repository-to-follow-the-standards).
+To run the script yourself:
+
+- **Commands for each shell:** see
+  [Configuring a repository](python-code-standards/README.md#configuring-a-repository-to-follow-the-standards).
+- **Options:** see
+  [Set up a new repository](python-code-standards/skill/references/setup.md#set-up-a-new-repository).
+
+## Upgrade a project set up earlier
+
+When these standards change, for example a new template or a fixed checker, bring a project
+that already uses them up to date.
+
+- **Prompt** — copy into Claude Code, opened in the project's folder:
+
+  ```text
+  Upgrade this repository to the current python-code-standards.
+  ```
+
+- **Run it yourself:** from the project's folder,
+
+  ```bash
+  ~/.claude/skills/python-code-standards/assets/setup-standards.sh -y --update
+  ```
+
+- **What it replaces:** only files and settings the script wrote earlier that nobody has
+  edited since. Files you edited are kept and listed. See
+  [Upgrade a repository set up earlier](python-code-standards/skill/references/setup.md#upgrade-a-repository-set-up-earlier).
+- **Replace files you edited too:** this discards your changes, so ask for it explicitly. See
+  [Replace files the user edited](python-code-standards/skill/references/setup.md#replace-files-the-user-edited).
+- **Model:** Sonnet 5.5 (`/model sonnet`), medium effort. The script decides what to replace.
 
 ## Reformat and fix existing code
 
