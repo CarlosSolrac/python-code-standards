@@ -159,13 +159,13 @@ dev = [
     "deptry>=0.25,<0.26",         # unused, missing, and transitive dependencies
     "diff-cover>=10,<11",        # CI: 100% coverage of changed lines
     "mutmut>=3.8,<4; sys_platform != 'win32'",  # needs os.fork; on Windows run it through WSL
-    "mypy>=1.18,<2",
+    "mypy>=2.4,<3",
     "pip-audit>=2.10,<3",         # CI: dependencies with known vulnerabilities
     "pre-commit>=4,<5",
     "pyright>=1.1.400,<2",       # PyPI wrapper; downloads a Node runtime on first run
     "pytest>=9.0.3,<10",         # 9.0.3 fixes PYSEC-2026-1845
     "pytest-cov>=6,<8",
-    "ruff>=0.14,<0.15",          # pinned: minor releases change which rules fire
+    "ruff>=0.16.10,<0.17",       # pinned: minor releases change which rules fire
 ]
 
 [tool.ruff]
@@ -319,7 +319,7 @@ write_file .pre-commit-config.yaml <<'YAML'
 # they need the narrowest practical entry point chosen per change.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.0
+    rev: v0.16.10
     hooks:
       - id: ruff
         args: [--fix]
@@ -2727,6 +2727,7 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
   ],
   ".pre-commit-config.yaml": [
    "3e92832f817e483c793dc743c6273b65dffb4d9f9e1fd0556ddaa9b96a39cd2e",
+   "b4c08952f1e2c7a61a06ffcaafe4bcf935e7b5163e432e3b5726757f609f3d9c",
    "c173562759098fbc74717df06805a98ddeb1bd8b8382f78f1e70c06d67be5bee",
    "c3133cfe1581b414de030c3215785f07ba1ed8e41450c297bb872cc9c083b098"
   ],
@@ -2770,7 +2771,6 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "21285496811452232ada10368a7b28c856803042ff43002f5c6cc9069f724fc4",
    "2f55b25b7d19dbaa2ffcfcd2d334f823a64fcf2dfaad15dd460b452ff532b6e4",
    "92083f4f7276073b4d7c0e4a51a08884fac811415ff820fb22cdd4f00152b23c",
-   "d69a0593f11a8f9a33aa2af90312646acc2ff6ee23e8d7b7da64f5af0136e1d4",
    "f8c6728c028cc00802d402bece1c85226e3d1cf0ddd3acfe07d1a5d67e53b2de"
   ],
   "tools/mutation.sh": [
