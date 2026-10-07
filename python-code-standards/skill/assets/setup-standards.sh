@@ -8,19 +8,23 @@
 #   cd ~/src/my-repo
 #   ~/.claude/skills/python-code-standards/assets/setup-standards.sh
 #
-#   -y, --yes    skip the confirmation prompt (required when stdin is not a tty)
+#   -y, --yes    never ask (required when stdin is not a tty); replace only what
+#                --update or --force allows
+#   --update     with --yes, replace files an earlier version of this script
+#                wrote and nobody edited since
+#   --force      like --update, and also replace edited files, saving each as
+#                <file>.orig first; without --yes it asks before doing so
 #   -h, --help   print this header
 #
 # Self-contained: every template below is embedded, so the script also works
 # copied on its own to a host with no clone of the standards repo. The embedded
-# tools/check_declarations.py is kept byte-identical to skill/tools/ by
-# tests/test_setup_script.py.
+# tools are kept byte-identical to skill/tools/ by tests/test_setup_script.py.
 #
-# It creates (never overwrites) these files, then bootstraps the environment:
+# It installs these files, then bootstraps the environment:
 #   pyproject.toml              ruff / pyright / mypy / pytest / coverage config
 #   .pre-commit-config.yaml     the lint + type verification loop
 #   .gitattributes              eol=lf as a property of the repo
-#   .gitignore                  Python caches and build output (only if absent)
+#   .gitignore                  Python caches and build output
 #   .github/workflows/ci.yml    CI: pre-commit --all-files + pytest --cov + diff-cover
 #   tools/check_declarations.py the "annotate before first binding" checker
 #   tools/__init__.py           makes tools importable as a package
@@ -36,8 +40,18 @@
 #   .claude/settings.json       registers those hooks for this project
 #   tests/.gitkeep              pytest testpaths root
 #
-# A file that already exists is left untouched and reported as skipped, so an
-# existing pyproject.toml is yours to merge by hand.
+# A missing file is created. An existing one is compared with the template:
+#   current   identical; nothing to do
+#   outdated  written by an earlier version of this script and never edited,
+#             recognized by the digests embedded below. Nothing is lost by
+#             replacing it: an interactive run lists these and asks once;
+#             --yes replaces them only with --update.
+#   edited    anything else. Kept, unless --force replaces it after saving
+#             <file>.orig.
+# pyproject.toml is always edited by the project, so it is compared one
+# [tool.*] table at a time, and a replaced table is swapped in place, leaving
+# every other line as it was; the file is saved as pyproject.toml.orig first.
+# Missing [dependency-groups] dev tools are only reported.
 
 set -euo pipefail
 
@@ -46,12 +60,18 @@ set -euo pipefail
 # --------------------------------------------------------------------------- #
 
 ASSUME_YES=0
+INSTALL_FLAGS=()
 arg=""
 for arg in "$@"; do
     case "$arg" in
-        -y | --yes) ASSUME_YES=1 ;;
+        -y | --yes)
+            ASSUME_YES=1
+            INSTALL_FLAGS+=(--yes)
+            ;;
+        --update | --force) INSTALL_FLAGS+=("$arg") ;;
         -h | --help)
-            sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+            # The header: every comment line after the shebang, up to the code.
+            awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
             exit 0
             ;;
         *)
@@ -98,33 +118,19 @@ fi
 printf '\nConfiguring %s at %s\n\n' "$PROJECT_NAME" "$REPO_ROOT"
 
 # --------------------------------------------------------------------------- #
-# File writers: create only when absent, consume the heredoc either way
+# Templates are staged first; setup_files.py (below) decides what reaches the
+# repository, comparing each with what is already there.
 # --------------------------------------------------------------------------- #
 
-CREATED=()
-SKIPPED=()
-
-absent() {
-    # Return 0 (and make the parent dir) when $1 should be written; 1 when it
-    # already exists.
-    if [ -e "$1" ]; then
-        SKIPPED+=("$1")
-        printf '  skip   %s (already exists)\n' "$1"
-        return 1
-    fi
-    mkdir -p "$(dirname "$1")"
-    return 0
-}
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+FILES="$WORK/files"
+mkdir -p "$FILES"
 
 write_file() {
-    # Write stdin to $1 when absent; otherwise drain stdin and move on.
-    if absent "$1"; then
-        cat >"$1"
-        CREATED+=("$1")
-        printf '  create %s\n' "$1"
-    else
-        cat >/dev/null
-    fi
+    # Stage stdin as the template for repository path $1.
+    mkdir -p "$(dirname "$FILES/$1")"
+    cat >"$FILES/$1"
 }
 
 # --------------------------------------------------------------------------- #
@@ -132,8 +138,7 @@ write_file() {
 # A repo directory name with '|' in it would break the sed; rename by hand then.
 # --------------------------------------------------------------------------- #
 
-if absent pyproject.toml; then
-    sed "s|^name = \"example-project\"\$|name = \"${PROJECT_NAME}\"|" >pyproject.toml <<'TOML'
+sed "s|^name = \"example-project\"\$|name = \"${PROJECT_NAME}\"|" >"$FILES/pyproject.toml" <<'TOML'
 ##
 ## Baseline tooling configuration for a new Python project.
 ## Use the repository's existing configuration when one is already present.
@@ -300,9 +305,6 @@ branch = true
 fail_under = 100
 show_missing = true
 TOML
-    CREATED+=("pyproject.toml")
-    printf '  create %s\n' "pyproject.toml"
-fi
 
 # --------------------------------------------------------------------------- #
 # .pre-commit-config.yaml
@@ -2230,6 +2232,543 @@ if __name__ == "__main__":
 STOPEOF
 
 # --------------------------------------------------------------------------- #
+# Install the staged templates. setup_files.py is kept byte-identical to
+# skill/tools/ by tests/test_setup_script.py; it needs only the standard
+# library, so it runs before the project environment exists. The digests are
+# generated by skill/tools/template_history.py from this script's git history.
+# --------------------------------------------------------------------------- #
+
+cat >"$WORK/setup_files.py" <<'SETUPEOF'
+"""Install the setup script's staged templates into a repository without silently losing edits.
+
+The setup script stages every template in a directory, then runs this module from
+the repository root. Each existing file is compared with its template:
+
+- current: identical to the template (line endings aside); nothing to do.
+- outdated: an earlier standards version nobody edited, recognized by its digest
+  in the setup script's history. Replacing it loses nothing, so an interactive run
+  offers it after one confirmation, and ``--yes --update`` replaces it unasked.
+- edited: anything else. Kept, unless ``--force`` replaces it after saving
+  ``<file>.orig``; an interactive run confirms that separately.
+
+Missing files are created. ``pyproject.toml`` is edited by every project (``uv add``
+alone changes it), so it is compared table by table instead: each ``[tool.*]``
+table of the baseline goes through the same states, and a table that is replaced
+is swapped in place, leaving every other line as it was. The file is saved as
+``pyproject.toml.orig`` before any swap, since comments inside a table do not
+change its parsed value and would otherwise be lost unseen. Tables the baseline does
+not define, such as ``[tool.check-declarations]``, are never touched.
+``[dependency-groups]`` is only reported: development tools the project lacks are
+listed, never added.
+
+The module runs standalone in the target repository, so it uses the standard
+library only.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import shutil
+import tomllib
+from collections.abc import Callable, Collection, Mapping
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
+from typing import Any
+
+PYPROJECT: str = "pyproject.toml"
+SETTINGS: str = ".claude/settings.json"
+HEADER: re.Pattern[str] = re.compile(r"^\[\[?([^\[\]]+)\]\]?\s*(?:#.*)?$")
+"""A TOML table or array-of-tables header line; group 1 is its dotted key."""
+
+REQUIREMENT_END: re.Pattern[str] = re.compile(r"[\s<>=!~;\[(@]")
+"""Where a requirement's project name ends: at a version, marker, extra, or URL."""
+
+
+class Status(StrEnum):
+    """How an existing file or table compares with its template."""
+
+    MISSING = "missing"
+    CURRENT = "current"
+    OUTDATED = "outdated"
+    EDITED = "edited"
+
+
+class RewriteError(Exception):
+    """A table could not be swapped in place, so ``pyproject.toml`` needs a manual merge."""
+
+
+@dataclass(frozen=True)
+class Item:
+    """One file, or one ``[tool.*]`` table of ``pyproject.toml``, and its status."""
+
+    path: str
+    status: Status
+    table: str = ""
+
+    def label(self) -> str:
+        """Return the file path, followed by the table for a ``pyproject.toml`` table."""
+        return f"{self.path} [tool.{self.table}]" if self.table else self.path
+
+
+def main(argv: list[str] | None = None, ask: Callable[[str], str] = input) -> int:
+    """Install the staged templates into the current directory.
+
+    Args:
+        argv: Command-line arguments, defaulting to ``sys.argv[1:]``.
+        ask: Prompts the user and returns the reply; raises ``EOFError`` without one.
+
+    Returns:
+        0; a failure raises.
+    """
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("stage", type=Path, help="directory holding the templates, laid out as in the repository")
+    parser.add_argument("--hashes", type=Path, required=True, help="JSON digests of every earlier template version")
+    parser.add_argument("--yes", action="store_true", help="never ask; replace only what --update or --force allows")
+    parser.add_argument("--update", action="store_true", help="with --yes, replace unedited earlier versions")
+    parser.add_argument("--force", action="store_true", help="like --update, and also replace edited files and tables, saving <file>.orig first")
+    args: argparse.Namespace = parser.parse_args(argv)
+
+    history: dict[str, dict[str, list[str]]] = json.loads(args.hashes.read_text(encoding="utf-8"))
+    templates: dict[str, str] = staged_templates(args.stage)
+    items: list[Item] = survey(templates, history)
+    report_items(items)
+    chosen: list[Item] = choose(items, assume_yes=args.yes, update=args.update, force=args.force, ask=ask)
+    backups: list[Path] = install(items, chosen, templates)
+    if backups:
+        print(f"\nBacked up: {', '.join(path.as_posix() for path in backups)}. Compare each with its file, then delete it; setup does not stage backups.")
+    report_kept(items, chosen, force=args.force)
+    report_dev_tools(templates)
+    return 0
+
+
+def staged_templates(stage: Path) -> dict[str, str]:
+    """Return each staged template's text, keyed by its path relative to the repository root."""
+    return {path.relative_to(stage).as_posix(): path.read_text(encoding="utf-8") for path in sorted(stage.rglob("*")) if path.is_file()}
+
+
+def survey(templates: Mapping[str, str], history: Mapping[str, Mapping[str, list[str]]]) -> list[Item]:
+    """Compare every template with the repository: files whole, an existing ``pyproject.toml`` by table."""
+    items: list[Item] = []
+    path: str
+    template: str
+    for path, template in templates.items():
+        current: str | None = read(Path(path))
+        if path == PYPROJECT and current is not None:
+            items.extend(table_items(current, template, history["tables"]))
+        else:
+            items.append(Item(path, file_status(current, template, history["files"].get(path, []))))
+    return items
+
+
+def read(path: Path) -> str | None:
+    """Return a file's text, or None when it does not exist; undecodable bytes count as edits."""
+    return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else None
+
+
+def table_items(project: str, baseline: str, history: Mapping[str, list[str]]) -> list[Item]:
+    """Return one item for each ``[tool.*]`` table the baseline defines."""
+    current: dict[str, Any] = tomllib.loads(project).get("tool", {})
+    return [Item(PYPROJECT, table_status(current.get(name), template, history.get(f"tool.{name}", [])), name) for name, template in tomllib.loads(baseline)["tool"].items()]
+
+
+def digest(text: str) -> str:
+    """Return the SHA-256 of a text with CRLF line endings normalized, so a Windows checkout matches."""
+    return hashlib.sha256(text.replace("\r\n", "\n").encode("utf-8")).hexdigest()
+
+
+def table_digest(value: object) -> str:
+    """Return the SHA-256 of a parsed TOML table, independent of how it is formatted."""
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def file_status(current: str | None, template: str, known: Collection[str]) -> Status:
+    """Classify a file's text against its template and the digests of earlier versions."""
+    if current is None:
+        return Status.MISSING
+    found: str = digest(current)
+    if found == digest(template):
+        return Status.CURRENT
+    return Status.OUTDATED if found in known else Status.EDITED
+
+
+def table_status(current: object, template: object, known: Collection[str]) -> Status:
+    """Classify a parsed table against the baseline's and the digests of earlier versions."""
+    if current is None:
+        return Status.MISSING
+    if current == template:
+        return Status.CURRENT
+    return Status.OUTDATED if table_digest(current) in known else Status.EDITED
+
+
+NOTES: dict[tuple[Status, bool], str] = {
+    (Status.MISSING, False): "",
+    (Status.MISSING, True): " (--update adds it)",
+    (Status.CURRENT, False): "",
+    (Status.CURRENT, True): "",
+    (Status.OUTDATED, False): " (unedited older version; --update replaces it)",
+    (Status.OUTDATED, True): " (unedited older version; --update replaces it)",
+    (Status.EDITED, False): " (--force replaces it)",
+    (Status.EDITED, True): " (--force replaces it)",
+}
+"""What each status means for a file, and for a table (True)."""
+
+
+def report_items(items: list[Item]) -> None:
+    """Print one line per file or table: what it is, and what the flags would do with it."""
+    item: Item
+    for item in items:
+        word: str = "create" if item.status is Status.MISSING and not item.table else item.status.value
+        print(f"  {word:<8} {item.label()}{NOTES[item.status, bool(item.table)]}")
+
+
+def safe(item: Item) -> bool:
+    """Return whether replacing an item loses nothing: an unedited earlier version, or a table the project lacks."""
+    return item.status is Status.OUTDATED or (item.status is Status.MISSING and bool(item.table))
+
+
+def choose(items: list[Item], *, assume_yes: bool, update: bool, force: bool, ask: Callable[[str], str]) -> list[Item]:
+    """Return the existing files and tables to replace, asking first unless ``assume_yes``; ``force`` implies ``update``."""
+    unedited: list[Item] = [item for item in items if safe(item)]
+    edited: list[Item] = [item for item in items if item.status is Status.EDITED]
+    chosen: list[Item] = []
+    if unedited and ((update or force) if assume_yes else confirm(f"Replace the {len(unedited)} unedited item(s) above with the current version? [y/N] ", ask)):
+        chosen.extend(unedited)
+    if edited and force and (assume_yes or confirm(f"Replace the {len(edited)} EDITED item(s) above? Each file is saved as <name>.orig first. [y/N] ", ask)):
+        chosen.extend(edited)
+    return chosen
+
+
+def confirm(question: str, ask: Callable[[str], str]) -> bool:
+    """Return whether the user answered yes; no answer at all means no."""
+    try:
+        reply: str = ask(question)
+    except EOFError:
+        return False
+    return reply.strip().lower() in {"y", "yes"}
+
+
+def install(items: list[Item], chosen: list[Item], templates: Mapping[str, str]) -> list[Path]:
+    """Create missing files, and replace the chosen files and tables, backing up edited ones.
+
+    Returns:
+        The backups made.
+    """
+    backups: list[Path] = []
+    item: Item
+    for item in items:
+        if not item.table and (item.status is Status.MISSING or item in chosen):
+            backups.extend(write(Path(item.path), templates[item.path], backup_first=item.status is Status.EDITED))
+    tables: list[Item] = [item for item in chosen if item.table]
+    if tables:
+        backups.extend(install_tables(tables, templates[PYPROJECT]))
+    return backups
+
+
+def write(path: Path, text: str, *, backup_first: bool) -> list[Path]:
+    """Write a template's text exactly, after saving the file it replaces when that was edited.
+
+    Returns:
+        The backup made, if any.
+    """
+    backups: list[Path] = []
+    if backup_first:
+        backups.append(backup(path))
+        print(f"  backup   {path.as_posix()} -> {backups[0].as_posix()}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="")
+    print(f"  {'write':<8} {path.as_posix()}")
+    return backups
+
+
+def install_tables(tables: list[Item], baseline: str) -> list[Path]:
+    """Swap the chosen tables into ``pyproject.toml`` after backing it up, or leave it whole when that is not safe.
+
+    Returns:
+        The backup made, if any.
+    """
+    path: Path = Path(PYPROJECT)
+    names: list[str] = [item.table for item in tables]
+    try:
+        text: str = rewrite_tables(path.read_text(encoding="utf-8"), baseline, set(names))
+    except RewriteError:
+        print(f"{PYPROJECT}: could not rewrite {', '.join(f'[tool.{name}]' for name in names)} in place; merge by hand")
+        return []
+    # Always backed up: a comment the user added inside an unedited table does not
+    # change its parsed value, so the swap would otherwise lose it silently.
+    return write(path, text, backup_first=True)
+
+
+def backup(path: Path) -> Path:
+    """Copy a file to the first free ``<name>.orig``, ``<name>.orig.1``, ... and return that path."""
+    target: Path = path.with_name(f"{path.name}.orig")
+    number: int = 0
+    while target.exists():
+        number += 1
+        target = path.with_name(f"{path.name}.orig.{number}")
+    shutil.copy2(path, target)
+    return target
+
+
+def rewrite_tables(text: str, baseline: str, names: Collection[str]) -> str:
+    """Return a ``pyproject.toml`` text with each named ``[tool.*]`` table replaced by the baseline's.
+
+    A table's subtables go with it, and a table split across the file is gathered
+    where it first appears. A table the text lacks is appended. Every other line is
+    kept as it is.
+
+    Raises:
+        RewriteError: The result does not parse to the original with exactly those
+            tables replaced, as when a table is defined by dotted keys or inline.
+    """
+    groups: dict[str, str] = {}
+    key: str | None
+    block: str
+    for key, block in blocks(baseline):
+        owner: str = tool_name(key)
+        if owner in names:
+            groups[owner] = groups.get(owner, "") + block
+    kept: list[str] = []
+    placed: set[str] = set()
+    for key, block in blocks(text):
+        owner = tool_name(key)
+        if owner not in names:
+            kept.append(block)
+        elif owner not in placed:
+            kept.append(groups[owner].rstrip("\n") + "\n\n")
+            placed.add(owner)
+    name: str
+    for name in groups:
+        if name not in placed:
+            kept.append("\n" if not "".join(kept).endswith("\n\n") else "")
+            kept.append(groups[name].rstrip("\n") + "\n\n")
+    result: str = "".join(kept).rstrip("\n") + "\n"
+    verify(text, baseline, result, names)
+    return result
+
+
+def blocks(text: str) -> list[tuple[str | None, str]]:
+    """Split TOML text into (header key, text) blocks, each running from its header to the next.
+
+    Comment lines just above a header describe that header's table, so they open
+    its block rather than close the one before.
+    """
+    found: list[tuple[str | None, list[str]]] = [(None, [])]
+    line: str
+    for line in text.splitlines(keepends=True):
+        match: re.Match[str] | None = HEADER.match(line)
+        if match:
+            found.append((match.group(1).replace(" ", ""), [*leading_comments(found[-1][1]), line]))
+        else:
+            found[-1][1].append(line)
+    return [(key, "".join(lines)) for key, lines in found]
+
+
+def leading_comments(lines: list[str]) -> list[str]:
+    """Remove and return the comment lines that end a block, with any blank lines after them."""
+    start: int = len(lines)
+    while start > 0 and (not lines[start - 1].strip() or lines[start - 1].lstrip().startswith("#")):
+        start -= 1
+    while start < len(lines) and not lines[start].strip():
+        start += 1
+    moved: list[str] = lines[start:]
+    del lines[start:]
+    return moved
+
+
+def tool_name(key: str | None) -> str:
+    """Return ``ruff`` for a ``tool.ruff`` or ``tool.ruff.lint`` header key; "" for anything else."""
+    parts: list[str] = (key or "").split(".")
+    return parts[1] if len(parts) > 1 and parts[0] == "tool" else ""
+
+
+def verify(original: str, baseline: str, result: str, names: Collection[str]) -> None:
+    """Raise unless the rewritten text parses to the original with only the named tables replaced."""
+    expected: dict[str, Any] = tomllib.loads(original)
+    tool: dict[str, Any] = expected.setdefault("tool", {})
+    replacement: dict[str, Any] = tomllib.loads(baseline)["tool"]
+    name: str
+    for name in names:
+        tool[name] = replacement[name]
+    try:
+        actual: dict[str, Any] = tomllib.loads(result)
+    except tomllib.TOMLDecodeError as exc:
+        raise RewriteError from exc
+    if actual != expected:
+        raise RewriteError
+
+
+def report_kept(items: list[Item], chosen: list[Item], *, force: bool) -> None:
+    """Count the edited files and tables that were kept, and say how to replace them."""
+    kept: list[Item] = [item for item in items if item.status is Status.EDITED and item not in chosen]
+    if kept:
+        advice: str = "" if force else " Re-run with --force to replace them (each file is saved as <name>.orig first), or merge by hand."
+        print(f"\nKept {len(kept)} edited item(s).{advice}")
+    if any(item.path == SETTINGS for item in kept):
+        print(f'{SETTINGS} holds your other settings too: merge its "hooks" block by hand rather than replacing it.')
+
+
+def report_dev_tools(templates: Mapping[str, str]) -> None:
+    """List the baseline's development tools that ``pyproject.toml`` does not install.
+
+    Runs after ``install``, so a staged ``pyproject.toml`` always exists by now.
+    """
+    if PYPROJECT not in templates:
+        return
+    missing: list[str] = missing_dev_tools(tomllib.loads(Path(PYPROJECT).read_text(encoding="utf-8")), tomllib.loads(templates[PYPROJECT]))
+    if missing:
+        print(f"\n{PYPROJECT} [dependency-groups] dev lacks: {', '.join(missing)}")
+        print("Add them with 'uv add --dev', or copy them from the baseline.")
+
+
+def missing_dev_tools(project: Mapping[str, Any], baseline: Mapping[str, Any]) -> list[str]:
+    """Return the baseline's dev requirements whose project the project's dev group does not name, groups it includes counted."""
+    present: set[str] = {requirement_name(requirement) for requirement in group_requirements(project.get("dependency-groups", {}), "dev", set())}
+    return [requirement for requirement in baseline["dependency-groups"]["dev"] if requirement_name(requirement) not in present]
+
+
+def group_requirements(groups: Mapping[str, Any], name: str, seen: set[str]) -> list[str]:
+    """Return a dependency group's requirements, following ``{include-group = ...}`` entries (PEP 735).
+
+    ``seen`` stops a cycle, which uv rejects later but a hand-edited file can hold now.
+    """
+    if name in seen:
+        return []
+    seen.add(name)
+    found: list[str] = []
+    entry: object
+    for entry in groups.get(name, []):
+        if isinstance(entry, str):
+            found.append(entry)
+        elif isinstance(entry, dict):
+            found.extend(group_requirements(groups, str(entry.get("include-group")), seen))
+    return found
+
+
+def requirement_name(requirement: str) -> str:
+    """Return a requirement's normalized project name: ``my-tool`` for ``My_Tool>=1; python_version > '3'``."""
+    name: str = REQUIREMENT_END.split(requirement.strip())[0]
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+SETUPEOF
+
+cat >"$WORK/hashes.json" <<'HASHEOF'
+{
+ "files": {
+  ".claude/settings.json": [
+   "beb8f051008d7259df447306cd8ea9869dbf19f35376080fd4bc7ed0de90d8a9"
+  ],
+  ".gitattributes": [
+   "2abf4a37e4c86b07efe43284e7136af0d5f7dc37059c988751390565fa40dce6"
+  ],
+  ".github/workflows/ci.yml": [
+   "3c619d62a2f3c3ac5dd598d52c18b541ebe5eac8f6c7e47b536f303a6210b32a",
+   "3d74634f38daf5e61b5dba5444b97088e5de351d227419732ad5f270a5a0aa04",
+   "ef7ddbb3b1623a416fbdf6c7ec1a8b7b6e285eee6ace5048a2533e7450c8fd64"
+  ],
+  ".github/workflows/mutation.yml": [
+   "0111fa893e4fdf60771a6b29e541669e3f5191ec49e49f059fc0c3a6c643f922"
+  ],
+  ".gitignore": [
+   "abd5c51f23b8e555fb48b5c4b28103b9a7fc7ecceacd9ff6cbb73e1ac814af21",
+   "ae86437e83820ef43b73a98c62db83b1f2d50f16a2c394849077c4f13a06c1b7",
+   "e279f237c76653d2c47cd778479cba58089ca7617d37dd8a1e0da421995f59ab"
+  ],
+  ".pre-commit-config.yaml": [
+   "3e92832f817e483c793dc743c6273b65dffb4d9f9e1fd0556ddaa9b96a39cd2e",
+   "c173562759098fbc74717df06805a98ddeb1bd8b8382f78f1e70c06d67be5bee",
+   "c3133cfe1581b414de030c3215785f07ba1ed8e41450c297bb872cc9c083b098"
+  ],
+  "suppressions.toml": [
+   "17647f5f57f7691cba0353e4b762ae6afca3420579756e5e24d8787928886b42"
+  ],
+  "tests/.gitkeep": [
+   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  ],
+  "tools/__init__.py": [
+   "f60c1b67d606c773fb41bd05f1a9d51e94933eb2b947d4d65bd9d674588558b9"
+  ],
+  "tools/changes.py": [
+   "6924eeadf231fce1e701335f4173cbbd50f258df3a5763ea8b12e8b19ee75ce5"
+  ],
+  "tools/check_coverage_records.py": [
+   "3746ef3d83f1b5a0d338cca4fa4aa561434189c22bb10366af691211a013614f"
+  ],
+  "tools/check_declarations.py": [
+   "27e8ad6f8cc9436f6e712c89b413b8a64d030e02e872eb317a2f8d67a624d56a",
+   "67554527c78bf95e1573ca3c1752e28ccb4db7c80e88d74bd1456d9f65778759",
+   "70642cbf1a03131d1edc69d1fcda8f08b80c8689b6122295667938b72b9d6334",
+   "f9e2699d313f57992183115235610815fefcb758fa07d452d96d81f0996165d3"
+  ],
+  "tools/check_suppressions.py": [
+   "7dd40b8ae5a8367f4ec20bd17eb0048ea200d4cb786234b5dac9b68d0823cd5e",
+   "7df224a2c43c344cafe165df0e922fbe4028d46299c3c554bfce13122df0e0f9",
+   "ab58c10d44859946605794a15a368161349c1a0582719e69f483146c1fe50937"
+  ],
+  "tools/hooks/__init__.py": [
+   "ab532d8cd9a0f7b2525c673116ba45f2368bd56166e65b1863541e090fd21b0b"
+  ],
+  "tools/hooks/guard_protected.py": [
+   "510764062fdd6d258a56aa7f9e8ee3729f959ac480fb1bc97917d20c2939ded0",
+   "7a4370b125283c970250197c326b05cf9c75d4a8d412e46f5ee4d2fe4957f39b",
+   "d3e624d7d678977a95888816f4995b28f7ed7e9fbce6eefad3a51741d055ab07",
+   "f232e75c6f8ef6af4d73cc106eb935a2bdf3b596af991fecc45524b80a46b647",
+   "f5effd54169dcf6e1ffc50918fb369f6d6429faedfe9a43001551ba8fe9f71d3"
+  ],
+  "tools/hooks/stop_gate.py": [
+   "2f55b25b7d19dbaa2ffcfcd2d334f823a64fcf2dfaad15dd460b452ff532b6e4",
+   "92083f4f7276073b4d7c0e4a51a08884fac811415ff820fb22cdd4f00152b23c",
+   "f8c6728c028cc00802d402bece1c85226e3d1cf0ddd3acfe07d1a5d67e53b2de"
+  ],
+  "tools/mutation.sh": [
+   "ff0235affdaf6540d4ec96e914a78425bbca81459d9d524f218f16c72d8e6272"
+  ],
+  "tools/review_brief.py": [
+   "25b531b14e210b67431e195cb3cc86b38b5ef9ed78644d45b0661598b434a0f5"
+  ]
+ },
+ "tables": {
+  "tool.complexipy": [
+   "c6db7bf6b5db161dd56d20d193dcd0f15115ce600a25d6e661a8cca6abde03d9"
+  ],
+  "tool.coverage": [
+   "41646aba1abd145587e7bd27515b63383beea92738b13cd53d63172b492d86bb",
+   "c5e905e7ea482969d79fbe31a641554ac3da81784c71dcfedbb4fa629af99c13"
+  ],
+  "tool.mutmut": [
+   "af6936f45c3f692f6a4c7ef42f36b4ef9ed9eb942d734a1018a7d95ce32fec9d"
+  ],
+  "tool.mypy": [
+   "550f975951d7b572df206b35f17d3265d017cfb6171d9e94abe44047e216f14d"
+  ],
+  "tool.pyright": [
+   "25e808dd0457764542064753015a71138b743b632f809248cedbaf25da23dd98",
+   "c4c70aef5b0902dd02d97e45f79e68ba145987466b8880d9ce8cf98a6c3f3bb7"
+  ],
+  "tool.pytest": [
+   "353b7a7310645cf12de5c1eeaf01ad48209f1854bfc3809f2da49c9caeb4648b",
+   "3b2d702b046c23c2874014041d2e7f1882241bdabfa6c90e820b5057bbe0b43f",
+   "3d58d107b91675103ed8e9ec9c7cdee8f2dceb67980d5b1c7c5aaaed6647b2f8",
+   "9e5a761663f177eb63664efe302ed7c54c272ffac4b4767b594dcfee2795625c"
+  ],
+  "tool.ruff": [
+   "43a3897c1412271fea4b45314d3ca645070eee45958a81af5a222a7286df1b24",
+   "4f22834aad03dd9a529c6c30e891ea705d658dc35e38b9a8ebb8642de6dec9bd"
+  ]
+ }
+}
+HASHEOF
+
+printf 'Installing files...\n'
+uv run --no-project --python 3.13 python "$WORK/setup_files.py" "$FILES" --hashes "$WORK/hashes.json" ${INSTALL_FLAGS[@]+"${INSTALL_FLAGS[@]}"}
+
+# --------------------------------------------------------------------------- #
 # Bootstrap the environment
 # --------------------------------------------------------------------------- #
 
@@ -2247,9 +2786,10 @@ printf '\nInstalling the pre-commit git hook...\n'
 uv run pre-commit install
 
 # The checks read the files git tracks, so stage first. This is the state you
-# are about to commit anyway (see "Next" below).
+# are about to commit anyway (see "Next" below). The .orig backups --force
+# makes are left unstaged: they are the user's old copies, to compare and delete.
 printf '\nStaging files so the checks can see them...\n'
-git add -A
+git add -A -- . ':(exclude)*.orig' ':(exclude)*.orig.*'
 
 # Read-only: each tool runs directly in report mode, never through pre-commit.
 # A repository that already had a .pre-commit-config.yaml keeps it, and its
@@ -2287,17 +2827,6 @@ fi
 # --------------------------------------------------------------------------- #
 # Report
 # --------------------------------------------------------------------------- #
-
-printf '\n=========================================================\n'
-printf 'Created: %s\n' "${CREATED[*]:-(none)}"
-printf 'Skipped: %s\n' "${SKIPPED[*]:-(none)}"
-printf '=========================================================\n'
-
-if [ "${#SKIPPED[@]}" -gt 0 ]; then
-    printf '\nSkipped files already existed and were NOT changed. If pyproject.toml\n'
-    printf 'is among them, merge the [tool.*] sections by hand. If .claude/settings.json\n'
-    printf 'is among them, merge its "hooks" block by hand.\n'
-fi
 
 if [ "${#NOT_RUN[@]}" -gt 0 ]; then
     printf '\nNot run, because this project does not install them: %s\n' "${NOT_RUN[*]}"
