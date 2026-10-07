@@ -103,6 +103,10 @@ The first failure blocks the stop, and the tail of its output goes back to the a
 - **Git errors fail closed.** A broken configuration, a repository owned by another user, or
   no repository at all blocks the stop with git's message. These are never read as
   "nothing changed".
+- **A tool the project does not install** (a gate fails, and `uv run --no-sync <tool> --version`
+  reports that uv failed to spawn it) is named as `<tool> (not installed)`. Any other failure,
+  uv's own included, keeps its command and diagnostic. The agent is told to change no code and to
+  ask the user to add it, since no code change can fix it.
 - **Coverage `omit`:** a changed file the coverage configuration omits has no record either,
   so it blocks. That is by design: omitting a file needs the user's approval anyway.
 - **Loop guard:** a stop that is already a retry (`stop_hook_active`) is let through with a

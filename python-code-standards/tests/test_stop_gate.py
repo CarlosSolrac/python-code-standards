@@ -266,6 +266,49 @@ def test_long_output_keeps_only_the_tail() -> None:
     assert len(reason) < 10_000
 
 
+def spawn_failed(tool: str) -> Result:
+    """Return what ``uv run`` prints for a tool the project environment does not install."""
+    return Result(2, f"error: Failed to spawn: `{tool}`\n  Caused by: program not found")
+
+
+@pytest.mark.parametrize("tool", ["pre-commit", "pytest", "diff-cover"])
+def test_a_gate_tool_that_is_not_installed_is_named_as_a_setup_problem(tool: str) -> None:
+    """No code change installs a tool; the agent is told to hand it to the user instead."""
+    runner: FakeRunner = FakeRunner({**changed(modified=["a.py"]), f"uv run {tool}": spawn_failed(tool), f"uv run --no-sync {tool} --version": spawn_failed(tool)})
+    output: dict[str, object] | None = stop(runner)
+    assert output is not None
+    reason: str = str(output["reason"])
+    assert f"Quality gate failed: `{tool} (not installed)` (exit 2)." in reason
+    assert reason.endswith(
+        f"program not found\n\n`{tool}` is not installed in the project environment, so this gate cannot run. Change no code: tell the user to add it with `uv add --dev {tool}`, or to re-run setup-standards.sh with -y --update."
+    )
+
+
+def test_a_failing_gate_tool_that_is_installed_keeps_its_command() -> None:
+    runner: FakeRunner = FakeRunner({**changed(modified=["a.py"]), "uv run pytest": Result(1, "1 failed")})
+    output: dict[str, object] | None = stop(runner)
+    assert output is not None
+    assert "not installed" not in str(output["reason"])
+    assert runner.ran("uv run --no-sync pytest --version")
+
+
+def test_a_uv_failure_is_not_mistaken_for_a_missing_tool() -> None:
+    """A malformed pyproject.toml fails the probe too, though the tool is installed; its diagnostic must survive."""
+    broken: Result = Result(2, "error: Failed to parse: `pyproject.toml`\n  Caused by: TOML parse error at line 161, column 9")
+    runner: FakeRunner = FakeRunner({**changed(modified=["a.py"]), "uv run pre-commit": broken, "uv run --no-sync pre-commit --version": broken})
+    output: dict[str, object] | None = stop(runner)
+    assert output is not None
+    reason: str = str(output["reason"])
+    assert "Quality gate failed: `uv run pre-commit run --files a.py` (exit 2)." in reason
+    assert "not installed" not in reason
+
+
+def test_a_missing_tool_after_a_retry_is_named_to_the_user() -> None:
+    runner: FakeRunner = FakeRunner({**changed(modified=["a.py"]), "uv run pre-commit": spawn_failed("pre-commit"), "uv run --no-sync pre-commit --version": spawn_failed("pre-commit")})
+    output: dict[str, object] | None = stop(runner, active=True)
+    assert output == {"systemMessage": "GATE FAILED: `pre-commit (not installed)` still fails after a retry. Claude stopped anyway; this work is NOT verified."}
+
+
 def test_failure_after_a_retry_lets_the_stop_through_and_warns_the_user() -> None:
     runner: FakeRunner = FakeRunner({**changed(modified=["a.py"]), "uv run pytest": Result(1, "1 failed")})
     output: dict[str, object] | None = stop(runner, active=True)

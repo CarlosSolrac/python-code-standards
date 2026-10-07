@@ -56,8 +56,10 @@ code is reported on, never rewritten, and no hook from an existing config runs.
 
 Existing files are compared with their templates (`skill/tools/setup_files.py`); see
 [what the script reports](skill/references/setup.md#what-the-script-reports).
-Missing `[dependency-groups] dev` tools are reported, never added; until they are installed,
-the check lists them as not run.
+Missing `[dependency-groups] dev` tools are listed, then added with `uv add --dev` after a
+prompt, or unasked with `-y --update`. A tool the project already names keeps its version. Until
+they are installed, the check lists them as not run, and the pre-commit git hook is not
+installed.
 
 The script is self-contained — every template and the checker are embedded — so it also runs
 copied on its own to a host with no clone of this repo. `tests/test_setup_script.py` keeps the

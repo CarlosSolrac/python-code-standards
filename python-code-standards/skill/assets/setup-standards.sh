@@ -11,7 +11,8 @@
 #   -y, --yes    never ask (required when stdin is not a tty); replace only what
 #                --update or --force allows
 #   --update     with --yes, replace files an earlier version of this script
-#                wrote and nobody edited since
+#                wrote and nobody edited since, and add the dev tools
+#                pyproject.toml lacks
 #   --force      like --update, and also replace edited files, saving each as
 #                <file>.orig first; without --yes it asks before doing so
 #   -h, --help   print this header
@@ -51,7 +52,9 @@
 # pyproject.toml is always edited by the project, so it is compared one
 # [tool.*] table at a time, and a replaced table is swapped in place, leaving
 # every other line as it was; the file is saved as pyproject.toml.orig first.
-# Missing [dependency-groups] dev tools are only reported.
+# Dev tools pyproject.toml lacks are listed, then added with "uv add --dev"
+# after asking, or unasked with --yes --update; a tool it already names keeps
+# its version. Without pre-commit, the git hook is reported as not installed.
 
 set -euo pipefail
 
@@ -2198,23 +2201,37 @@ def first_failure(files: list[str], run: Runner, read_coverage: Callable[[], str
     appear in the coverage report: a module no test imports is never recorded,
     and diff-cover silently skips files without a record.
     """
-    result: Result
+    failure: tuple[str, Result] | None
     if files:
-        lint: tuple[str, ...] = ("uv", "run", "pre-commit", "run", "--files", *files)
-        result = run(lint)
-        if result.returncode != 0:
-            return " ".join(lint), result
-    result = run(TESTS)
-    if result.returncode != 0:
-        return " ".join(TESTS), result
+        failure = run_gate(("uv", "run", "pre-commit", "run", "--files", *files), run)
+        if failure is not None:
+            return failure
+    failure = run_gate(TESTS, run)
+    if failure is not None:
+        return failure
     unrecorded: list[str] = unrecorded_modules(files, read_coverage())
     if unrecorded:
         listing: str = "\n".join(f"  {path}" for path in unrecorded)
         return "coverage record check", Result(1, f"No coverage record for:\n{listing}\nNo test imports these modules, so none of their lines are measured and diff-cover skips them. Add a test that exercises each one.")
-    result = run(CHANGED_LINES)
-    if result.returncode != 0:
-        return " ".join(CHANGED_LINES), result
-    return None
+    return run_gate(CHANGED_LINES, run)
+
+
+def run_gate(command: Sequence[str], run: Runner) -> tuple[str, Result] | None:
+    """Run one ``uv run <tool> ...`` gate and return its label and result when it fails.
+
+    A failed gate whose tool uv cannot even start is not installed, which no code change
+    fixes, so the label and output say so instead of naming the command. Any other
+    failure, uv's own included (a malformed ``pyproject.toml``), keeps its diagnostic.
+    """
+    result: Result = run(command)
+    if result.returncode == 0:
+        return None
+    tool: str = command[2]
+    probe: Result = run(("uv", "run", "--no-sync", tool, "--version"))
+    if probe.returncode == 0 or f"Failed to spawn: `{tool}`" not in probe.output:
+        return " ".join(command), result
+    advice: str = f"`{tool}` is not installed in the project environment, so this gate cannot run. Change no code: tell the user to add it with `uv add --dev {tool}`, or to re-run setup-standards.sh with -y --update."
+    return f"{tool} (not installed)", Result(result.returncode, f"{result.output}\n\n{advice}")
 
 
 def unrecorded_modules(files: list[str], report: str) -> list[str]:
@@ -2258,8 +2275,9 @@ is swapped in place, leaving every other line as it was. The file is saved as
 ``pyproject.toml.orig`` before any swap, since comments inside a table do not
 change its parsed value and would otherwise be lost unseen. Tables the baseline does
 not define, such as ``[tool.check-declarations]``, are never touched.
-``[dependency-groups]`` is only reported: development tools the project lacks are
-listed, never added.
+``[dependency-groups]`` is not compared: development tools the project lacks are
+listed, then added with ``uv add --dev`` under the same rules as an outdated file.
+A tool the project already names keeps its version.
 
 The module runs standalone in the target repository, so it uses the standard
 library only.
@@ -2272,8 +2290,10 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
+import sys
 import tomllib
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -2286,6 +2306,9 @@ HEADER: re.Pattern[str] = re.compile(r"^\[\[?([^\[\]]+)\]\]?\s*(?:#.*)?$")
 
 REQUIREMENT_END: re.Pattern[str] = re.compile(r"[\s<>=!~;\[(@]")
 """Where a requirement's project name ends: at a version, marker, extra, or URL."""
+
+UV_ADD_FAILED: int = 3
+"""Exit status when every file was installed but ``uv add`` failed; the setup script carries on, then fails."""
 
 
 class Status(StrEnum):
@@ -2314,21 +2337,31 @@ class Item:
         return f"{self.path} [tool.{self.table}]" if self.table else self.path
 
 
-def main(argv: list[str] | None = None, ask: Callable[[str], str] = input) -> int:
+def run_command(command: Sequence[str]) -> int:
+    """Run a command, its output going straight to the terminal, and return its exit status.
+
+    Prints so far are flushed first: piped, they are block-buffered and would land after the command's output.
+    """
+    sys.stdout.flush()
+    return subprocess.run(command, check=False).returncode  # noqa: S603 -- argv is uv add --dev and the baseline's requirement strings, never a shell
+
+
+def main(argv: list[str] | None = None, ask: Callable[[str], str] = input, run: Callable[[Sequence[str]], int] = run_command) -> int:
     """Install the staged templates into the current directory.
 
     Args:
         argv: Command-line arguments, defaulting to ``sys.argv[1:]``.
         ask: Prompts the user and returns the reply; raises ``EOFError`` without one.
+        run: Runs a command and returns its exit status; replaced by a fake in tests.
 
     Returns:
-        0; a failure raises.
+        0, or ``UV_ADD_FAILED`` when ``uv add`` failed; any other failure raises.
     """
     parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("stage", type=Path, help="directory holding the templates, laid out as in the repository")
     parser.add_argument("--hashes", type=Path, required=True, help="JSON digests of every earlier template version")
     parser.add_argument("--yes", action="store_true", help="never ask; replace only what --update or --force allows")
-    parser.add_argument("--update", action="store_true", help="with --yes, replace unedited earlier versions")
+    parser.add_argument("--update", action="store_true", help="with --yes, replace unedited earlier versions and add the dev tools pyproject.toml lacks")
     parser.add_argument("--force", action="store_true", help="like --update, and also replace edited files and tables, saving <file>.orig first")
     args: argparse.Namespace = parser.parse_args(argv)
 
@@ -2341,8 +2374,8 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] = input) -> in
     if backups:
         print(f"\nBacked up: {', '.join(path.as_posix() for path in backups)}. Compare each with its file, then delete it; setup does not stage backups.")
     report_kept(items, chosen, force=args.force)
-    report_dev_tools(templates)
-    return 0
+    added: bool = add_dev_tools(templates, assume_yes=args.yes, update=args.update or args.force, ask=ask, run=run)
+    return 0 if added else UV_ADD_FAILED
 
 
 def staged_templates(stage: Path) -> dict[str, str]:
@@ -2611,17 +2644,29 @@ def report_kept(items: list[Item], chosen: list[Item], *, force: bool) -> None:
         print(f'{SETTINGS} holds your other settings too: merge its "hooks" block by hand rather than replacing it.')
 
 
-def report_dev_tools(templates: Mapping[str, str]) -> None:
-    """List the baseline's development tools that ``pyproject.toml`` does not install.
+def add_dev_tools(templates: Mapping[str, str], *, assume_yes: bool, update: bool, ask: Callable[[str], str], run: Callable[[Sequence[str]], int]) -> bool:
+    """List the baseline's development tools that ``pyproject.toml`` does not install, and add them with ``uv add --dev``.
 
-    Runs after ``install``, so a staged ``pyproject.toml`` always exists by now.
+    They are added after asking, or unasked under ``assume_yes`` with ``update``. A tool the
+    project already names keeps whatever version it pins. Runs after ``install``, so a
+    staged ``pyproject.toml`` always exists by now.
+
+    Returns:
+        False when ``uv add`` ran and failed.
     """
     if PYPROJECT not in templates:
-        return
+        return True
     missing: list[str] = missing_dev_tools(tomllib.loads(Path(PYPROJECT).read_text(encoding="utf-8")), tomllib.loads(templates[PYPROJECT]))
-    if missing:
-        print(f"\n{PYPROJECT} [dependency-groups] dev lacks: {', '.join(missing)}")
-        print("Add them with 'uv add --dev', or copy them from the baseline.")
+    if not missing:
+        return True
+    print(f"\n{PYPROJECT} [dependency-groups] dev lacks: {', '.join(missing)}")
+    if not (update if assume_yes else confirm("Add them with 'uv add --dev'? [y/N] ", ask)):
+        print("Not added: add them with 'uv add --dev', or re-run with -y --update.")
+        return True
+    if run(["uv", "add", "--dev", *missing]) != 0:
+        print("\n'uv add' failed (above); add them by hand, or copy them from the baseline.")
+        return False
+    return True
 
 
 def missing_dev_tools(project: Mapping[str, Any], baseline: Mapping[str, Any]) -> list[str]:
@@ -2722,8 +2767,10 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "f5effd54169dcf6e1ffc50918fb369f6d6429faedfe9a43001551ba8fe9f71d3"
   ],
   "tools/hooks/stop_gate.py": [
+   "21285496811452232ada10368a7b28c856803042ff43002f5c6cc9069f724fc4",
    "2f55b25b7d19dbaa2ffcfcd2d334f823a64fcf2dfaad15dd460b452ff532b6e4",
    "92083f4f7276073b4d7c0e4a51a08884fac811415ff820fb22cdd4f00152b23c",
+   "d69a0593f11a8f9a33aa2af90312646acc2ff6ee23e8d7b7da64f5af0136e1d4",
    "f8c6728c028cc00802d402bece1c85226e3d1cf0ddd3acfe07d1a5d67e53b2de"
   ],
   "tools/mutation.sh": [
@@ -2766,7 +2813,13 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
 HASHEOF
 
 printf 'Installing files...\n'
-uv run --no-project --python 3.13 python "$WORK/setup_files.py" "$FILES" --hashes "$WORK/hashes.json" ${INSTALL_FLAGS[@]+"${INSTALL_FLAGS[@]}"}
+# Status 3: every file is installed but "uv add" failed. Setup carries on, so the
+# checks still run, and fails at the end; any other failure stops it here.
+SETUP_RC=0
+uv run --no-project --python 3.13 python "$WORK/setup_files.py" "$FILES" --hashes "$WORK/hashes.json" ${INSTALL_FLAGS[@]+"${INSTALL_FLAGS[@]}"} || SETUP_RC=$?
+if [ "$SETUP_RC" -ne 0 ] && [ "$SETUP_RC" -ne 3 ]; then
+    exit "$SETUP_RC"
+fi
 
 # --------------------------------------------------------------------------- #
 # Bootstrap the environment
@@ -2782,8 +2835,16 @@ fi
 printf '\nSyncing the environment...\n'
 uv sync --all-groups
 
+# Filled by the steps below, then reported at the end.
+CHECK_RC=0
+NOT_RUN=()
+
 printf '\nInstalling the pre-commit git hook...\n'
-uv run pre-commit install
+if uv run --no-sync pre-commit --version >/dev/null 2>&1; then
+    uv run pre-commit install
+else
+    NOT_RUN+=("pre-commit git hook")
+fi
 
 # The checks read the files git tracks, so stage first. This is the state you
 # are about to commit anyway (see "Next" below). The .orig backups --force
@@ -2794,8 +2855,6 @@ git add -A -- . ':(exclude)*.orig' ':(exclude)*.orig.*'
 # Read-only: each tool runs directly in report mode, never through pre-commit.
 # A repository that already had a .pre-commit-config.yaml keeps it, and its
 # hooks (ruff --fix, end-of-file-fixer, Black) would rewrite files if run.
-CHECK_RC=0
-NOT_RUN=()
 
 check() {
     # check <label> <tool> <args...>: run a tool from the project environment,
@@ -2830,8 +2889,13 @@ fi
 
 if [ "${#NOT_RUN[@]}" -gt 0 ]; then
     printf '\nNot run, because this project does not install them: %s\n' "${NOT_RUN[*]}"
-    printf 'Add the [dependency-groups] dev entries from the baseline pyproject.toml,\n'
-    printf 'run "uv sync --all-groups", then re-run the checks.\n'
+    printf 'Re-run setup with -y --update to add them, or add them with "uv add --dev"\n'
+    printf 'and re-run setup.\n'
+    CHECK_RC=1
+fi
+
+if [ "$SETUP_RC" -eq 3 ]; then
+    printf '\nThe missing dev tools were not added: "uv add" failed (see above).\n'
     CHECK_RC=1
 fi
 

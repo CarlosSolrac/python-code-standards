@@ -17,8 +17,9 @@ is swapped in place, leaving every other line as it was. The file is saved as
 ``pyproject.toml.orig`` before any swap, since comments inside a table do not
 change its parsed value and would otherwise be lost unseen. Tables the baseline does
 not define, such as ``[tool.check-declarations]``, are never touched.
-``[dependency-groups]`` is only reported: development tools the project lacks are
-listed, never added.
+``[dependency-groups]`` is not compared: development tools the project lacks are
+listed, then added with ``uv add --dev`` under the same rules as an outdated file.
+A tool the project already names keeps its version.
 
 The module runs standalone in the target repository, so it uses the standard
 library only.
@@ -31,8 +32,10 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
+import sys
 import tomllib
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -45,6 +48,9 @@ HEADER: re.Pattern[str] = re.compile(r"^\[\[?([^\[\]]+)\]\]?\s*(?:#.*)?$")
 
 REQUIREMENT_END: re.Pattern[str] = re.compile(r"[\s<>=!~;\[(@]")
 """Where a requirement's project name ends: at a version, marker, extra, or URL."""
+
+UV_ADD_FAILED: int = 3
+"""Exit status when every file was installed but ``uv add`` failed; the setup script carries on, then fails."""
 
 
 class Status(StrEnum):
@@ -73,21 +79,31 @@ class Item:
         return f"{self.path} [tool.{self.table}]" if self.table else self.path
 
 
-def main(argv: list[str] | None = None, ask: Callable[[str], str] = input) -> int:
+def run_command(command: Sequence[str]) -> int:
+    """Run a command, its output going straight to the terminal, and return its exit status.
+
+    Prints so far are flushed first: piped, they are block-buffered and would land after the command's output.
+    """
+    sys.stdout.flush()
+    return subprocess.run(command, check=False).returncode  # noqa: S603 -- argv is uv add --dev and the baseline's requirement strings, never a shell
+
+
+def main(argv: list[str] | None = None, ask: Callable[[str], str] = input, run: Callable[[Sequence[str]], int] = run_command) -> int:
     """Install the staged templates into the current directory.
 
     Args:
         argv: Command-line arguments, defaulting to ``sys.argv[1:]``.
         ask: Prompts the user and returns the reply; raises ``EOFError`` without one.
+        run: Runs a command and returns its exit status; replaced by a fake in tests.
 
     Returns:
-        0; a failure raises.
+        0, or ``UV_ADD_FAILED`` when ``uv add`` failed; any other failure raises.
     """
     parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("stage", type=Path, help="directory holding the templates, laid out as in the repository")
     parser.add_argument("--hashes", type=Path, required=True, help="JSON digests of every earlier template version")
     parser.add_argument("--yes", action="store_true", help="never ask; replace only what --update or --force allows")
-    parser.add_argument("--update", action="store_true", help="with --yes, replace unedited earlier versions")
+    parser.add_argument("--update", action="store_true", help="with --yes, replace unedited earlier versions and add the dev tools pyproject.toml lacks")
     parser.add_argument("--force", action="store_true", help="like --update, and also replace edited files and tables, saving <file>.orig first")
     args: argparse.Namespace = parser.parse_args(argv)
 
@@ -100,8 +116,8 @@ def main(argv: list[str] | None = None, ask: Callable[[str], str] = input) -> in
     if backups:
         print(f"\nBacked up: {', '.join(path.as_posix() for path in backups)}. Compare each with its file, then delete it; setup does not stage backups.")
     report_kept(items, chosen, force=args.force)
-    report_dev_tools(templates)
-    return 0
+    added: bool = add_dev_tools(templates, assume_yes=args.yes, update=args.update or args.force, ask=ask, run=run)
+    return 0 if added else UV_ADD_FAILED
 
 
 def staged_templates(stage: Path) -> dict[str, str]:
@@ -370,17 +386,29 @@ def report_kept(items: list[Item], chosen: list[Item], *, force: bool) -> None:
         print(f'{SETTINGS} holds your other settings too: merge its "hooks" block by hand rather than replacing it.')
 
 
-def report_dev_tools(templates: Mapping[str, str]) -> None:
-    """List the baseline's development tools that ``pyproject.toml`` does not install.
+def add_dev_tools(templates: Mapping[str, str], *, assume_yes: bool, update: bool, ask: Callable[[str], str], run: Callable[[Sequence[str]], int]) -> bool:
+    """List the baseline's development tools that ``pyproject.toml`` does not install, and add them with ``uv add --dev``.
 
-    Runs after ``install``, so a staged ``pyproject.toml`` always exists by now.
+    They are added after asking, or unasked under ``assume_yes`` with ``update``. A tool the
+    project already names keeps whatever version it pins. Runs after ``install``, so a
+    staged ``pyproject.toml`` always exists by now.
+
+    Returns:
+        False when ``uv add`` ran and failed.
     """
     if PYPROJECT not in templates:
-        return
+        return True
     missing: list[str] = missing_dev_tools(tomllib.loads(Path(PYPROJECT).read_text(encoding="utf-8")), tomllib.loads(templates[PYPROJECT]))
-    if missing:
-        print(f"\n{PYPROJECT} [dependency-groups] dev lacks: {', '.join(missing)}")
-        print("Add them with 'uv add --dev', or copy them from the baseline.")
+    if not missing:
+        return True
+    print(f"\n{PYPROJECT} [dependency-groups] dev lacks: {', '.join(missing)}")
+    if not (update if assume_yes else confirm("Add them with 'uv add --dev'? [y/N] ", ask)):
+        print("Not added: add them with 'uv add --dev', or re-run with -y --update.")
+        return True
+    if run(["uv", "add", "--dev", *missing]) != 0:
+        print("\n'uv add' failed (above); add them by hand, or copy them from the baseline.")
+        return False
+    return True
 
 
 def missing_dev_tools(project: Mapping[str, Any], baseline: Mapping[str, Any]) -> list[str]:

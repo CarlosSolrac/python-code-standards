@@ -10,11 +10,13 @@ import json
 import runpy
 import sys
 import tomllib
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
-from skill.tools.setup_files import RewriteError, Status, backup, digest, file_status, main, missing_dev_tools, rewrite_tables, table_digest, table_status
+from skill.tools.hooks.stop_gate import run_command as capture
+from skill.tools.setup_files import RewriteError, Status, backup, digest, file_status, main, missing_dev_tools, rewrite_tables, run_command, table_digest, table_status
 
 BASELINE: str = """\
 [project]
@@ -127,6 +129,8 @@ class Repo:
         self.root: Path = root / "repo"
         self.stage: Path = root / "stage"
         self.hashes: Path = root / "hashes.json"
+        self.commands: list[list[str]] = []
+        self.status: int = 0
         self.root.mkdir()
         self.stage.mkdir()
 
@@ -146,8 +150,11 @@ class Repo:
         """Return a repository file's text after setup ran."""
         return (self.root / path).read_text(encoding="utf-8")
 
-    def run(self, *flags: str, answers: tuple[str, ...] = (), history: dict[str, object] | None = None) -> list[str]:
-        """Run main with the given flags and answers; return the prompts it asked."""
+    def run(self, *flags: str, answers: tuple[str, ...] = (), history: dict[str, object] | None = None, expected: int = 0) -> list[str]:
+        """Run main with the given flags and answers, assert it returns ``expected``, and return the prompts it asked.
+
+        Commands main runs are recorded in ``commands`` instead, each exiting with ``status``.
+        """
         self.hashes.write_text(json.dumps(history or {"files": {}, "tables": {}}), encoding="utf-8")
         prompts: list[str] = []
         replies: list[str] = list(answers)
@@ -158,7 +165,11 @@ class Repo:
                 raise EOFError
             return replies.pop(0)
 
-        assert main([str(self.stage), "--hashes", str(self.hashes), *flags], ask=ask) == 0
+        def execute(command: Sequence[str]) -> int:
+            self.commands.append(list(command))
+            return self.status
+
+        assert main([str(self.stage), "--hashes", str(self.hashes), *flags], ask=ask, run=execute) == expected
         return prompts
 
 
@@ -441,13 +452,69 @@ def test_a_pyproject_without_tool_tables_lacks_them_all(repo: Repo, capsys: pyte
     out: str = capsys.readouterr().out
     assert "  missing  pyproject.toml [tool.ruff] (--update adds it)\n" in out
     assert "  missing  pyproject.toml [tool.mypy] (--update adds it)\n" in out
-    assert "pyproject.toml [dependency-groups] dev lacks: ruff>=0.14, mypy>=1.18\nAdd them with 'uv add --dev', or copy them from the baseline.\n" in out
+    assert "pyproject.toml [dependency-groups] dev lacks: ruff>=0.14, mypy>=1.18\nNot added: add them with 'uv add --dev', or re-run with -y --update.\n" in out
+    assert repo.commands == []
 
 
 def test_no_dev_tool_report_without_a_staged_pyproject(repo: Repo, capsys: pytest.CaptureFixture[str]) -> None:
     repo.existing("pyproject.toml", '[project]\nname = "mine"\n')
     repo.run("--yes")
     assert "dev lacks" not in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- #
+# main: adding the dev tools pyproject.toml lacks
+# --------------------------------------------------------------------------- #
+
+LACKS_MYPY: str = BASELINE.replace('dev = ["ruff>=0.14", "mypy>=1.18"]', 'dev = ["ruff==0.16"]')
+"""The baseline with every table current, whose dev group pins its own Ruff and lacks MyPy."""
+
+ADD_MYPY: list[str] = ["uv", "add", "--dev", "mypy>=1.18"]
+
+
+@pytest.mark.parametrize("flag", ["--update", "--force"])
+def test_yes_update_adds_only_the_missing_dev_tools(repo: Repo, flag: str) -> None:
+    """A tool the project already names keeps its own version: Ruff stays ==0.16."""
+    repo.template("pyproject.toml", BASELINE)
+    repo.existing("pyproject.toml", LACKS_MYPY)
+    assert repo.run("--yes", flag) == []
+    assert repo.commands == [ADD_MYPY]
+
+
+@pytest.mark.parametrize(("answers", "added"), [(("y",), [ADD_MYPY]), (("n",), []), ((), [])])
+def test_interactive_run_asks_before_adding_dev_tools(repo: Repo, answers: tuple[str, ...], added: list[list[str]]) -> None:
+    repo.template("pyproject.toml", BASELINE)
+    repo.existing("pyproject.toml", LACKS_MYPY)
+    assert repo.run(answers=answers) == ["Add them with 'uv add --dev'? [y/N] "]
+    assert repo.commands == added
+
+
+def test_a_failed_uv_add_says_to_add_them_by_hand(repo: Repo, capsys: pytest.CaptureFixture[str]) -> None:
+    """The distinct status lets the setup script finish its other steps, then report the run incomplete."""
+    repo.template("pyproject.toml", BASELINE)
+    repo.existing("pyproject.toml", LACKS_MYPY)
+    repo.status = 1
+    repo.run("--yes", "--update", expected=3)
+    assert "\n'uv add' failed (above); add them by hand, or copy them from the baseline.\n" in capsys.readouterr().out
+
+
+def test_no_missing_dev_tools_asks_and_runs_nothing(repo: Repo, capsys: pytest.CaptureFixture[str]) -> None:
+    repo.template("pyproject.toml", BASELINE)
+    repo.existing("pyproject.toml", BASELINE)
+    assert repo.run() == []
+    assert repo.commands == []
+    assert "dev lacks" not in capsys.readouterr().out
+
+
+def test_run_command_returns_the_exit_status() -> None:
+    assert run_command([sys.executable, "-c", "raise SystemExit(3)"]) == 3
+
+
+def test_run_command_prints_after_what_was_printed_before_it() -> None:
+    """Piped stdout is block-buffered; unflushed, the list of tools would follow uv's own output."""
+    root: str = str(Path(__file__).resolve().parent.parent)
+    parent: str = f"import sys; sys.path.insert(0, {root!r}); from skill.tools.setup_files import run_command; print('dev lacks: mypy'); run_command([sys.executable, '-c', 'print(1)'])"
+    assert capture([sys.executable, "-c", parent]).output.splitlines() == ["dev lacks: mypy", "1"]
 
 
 def test_rewrite_appends_several_missing_tables_one_blank_line_apart() -> None:
@@ -475,7 +542,7 @@ def test_help_lists_the_options_exactly(capsys: pytest.CaptureFixture[str]) -> N
         " options: -h, --help show this help message and exit"
         " --hashes HASHES JSON digests of every earlier template version"
         " --yes never ask; replace only what --update or --force allows"
-        " --update with --yes, replace unedited earlier versions"
+        " --update with --yes, replace unedited earlier versions and add the dev tools pyproject.toml lacks"
         " --force like --update, and also replace edited files and tables, saving <file>.orig first"
     )
 
