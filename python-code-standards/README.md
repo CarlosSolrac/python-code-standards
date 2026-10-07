@@ -43,7 +43,7 @@ than being part of it.
 CI and pre-commit run inside the target repository and cannot see the skill directory, so a
 repository that adopts the tooling vendors its own copy of every config file and the checker.
 `skill/assets/setup-standards.sh` does that in one step: it writes `pyproject.toml`,
-`.pre-commit-config.yaml`, `.gitattributes`, a `.gitignore` (only when the repo has none),
+`.pre-commit-config.yaml`, `.gitattributes`, `.gitignore`,
 `.github/workflows/ci.yml`, `tools/check_declarations.py`, the change-scoped checks
 (`tools/check_suppressions.py`, `tools/check_coverage_records.py`, and their approved-suppression
 list `suppressions.toml`), report-only mutation testing (`tools/mutation.sh` and a nightly
@@ -52,16 +52,28 @@ list `suppressions.toml`), report-only mutation testing (`tools/mutation.sh` and
 then pins Python 3.13, runs
 `uv sync --all-groups`, installs the pre-commit hook, and runs the full check once. The check
 is read-only: each tool runs directly in report mode, never through pre-commit, so existing
-code is reported on, never rewritten, and no hook from an existing config runs. A file that
-already exists is reported and left untouched, so an existing `pyproject.toml` is yours to
-merge by hand; until it installs the baseline's dev tools, the check lists them as not run.
+code is reported on, never rewritten, and no hook from an existing config runs.
+
+Existing files are compared with their templates (`skill/tools/setup_files.py`). A file an
+earlier version of the script wrote and nobody edited since is safe to replace: an interactive
+run lists those and asks once, and `-y` replaces them only with `--update`. An edited file is
+kept, unless `--force` replaces it after saving `<file>.orig`; the backups are never staged.
+`pyproject.toml` is compared one `[tool.*]` table at a time, and a replaced table is swapped in
+place, so `[project]`, dependencies, and tables the baseline does not define are untouched. The
+file is backed up to `pyproject.toml.orig` before any swap, because a comment added inside a
+table does not change its value and so does not count as an edit.
+Missing `[dependency-groups] dev` tools are reported, never added; until they are installed,
+the check lists them as not run.
 
 The script is self-contained — every template and the checker are embedded — so it also runs
 copied on its own to a host with no clone of this repo. `tests/test_setup_script.py` keeps the
-embedded copies byte-identical to `skill/tools/` and `skill/assets/`.
+embedded copies byte-identical to `skill/tools/` and `skill/assets/`. It recognizes earlier
+versions by digests of every template the script has ever written; after changing a template,
+regenerate them with `uv run python -m skill.tools.template_history`, or that test fails.
 
 Run it from inside the target repository; it configures the repo your current directory is in,
-not wherever the script lives. `-y` skips the confirmation prompt.
+not wherever the script lives. `-y` skips the prompts, `--update` and `--force` allow
+replacements (`--help` lists them).
 
 ```bash
 cd <target-repo>

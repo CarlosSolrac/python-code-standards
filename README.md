@@ -105,8 +105,10 @@ you approve. The script writes `pyproject.toml`, `.pre-commit-config.yaml`, `.gi
 repository, and checks every file once: Ruff, formatting, the declaration checker, Pyright,
 and MyPy. The check is read-only — problems in code you already have are reported, not
 fixed, so nothing you wrote changes without your review. It does not run tests or coverage;
-those run in CI and whenever you run `uv run pytest`. A file that already exists is reported
-and left untouched. Claude asks before committing the result.
+those run in CI and whenever you run `uv run pytest`. An existing file is replaced only when
+an earlier version of the script wrote it and nobody edited it since; files you edited are
+kept unless you ask for `--force`, which saves each as `<file>.orig` first. Claude asks
+before committing the result.
 
 The project needs `git` and `uv` on `PATH`, `bash` (Git Bash or WSL on Windows), and a git
 repository — in an empty folder, run `git init` first.

@@ -7,12 +7,16 @@ script's own check must also leave the repository's existing files unmodified.
 
 from __future__ import annotations
 
+import json
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
 
 from skill.tools.hooks.stop_gate import VENDORED_TOOLS
+from skill.tools.setup_files import PYPROJECT, digest, table_digest
+from skill.tools.template_history import templates
 
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent
 SETUP_SCRIPT: Path = REPO_ROOT / "skill" / "assets" / "setup-standards.sh"
@@ -68,6 +72,7 @@ def heredoc(delimiter: str) -> str:
         ("MUTEOF", "skill/tools/mutation.sh"),
         ("MUTCI", "skill/assets/mutation.yml"),
         ("BRIEFEOF", "skill/tools/review_brief.py"),
+        ("SETUPEOF", "skill/tools/setup_files.py"),
     ],
     ids=[
         "check_declarations",
@@ -86,6 +91,7 @@ def heredoc(delimiter: str) -> str:
         "mutation-runner",
         "mutation-workflow",
         "review-brief",
+        "setup-files",
     ],
 )
 @pytest.mark.no_mutation
@@ -97,6 +103,26 @@ def test_embedded_template_matches_source(delimiter: str, asset: str) -> None:
     """
     source: str = (REPO_ROOT / asset).read_text(encoding="utf-8")
     assert heredoc(delimiter) == source
+
+
+def test_embedded_history_covers_every_current_template() -> None:
+    """Each template's digest is in the embedded history, so setup recognizes what it writes today.
+
+    A template changed without regenerating the history fails here; run
+    ``uv run python -m skill.tools.template_history``.
+    """
+    known: dict[str, dict[str, list[str]]] = json.loads(heredoc("HASHEOF"))
+    written: dict[str, str] = templates(SETUP_SCRIPT.read_text(encoding="utf-8"))
+    assert set(written) - {PYPROJECT} == set(known["files"])
+    path: str
+    text: str
+    for path, text in written.items():
+        if path != PYPROJECT:
+            assert digest(text) in known["files"][path], path
+    name: str
+    value: object
+    for name, value in tomllib.loads(written[PYPROJECT])["tool"].items():
+        assert table_digest(value) in known["tables"][f"tool.{name}"], name
 
 
 def test_vendored_tools_list_matches_what_setup_writes() -> None:
@@ -159,3 +185,8 @@ def test_setup_check_reports_missing_tools() -> None:
     command: str
     for command in checked:
         assert command.startswith("check "), command
+
+
+def test_setup_never_stages_backups() -> None:
+    """``--force`` saves replaced files as ``<name>.orig``; staging them would commit the user's old copies."""
+    assert [command for command in script_commands() if command.startswith("git add")] == ["git add -A -- . ':(exclude)*.orig' ':(exclude)*.orig.*'"]
