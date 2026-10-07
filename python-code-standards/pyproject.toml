@@ -13,15 +13,16 @@ dependencies = []
 dev = [
     "complexipy>=8,<9",           # cognitive complexity cap, see [tool.complexipy]
     "deptry>=0.25,<0.26",         # unused, missing, and transitive dependencies
+    "diff-cover>=10,<11",        # CI: 100% coverage of changed lines
     "duckdb>=1.5,<2",             # lets Pyright type-check skill/assets/conformance.py; not in the baseline
     "mutmut>=3.8,<4; sys_platform != 'win32'",  # needs os.fork; on Windows run it through WSL
-    "mypy>=1.18,<2",
+    "mypy>=2.4,<3",
     "pip-audit>=2.10,<3",         # CI: dependencies with known vulnerabilities
     "pre-commit>=4,<5",
     "pyright>=1.1.400,<2",       # PyPI wrapper; downloads a Node runtime on first run
     "pytest>=9.0.3,<10",         # 9.0.3 fixes PYSEC-2026-1845
     "pytest-cov>=6,<8",
-    "ruff>=0.14,<0.15",          # pinned: minor releases change which rules fire
+    "ruff>=0.16.10,<0.17",       # pinned: minor releases change which rules fire
 ]
 
 [tool.ruff]

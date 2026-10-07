@@ -202,23 +202,37 @@ def first_failure(files: list[str], run: Runner, read_coverage: Callable[[], str
     appear in the coverage report: a module no test imports is never recorded,
     and diff-cover silently skips files without a record.
     """
-    result: Result
+    failure: tuple[str, Result] | None
     if files:
-        lint: tuple[str, ...] = ("uv", "run", "pre-commit", "run", "--files", *files)
-        result = run(lint)
-        if result.returncode != 0:
-            return " ".join(lint), result
-    result = run(TESTS)
-    if result.returncode != 0:
-        return " ".join(TESTS), result
+        failure = run_gate(("uv", "run", "pre-commit", "run", "--files", *files), run)
+        if failure is not None:
+            return failure
+    failure = run_gate(TESTS, run)
+    if failure is not None:
+        return failure
     unrecorded: list[str] = unrecorded_modules(files, read_coverage())
     if unrecorded:
         listing: str = "\n".join(f"  {path}" for path in unrecorded)
         return "coverage record check", Result(1, f"No coverage record for:\n{listing}\nNo test imports these modules, so none of their lines are measured and diff-cover skips them. Add a test that exercises each one.")
-    result = run(CHANGED_LINES)
-    if result.returncode != 0:
-        return " ".join(CHANGED_LINES), result
-    return None
+    return run_gate(CHANGED_LINES, run)
+
+
+def run_gate(command: Sequence[str], run: Runner) -> tuple[str, Result] | None:
+    """Run one ``uv run <tool> ...`` gate and return its label and result when it fails.
+
+    A failed gate whose tool uv cannot even start is not installed, which no code change
+    fixes, so the label and output say so instead of naming the command. Any other
+    failure, uv's own included (a malformed ``pyproject.toml``), keeps its diagnostic.
+    """
+    result: Result = run(command)
+    if result.returncode == 0:
+        return None
+    tool: str = command[2]
+    probe: Result = run(("uv", "run", "--no-sync", tool, "--version"))
+    if probe.returncode == 0 or f"Failed to spawn: `{tool}`" not in probe.output:
+        return " ".join(command), result
+    advice: str = f"`{tool}` is not installed in the project environment, so this gate cannot run. Change no code: tell the user to add it with `uv add --dev {tool}`, or to re-run setup-standards.sh with -y --update."
+    return f"{tool} (not installed)", Result(result.returncode, f"{result.output}\n\n{advice}")
 
 
 def unrecorded_modules(files: list[str], report: str) -> list[str]:

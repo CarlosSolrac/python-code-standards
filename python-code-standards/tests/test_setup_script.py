@@ -190,3 +190,36 @@ def test_setup_check_reports_missing_tools() -> None:
 def test_setup_never_stages_backups() -> None:
     """``--force`` saves replaced files as ``<name>.orig``; staging them would commit the user's old copies."""
     assert [command for command in script_commands() if command.startswith("git add")] == ["git add -A -- . ':(exclude)*.orig' ':(exclude)*.orig.*'"]
+
+
+def test_setup_installs_the_git_hook_only_when_pre_commit_is_installed() -> None:
+    """A project whose dev group lacks pre-commit is told the hook was not installed.
+
+    Run unguarded, ``uv run pre-commit install`` fails under ``set -e`` and aborts setup
+    before it stages the files, runs the checks, or reports what is missing.
+    """
+    commands: list[str] = script_commands()
+    install: int = commands.index("uv run pre-commit install")
+    assert commands[install - 1 : install + 4] == [
+        "if uv run --no-sync pre-commit --version >/dev/null 2>&1; then",
+        "uv run pre-commit install",
+        "else",
+        'NOT_RUN+=("pre-commit git hook")',
+        "fi",
+    ]
+
+
+def test_setup_finishes_but_fails_when_uv_add_fails() -> None:
+    """``setup_files.py`` exits 3 when ``uv add`` fails: setup carries on, then reports the run incomplete.
+
+    Any other failure still stops setup. Without this, a project whose checks never
+    use the tool that failed to install would end with ``checks: PASS``.
+    """
+    commands: list[str] = script_commands()
+    install: int = next(index for index, command in enumerate(commands) if "setup_files.py" in command)
+    assert commands[install].endswith(" || SETUP_RC=$?")
+    assert commands[install - 1] == "SETUP_RC=0"
+    assert commands[install + 1 : install + 4] == ['if [ "$SETUP_RC" -ne 0 ] && [ "$SETUP_RC" -ne 3 ]; then', 'exit "$SETUP_RC"', "fi"]
+    report: int = commands.index('if [ "$SETUP_RC" -eq 3 ]; then')
+    assert commands[report + 1 : report + 3] == ["CHECK_RC=1", "fi"]
+    assert report < commands.index('if [ "$CHECK_RC" -eq 0 ]; then')

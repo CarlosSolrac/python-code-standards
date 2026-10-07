@@ -52,7 +52,7 @@ class EventCounter:
         self.seen.add(name)
 
 
-type Json = None | bool | int | float | str | list[Json] | dict[str, Json]
+type Json = bool | int | float | str | list[Json] | dict[str, Json] | None
 
 
 def classify(payload: Json) -> str:
