@@ -321,7 +321,7 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.10
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: [--fix]
       - id: ruff-format
   - repo: local
@@ -2726,6 +2726,7 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "e279f237c76653d2c47cd778479cba58089ca7617d37dd8a1e0da421995f59ab"
   ],
   ".pre-commit-config.yaml": [
+   "2aca5bf0725afe7b605a6d4b1bb08c4bccc0cfae03f1b2627849fc3b743301af",
    "3e92832f817e483c793dc743c6273b65dffb4d9f9e1fd0556ddaa9b96a39cd2e",
    "b4c08952f1e2c7a61a06ffcaafe4bcf935e7b5163e432e3b5726757f609f3d9c",
    "c173562759098fbc74717df06805a98ddeb1bd8b8382f78f1e70c06d67be5bee",
