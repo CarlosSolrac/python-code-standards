@@ -75,6 +75,32 @@ there without it.
 retry loop in `_payload` into one that never ends. The tests hang and mutmut stops
 them, so these mutants are caught, not survivors.
 
+`skill.tools.setup_files.x_backup__mutmut_5` (`number += 1` → `number = 1`) does the
+same to the search for a free `<name>.orig.N` once two backups exist, and
+`x_leading_comments__mutmut_20` (`start += 1` → `start = 1`) to the skip over the blank
+lines between a comment and its header.
+
+## `skill/tools/setup_files.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_main__mutmut_70`, `_72`; `x_staged_templates__mutmut_2`, `_4`; `x_read__mutmut_3`, `_5`, `_8`; `x_digest__mutmut_10`; `x_table_digest__mutmut_9`; `x_write__mutmut_13`, `_16`, `_19`; `x_install_tables__mutmut_11`, `_13`; `x_report_dev_tools__mutmut_8`, `_11` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_write__mutmut_14`, `_17` | `newline=""` → `None` or removed | Newline translation writes `os.linesep`, which is `"\n"` on Linux. |
+| `x_rewrite_tables__mutmut_23`, `_25`, `_41`, `_43` | a baseline table's `rstrip("\n")` → `rstrip()` or `rstrip("XX\nXX")` | Baseline lines end in neither blanks nor `X`. |
+| `x_rewrite_tables__mutmut_36` | `"".join(kept)` → `"XXXX".join(kept)` before `endswith` | The joined text ends with its last block either way; they differ only when that block is empty, and then neither ends in a blank line. |
+| `x_tool_name__mutmut_4`, `_16` | `""` → `"XXXX"` for a header that is not a tool table | Neither name is a baseline tool, so the block is kept either way. |
+| `x_requirement_name__mutmut_4`, `_12` | `.lower()` → `.upper()`; separator → `"XX-XX"` | Both sides of the comparison are normalized the same way, so names match exactly when they did. |
+
+## `skill/tools/template_history.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_main__mutmut_7`, `_9`, `_28`, `_31`, `_34` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_main__mutmut_32` | `newline=""` removed | Newline translation writes `os.linesep`, which is `"\n"` on Linux. |
+| `x__digest_span__mutmut_5` | `index` → `rindex` for the opener | The script has one `HASHEOF` opener. |
+| `x__digest_span__mutmut_8`, `_10` | the closing delimiter searched from the start of the script | No line before the opener is exactly `HASHEOF`. |
+| `x__digest_span__mutmut_13` | search from `start - 2` instead of `start - 1` | The character at `start - 2` is the opener's closing quote, so no match can begin there. |
+
 ## `skill/tools/review_brief.py`
 
 | Mutant | Change | Why it is equivalent |
