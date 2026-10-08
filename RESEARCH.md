@@ -134,8 +134,6 @@ Executable packaging: A pyproject.toml, pinned or locked dependencies, tests, an
 
 https://github.com/trailofbits/skills/tree/main/plugins/variant-analysis
 
-https://github.com/trailofbits/skills/tree/main/plugins/variant-analysis
-
 https://github.com/trailofbits/skills/tree/main/plugins/trailmark
 
 https://appsec.guide/
@@ -188,6 +186,18 @@ https://github.com/trailofbits/skills/tree/main/plugins/claude-in-chrome-trouble
 https://github.com/trailofbits/skills/tree/main/plugins/audit-context-building
 
 https://github.com/trailofbits/skills/tree/main/plugins/agentic-actions-auditor
+
+https://github.com/mattpocock/skills
+
+https://github.com/REMvisual/claude-handoff
+
+https://github.com/gastownhall/beads
+
+https://github.com/volcengine/OpenViking
+
+https://github.com/iamneilroberts/claude-skills
+
+https://github.com/thenguyenvn90/claude-session-handoff
 
 
 
