@@ -114,7 +114,10 @@ Repeat until every task is `done` or `blocked`:
    what changed, how it was verified, and the decision and blocker entries for this task,
    copied from the log. Mark the task `done` with the PR link. Remove the worktree once the
    branch is pushed; keep it if the push failed so nothing is lost, or while its reviews are
-   pending.
+   pending. Before removing any worktree, stop its Codex service:
+   `echo '{"cwd":"<worktree>"}' | node "$(dirname "$CX")/session-lifecycle-hook.mjs" SessionEnd`.
+   Codex starts one service per worktree and stops only the session's own at session end,
+   so otherwise every task leaves one running all night, holding its folder open.
 7. Continue straight to the next task in the same turn. Ending the turn early only costs up
    to twenty idle minutes until the watchdog fires.
 
