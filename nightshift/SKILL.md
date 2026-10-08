@@ -109,16 +109,18 @@ Repeat until every task is `done` or `blocked`:
    then act on it (see *Decisions*).
 5. Hit a blocker → follow *Blockers*.
 6. Finished: all done-checks and project checks pass (apart from failures you recorded as
-   pre-existing), and the whole-branch and adversarial Codex reviews are done. Push, and
-   open a draft PR whose body lists what changed, how it was verified, and the decision and
-   blocker entries for this task, copied from the log. Mark the task `done` with the PR link. Remove the worktree once the branch is pushed; keep it
-   if the push failed so nothing is lost.
+   pre-existing), and the whole-branch and adversarial Codex reviews are done or logged as
+   pending (see *When Codex is unavailable*). Push, and open a draft PR whose body lists
+   what changed, how it was verified, and the decision and blocker entries for this task,
+   copied from the log. Mark the task `done` with the PR link. Remove the worktree once the
+   branch is pushed; keep it if the push failed so nothing is lost, or while its reviews are
+   pending.
 7. Continue straight to the next task in the same turn. Ending the turn early only costs up
    to twenty idle minutes until the watchdog fires.
 
-When no task is left `todo` but reviews are still pending, set `Status: waiting for Codex`,
-keep the watchdog, and end the turn; each watchdog wake-up retries them. When no task is left
-`todo` and no review is pending, write the *Morning summary*, set `Status: complete`, delete
+When no task is left `todo`, write the *Morning summary*. If reviews are still pending, set
+`Status: waiting for Codex`, keep the watchdog, and end the turn; each watchdog wake-up
+retries them and updates the summary. Once none are pending, set `Status: complete`, delete
 the watchdog with `CronDelete`, and stop. Do not look for more work.
 
 ## Codex reviews
@@ -144,7 +146,7 @@ Protocol* describes (trigger in the background, poll `status --json`, fetch with
    was right at all — the question the user would have asked had they been awake. A finding
    that reproduces as a defect is fixed like any other, and the fix gets an ordinary review.
    A finding that challenges the approach becomes a decision entry: keep the approach or
-   change it, with the pros and cons of both. Push only after this step.
+   change it, with the pros and cons of both. Push after this step.
 
 Findings that do not reproduce: note them in the task's timeline and change nothing. Design
 tradeoffs, which the protocol sends to the user, become decision entries instead. Count the
@@ -153,24 +155,26 @@ see the work was reviewed, and put the adversarial verdict in the PR body.
 
 ### When Codex is unavailable
 
-A review can fail mid-night — a usage limit, an outage, an expired login. A failed review is
-postponed, never skipped: the user wants every one of them run.
+A review can fail mid-night — a usage limit, an outage, an expired login. Work never waits
+on Codex, but a failed review is postponed, not skipped: the user wants every one of them run.
 
 1. **Log the failure** under `## Reviews pending`: the task, which review point it was, the
    job id, the error text, and the retry time if Codex gave one. Note it in the timeline.
-2. **Keep working.** Commit the unit anyway, so no work waits on Codex; record the last
-   commit Codex did review. Mark a finished task `done — reviews pending`. Do not push it or
-   remove its worktree yet, because its review fixes will land there.
+2. **Keep working.** Commit the unit anyway and record the last commit Codex did review.
+   Finish the task as usual — push it and open its draft PR — with `Codex review pending` at
+   the top of the PR body, and mark it `done — reviews pending`. Keep its worktree, because
+   any review fixes will land there.
 3. **Retry** before starting each task and on every wake-up, but not before a retry time
    Codex reported.
 4. **When Codex answers again**, run what was missed, oldest task first, before new work.
    Commits that missed their unit review get one review with
    `--scope branch --base <last reviewed commit>`; then the task's whole-branch review and
-   adversarial review. Handle the findings as above, then push, open the PR, mark the task
-   `done`, and remove the entry from *Reviews pending*.
+   adversarial review. Handle the findings as above, push the fixes to the same PR, replace
+   `Codex review pending` with the verdicts, mark the task `done`, remove its worktree, and
+   remove the entry from *Reviews pending*.
 
 A missing install or a failed login will not recover on its own, so also put it under
-**Needs you**. The night still ends only when *Reviews pending* is empty.
+**Needs you**.
 
 ## Decisions
 
