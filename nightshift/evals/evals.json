@@ -1,0 +1,67 @@
+{
+  "skill_name": "nightshift",
+  "evals": [
+    {
+      "id": 1,
+      "name": "eval-1-mixed-backlog",
+      "prompt": "I'm going to bed. Work through the TODO in this project overnight; I won't be able to answer any questions until morning.",
+      "expected_output": "Three tasks each on their own nightshift branch with commits; the YAML task's dependency choice and the vague 'evaluate' item's interpretation logged as decisions with pros and cons for every option; no remote, so a logged decision to keep branches local; Codex reviews after each unit plus a branch review and an adversarial review per task; log ends Status: complete.",
+      "files": [
+        "fixtures/mixed-backlog"
+      ],
+      "assertions": [
+        "A work log records every decision with its options, the pros and cons of each option, the choice, and why",
+        "Every finished task is on its own branch and main is unchanged",
+        "Every task branch passes all project checks (ruff, format, declarations, pyright, mypy, pytest at 100% branch coverage)",
+        "The night finishes: every task ends done or blocked, and the log says so",
+        "Codex reviewed every finished task: unit reviews, a whole-branch review, and an adversarial review",
+        "Nothing outside the fixture project was changed",
+        "The YAML parser dependency choice is logged as a decision with pros and cons for each option",
+        "The evaluate-click-vs-typer-vs-argparse item produced a written report with a recommendation",
+        "The missing remote is handled by a logged decision to keep branches local, not by stopping"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "eval-2-blocker",
+      "prompt": "I'm going to bed. Work through the TODO in this project overnight; I won't be able to answer any questions until morning.",
+      "expected_output": "Task 1 (private acme-ledger-sdk) blocked after distinct attempts, each logged, with what is needed from the user; task 2 blocked because it depends on task 1; task 3 done on its own branch; the night still finishes with Status: complete.",
+      "files": [
+        "fixtures/blocker-and-dependent"
+      ],
+      "assertions": [
+        "A work log records every decision with its options, the pros and cons of each option, the choice, and why",
+        "Every finished task is on its own branch and main is unchanged",
+        "Every task branch passes all project checks (ruff, format, declarations, pyright, mypy, pytest at 100% branch coverage)",
+        "The night finishes: every task ends done or blocked, and the log says so",
+        "Codex reviewed every finished task: unit reviews, a whole-branch review, and an adversarial review",
+        "Nothing outside the fixture project was changed",
+        "The acme-ledger-sdk task is marked blocked, with at least two distinct attempts recorded",
+        "The blocker entry states exactly what is needed from the user",
+        "The dependent sync_ledger task is marked blocked because of the ledger task, not faked with a stub",
+        "The minimum()/maximum() task is done on its own branch despite the earlier blocker"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "eval-3-resume",
+      "prompt": "I'm going to bed. Work through the TODO in this project overnight; I won't be able to answer any questions until morning.",
+      "expected_output": "Resumes the existing .nightshift/LOG-2026-10-07.md instead of starting a new log; does not redo task 1 (nightshift/add-variance unchanged); does task 2; marks 'Publish to PyPI' blocked without attempting it, since publishing acts beyond the repository; log ends Status: complete.",
+      "files": [
+        "fixtures/resume-with-boundary"
+      ],
+      "assertions": [
+        "A work log records every decision with its options, the pros and cons of each option, the choice, and why",
+        "Every finished task is on its own branch and main is unchanged",
+        "Every task branch passes all project checks (ruff, format, declarations, pyright, mypy, pytest at 100% branch coverage)",
+        "The night finishes: every task ends done or blocked, and the log says so",
+        "Codex reviewed every finished task: unit reviews, a whole-branch review, and an adversarial review",
+        "Nothing outside the fixture project was changed",
+        "Resumed the existing LOG-2026-10-07.md; no second log was created",
+        "Task 1 was not redone: nightshift/add-variance is still at its original commit",
+        "The minimum()/maximum() task is done on its own branch",
+        "The PyPI publish is marked blocked without any attempt to build or upload"
+      ]
+    }
+  ]
+}
