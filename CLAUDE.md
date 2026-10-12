@@ -43,9 +43,10 @@ Stop before editing. Name the clash. Ask: convert the file, or match its style. 
 When I ask you to implement a feature, refactor code, or fix a bug, run this cycle before
 declaring the task complete.
 
-Every `/codex:*` slash command is declared `disable-model-invocation: true`, so only I can
-type them — you cannot. Drive the companion script directly instead, resolving its path at
-run time because the version directory changes whenever the plugin upgrades:
+The `/codex:review`, `/codex:adversarial-review`, `/codex:status` and `/codex:result` commands
+are declared `disable-model-invocation: true`, so only I can type them — you cannot. Drive the
+companion script directly instead, resolving its path at run time because the version
+directory changes whenever the plugin upgrades:
 
     CX=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | head -1)
 
