@@ -95,7 +95,7 @@ uv run diff-cover coverage.xml --compare-branch=main --fail-under=100
 
 Coverage on changed code: **100% statement and 100% branch**, both reported. `diff-cover` measures exactly the changed lines, and CI runs it the same way; `fail_under` is only the whole-project floor. If missed, say what is uncovered; never lower the threshold.
 
-**Never claim anything passed unless the command ran and its output was observed.** Editor diagnostics such as `mcp__ide__getDiagnostics` are not verification (see `references/typing.md`). When commands cannot run, open the reply with `UNVERIFIED — nothing below was run.`, list the exact commands in order, and state which claims depend on them.
+**Never claim anything passed unless the command ran and its output was observed.** Editor diagnostics such as `mcp__ide__getDiagnostics` or `mcp__claude-vscode__getDiagnostics` are not verification (see `references/typing.md`). When commands cannot run, open the reply with `UNVERIFIED — nothing below was run.`, list the exact commands in order, and state which claims depend on them.
 
 ## Suppressions
 

@@ -20,7 +20,7 @@ uv run mypy <files>
 
 The PyPI `pyright` package is a wrapper that fetches a Node runtime on first use, which fails in air-gapped CI — install it via npm there, or substitute `basedpyright`. Strict mode is also hostile to AST and metaprogramming code; `assets/pyproject-baseline.toml` relaxes unknown-type reporting for `tools/` in one declared place rather than scattering ignores.
 
-Pylance and the IDE's `mcp__ide__getDiagnostics` bridge are not a gate: the bridge is read-only, often absent, and reports only files the editor has opened, so an empty result means "nothing analyzed" as often as "no errors". Pylance runs Pyright's engine, so `uv run pyright` gives the same diagnostics on demand.
+Pylance and the IDE's diagnostics bridge (`mcp__ide__getDiagnostics` or `mcp__claude-vscode__getDiagnostics`) are not a gate: the bridge is read-only, often absent, and reports only files the editor has opened, so an empty result means "nothing analyzed" as often as "no errors". Pylance runs Pyright's engine, so `uv run pyright` gives the same diagnostics on demand.
 
 Checker disagreement points at a real imprecision in the type model. Fix it with annotations, typed adapters, protocols, or stubs — not suppressions.
 

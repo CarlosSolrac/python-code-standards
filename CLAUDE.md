@@ -2,7 +2,7 @@
 
 Apply to every project. Precedence, highest first: the current request → the project's
 CLAUDE.md → my own skills → this file → plugin skills (names with a plugin prefix, such as
-`superpowers:brainstorming`). Name any conflict in one sentence, then follow the higher rule.
+`codex:rescue`). Name any conflict in one sentence, then follow the higher rule.
 
 Python (`.py`, `.ipynb`): invoke the `python-code-standards` skill before reading or editing code.
 
@@ -48,13 +48,13 @@ are declared `disable-model-invocation: true`, so only I can type them — you c
 companion script directly instead, resolving its path at run time because the version
 directory changes whenever the plugin upgrades:
 
-    CX=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | head -1)
+    CX=$(ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | sort -V | tail -1)
 
 1. **Implement.** Write the code and leave the *implementation* uncommitted. Intermediate
    commits the project's own workflow requires are exempt: where TDD mandates committing a
    failing test first, still make that commit.
-2. **Gate before review.** Run the project's own narrow checks — lint, both type checkers,
-   the relevant test file. Never send Codex code that does not already pass them. Its
+2. **Gate before review.** Run the project's own narrow checks — the linters and type
+   checkers installed for this language, the relevant test file. Never send Codex code that does not already pass them. Its
    sandbox is read-only and often cannot run tests at all, so if you skip this step nothing
    runs them and the review is weaker than it looks.
 3. **Trigger.** `node "$CX" review --background`. A dirty tree is reviewed at working-tree
