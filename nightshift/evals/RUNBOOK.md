@@ -1,8 +1,8 @@
 # Nightshift eval runbook
 
 Each eval is one real night: nightshift works through a fixture project's `TODO.md`
-unattended, and `evals.json` lists what a correct night leaves behind. Only
-`resume-with-boundary` (eval 3) has a fixture so far.
+unattended, and `evals.json` lists what a correct night leaves behind. Each eval's
+`files` entry names its fixture under `fixtures/`.
 
 ## 1. Check the prerequisites
 
