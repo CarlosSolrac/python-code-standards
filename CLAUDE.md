@@ -1,8 +1,8 @@
 # Global rules
 
 Apply to every project. Precedence, highest first: the current request → the project's
-CLAUDE.md → a skill covering the work → this file. Name any conflict in one sentence, then
-follow the higher rule.
+CLAUDE.md → my own skills → this file → plugin skills (names with a plugin prefix, such as
+`superpowers:brainstorming`). Name any conflict in one sentence, then follow the higher rule.
 
 Python (`.py`, `.ipynb`): invoke the `python-code-standards` skill before reading or editing code.
 
