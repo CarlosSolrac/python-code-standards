@@ -42,7 +42,8 @@ Outside the boundary — skip, log as a blocker or question, move on:
 1. Find tonight's log: the newest `.nightshift/LOG-*.md` in the repository root whose
    `Status:` is `in progress` or `waiting for Codex`. If there is one, resume from it — retry
    any *Reviews pending* first (see *When Codex is unavailable*), then go to *Work loop*. A
-   task still marked `in progress` was interrupted; continue it in its existing worktree.
+   task still marked `in progress` was interrupted; give it to a new task subagent, which
+   continues in the existing worktree.
 2. Otherwise this is a new night. Run the *Preflight*, start the *Watchdog*, then build the
    *Plan*.
 
@@ -68,7 +69,7 @@ Check once and record the results under `## Setup` in the log.
   `package.json`, Makefile, CI workflows. Run them once on the default branch so you know
   which failures were already there before you touched anything.
 - Codex: resolve the companion script
-  (`ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | head -1`)
+  (`ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | sort -V | tail -1`)
   and run `node "$CX" status --json`. If it is missing or fails, follow *When Codex is
   unavailable*: the work goes on and every review waits until Codex answers.
 - Add `.nightshift/` to `.git/info/exclude` so the log is never committed.
@@ -89,26 +90,53 @@ and its reasoning as decision D1. Write the plan table, then start working.
 
 ## Work loop
 
+Each task runs in its own subagent, so it starts with a fresh context and loads its skills
+fresh instead of carrying hours of earlier work. This session is the coordinator: it keeps
+the plan, the watchdog and the morning summary, and does no task work itself.
+
 Repeat until every task is `done` or `blocked`:
 
 1. Pick the first `todo` task whose dependencies are `done`. Mark it `in progress` in the log
    with a timestamp.
-2. Make a worktree so the user's own checkout is never disturbed:
+2. Start one general-purpose subagent for it with `run_in_background: false`, and wait for
+   it. Foreground matters: the watchdog fires only while the session is idle, so a
+   background subagent would let the watchdog start the same task a second time. Run one
+   task at a time. The brief gives the task, its done-check, its branch base, its worktree
+   if one exists, the log path, the resolved `$CX`, and the path of this file
+   (`${CLAUDE_SKILL_DIR}/SKILL.md`). It tells the subagent to read this file and follow
+   *Authority*, *Task steps*, *Codex reviews*, *Decisions*, *Blockers* and *Log format*;
+   to leave the watchdog alone and start no other task; and to end by reporting the
+   task's status and PR link.
+3. When it returns, read the task's row in the log; the log is the record, not the report.
+   A row still `in progress` means the subagent stopped early: start a new one for the same
+   task. If that one also stops early, mark the task `blocked` and say so under *Needs you*.
+4. Continue straight to the next task in the same turn. Ending the turn early only costs up
+   to twenty idle minutes until the watchdog fires.
+
+When no task is left `todo`, write the *Morning summary*. If reviews are still pending, set
+`Status: waiting for Codex`, keep the watchdog, and end the turn; each watchdog wake-up
+retries them and updates the summary. Once none are pending, set `Status: complete`, delete
+the watchdog with `CronDelete`, and stop. Do not look for more work.
+
+### Task steps
+
+The task subagent works through these:
+
+1. Make a worktree so the user's own checkout is never disturbed, unless the brief names one:
    `git worktree add <repo-parent>/<repo-name>.nightshift/<task-slug> -b nightshift/<task-slug> origin/<default>`
    (plain `<default>` when there is no remote).
    If it depends on an unmerged nightshift branch, branch from that one instead and say in
    the PR body that it is stacked and must be retargeted to the default branch after its
    base merges. Set up the environment the project needs inside the worktree.
-3. Do the task using the project's normal workflow — its CLAUDE.md, its skills, its tests,
+2. Do the task using the project's normal workflow — its CLAUDE.md, its skills, its tests,
    its review steps. Invoke every skill those instructions require (Python code follows
-   `python-code-standards`) again at the start of each task: over a long night, context
-   summarisation drops skill text that was loaded hours earlier. Unattended work deserves
-   more verification, not less: the user cannot watch you, so the checks are the only
-   evidence the work is right. Get a Codex review after every unit (see *Codex reviews*).
-4. Each time you hit a choice the user would normally make, write a decision entry first,
+   `python-code-standards`) before starting work. Unattended work deserves more
+   verification, not less: the user cannot watch you, so the checks are the only evidence
+   the work is right. Get a Codex review after every unit (see *Codex reviews*).
+3. Each time you hit a choice the user would normally make, write a decision entry first,
    then act on it (see *Decisions*).
-5. Hit a blocker → follow *Blockers*.
-6. Finished: all done-checks and project checks pass (apart from failures you recorded as
+4. Hit a blocker → follow *Blockers*.
+5. Finished: all done-checks and project checks pass (apart from failures you recorded as
    pre-existing), and the whole-branch and adversarial Codex reviews are done or logged as
    pending (see *When Codex is unavailable*). Push, and open a draft PR whose body lists
    what changed, how it was verified, and the decision and blocker entries for this task,
@@ -118,13 +146,6 @@ Repeat until every task is `done` or `blocked`:
    `echo '{"cwd":"<worktree>"}' | node "$(dirname "$CX")/session-lifecycle-hook.mjs" SessionEnd`.
    Codex starts one service per worktree and stops only the session's own at session end,
    so otherwise every task leaves one running all night, holding its folder open.
-7. Continue straight to the next task in the same turn. Ending the turn early only costs up
-   to twenty idle minutes until the watchdog fires.
-
-When no task is left `todo`, write the *Morning summary*. If reviews are still pending, set
-`Status: waiting for Codex`, keep the watchdog, and end the turn; each watchdog wake-up
-retries them and updates the summary. Once none are pending, set `Status: complete`, delete
-the watchdog with `CronDelete`, and stop. Do not look for more work.
 
 ## Codex reviews
 
@@ -174,7 +195,8 @@ on Codex, but a failed review is postponed, not skipped: the user wants every on
    `--scope branch --base <last reviewed commit>`; then the task's whole-branch review and
    adversarial review. Handle the findings as above, push the fixes to the same PR, replace
    `Codex review pending` with the verdicts, mark the task `done`, remove its worktree, and
-   remove the entry from *Reviews pending*.
+   remove the entry from *Reviews pending*. Each task's catch-up runs in a task subagent
+   started as in *Work loop*, with the pending entry in its brief.
 
 A missing install or a failed login will not recover on its own, so also put it under
 **Needs you**.

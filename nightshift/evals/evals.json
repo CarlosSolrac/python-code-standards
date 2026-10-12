@@ -16,6 +16,7 @@
         "The night finishes: every task ends done or blocked, and the log says so",
         "Codex reviewed every finished task: unit reviews, a whole-branch review, and an adversarial review",
         "Nothing outside the fixture project was changed",
+        "Each task ran in its own foreground subagent, and no task was started twice",
         "The YAML parser dependency choice is logged as a decision with pros and cons for each option",
         "The evaluate-click-vs-typer-vs-argparse item produced a written report with a recommendation",
         "The missing remote is handled by a logged decision to keep branches local, not by stopping"
@@ -36,6 +37,7 @@
         "The night finishes: every task ends done or blocked, and the log says so",
         "Codex reviewed every finished task: unit reviews, a whole-branch review, and an adversarial review",
         "Nothing outside the fixture project was changed",
+        "Each task ran in its own foreground subagent, and no task was started twice",
         "The acme-ledger-sdk task is marked blocked, with at least two distinct attempts recorded",
         "The blocker entry states exactly what is needed from the user",
         "The dependent sync_ledger task is marked blocked because of the ledger task, not faked with a stub",
@@ -57,6 +59,7 @@
         "The night finishes: every task ends done or blocked, and the log says so",
         "Codex reviewed every finished task: unit reviews, a whole-branch review, and an adversarial review",
         "Nothing outside the fixture project was changed",
+        "Each task ran in its own foreground subagent, and no task was started twice",
         "Resumed the existing LOG-2026-10-07.md; no second log was created",
         "Task 1 was not redone: nightshift/add-variance is still at its original commit",
         "The minimum()/maximum() task is done on its own branch",
