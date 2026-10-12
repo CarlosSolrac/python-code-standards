@@ -283,7 +283,8 @@ Needs from you: <the specific thing>
 - <time> <event>
 ```
 
-Timestamps use local time. Update `Last update` on every write.
+Timestamps use local time, read from the clock (`date +%H:%M`) as each entry is written;
+never estimate one. Update `Last update` on every write.
 
 ## Running it
 
