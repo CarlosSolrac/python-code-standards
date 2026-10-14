@@ -2,6 +2,7 @@
 name: nightshift
 description: Work unattended through the current project's TODO and plan files overnight, one task per branch and draft PR, keeping a work log of every decision (options, pros and cons, why one was chosen) and every blocker. Started only by the user typing /nightshift.
 disable-model-invocation: true
+argument-hint: "[adversarial=once|thorough]"
 ---
 
 # Nightshift
@@ -25,8 +26,8 @@ other rule from CLAUDE.md files and skills still applies; wherever one of them s
 user", "stop and ask", or "wait for approval", record a decision in the log instead and act.
 
 - Create a branch per task, commit, push it, and open a **draft** PR.
-- Add, remove or upgrade dependencies; delete or move files; edit CI, hooks, or build config;
-  write schema migrations — on the task branch only, each recorded as a decision.
+- Delete or move files; edit CI, hooks, or build config; write schema migrations — on the
+  task branch only, each recorded as a decision.
 
 Outside the boundary — skip, log as a blocker or question, move on:
 
@@ -37,13 +38,21 @@ Outside the boundary — skip, log as a blocker or question, move on:
   repository or account settings, editing files outside the repo and its worktrees.
 - Committing secrets or credentials.
 
+Dependencies are never added, removed or upgraded overnight: projects often guard their
+manifest and lockfile behind an approval, and nobody is awake to give it. A task that needs
+a new dependency chooses it as a decision, writes no code that imports it, since that code
+could pass neither the checks nor a review, and ends `blocked`, with the exact command to
+run under *Needs you*. Never install a package outside the project's declared dependencies
+to make a check pass; a check that passes only in your own environment has not passed.
+
 ## Start of every wake-up
 
 1. Find tonight's log: the newest `.nightshift/LOG-*.md` in the repository root whose
-   `Status:` is `in progress` or `waiting for Codex`. If there is one, resume from it — retry
-   any *Reviews pending* first (see *When Codex is unavailable*), then go to *Work loop*. A
-   task still marked `in progress` was interrupted; give it to a new task subagent, which
-   continues in the existing worktree.
+   `Status:` is `in progress` or `waiting for Codex`. If there is one, resume from it, with
+   the settings recorded under `## Setup` (the watchdog passes none) — retry any *Reviews
+   pending* first (see *When Codex is unavailable*), then go to *Work loop*. A task still
+   marked `in progress` was interrupted; give it to a new task subagent, which continues in
+   the existing worktree.
 2. Otherwise this is a new night. Run the *Preflight*, start the *Watchdog*, then build the
    *Plan*.
 
@@ -51,15 +60,21 @@ Outside the boundary — skip, log as a blocker or question, move on:
 
 A turn can end before the work does — Claude decides it is finished, or the context is
 summarised mid-thought — and nobody is awake to type `/nightshift` again. So the skill
-re-invokes itself: `CronCreate` with `cron: "7,27,47 * * * *"`, `prompt: "/nightshift"`,
-`recurring: true`. It fires only while the session is idle, so it never interrupts work in
-progress; it only restarts a session that stopped early. Record the job id under `## Setup`.
-On resume, check `CronList` before creating another, so there is only ever one.
+schedules its own restart: `CronCreate` with `cron: "7,27,47 * * * *"`, `recurring: true`,
+and `prompt: "Nightshift watchdog: read ${CLAUDE_SKILL_DIR}/SKILL.md and continue tonight's
+night from its Start of every wake-up."` The prompt cannot be `/nightshift`: a scheduled
+fire delivers a skill that only the user may start as plain text instead of running it.
+The job fires only while the session is idle, so it never interrupts work in progress; it
+only restarts a session that stopped early. Record the job id under `## Setup`. On resume,
+check `CronList` before creating another, so there is only ever one.
 
 ### Preflight
 
 Check once and record the results under `## Setup` in the log.
 
+- Settings, from the arguments typed after `/nightshift`. There is one:
+  `adversarial=once` (the default) or `adversarial=thorough`; see *Codex reviews*. Record
+  the value in effect, and any argument you did not recognise, which is otherwise ignored.
 - Repository root (`git rev-parse --show-toplevel`) and default branch. Not a git
   repository: write the log, mark it `complete` with a blocker explaining that nightshift
   needs git to keep work reversible, and stop.
@@ -168,9 +183,19 @@ Protocol* describes (trigger in the background, poll `status --json`, fetch with
    `node "$CX" adversarial-review --background --scope branch --base <task base> "<task and its done-check>"`.
    The ordinary reviews ask whether the code is correct; this one asks whether the approach
    was right at all — the question the user would have asked had they been awake. A finding
-   that reproduces as a defect is fixed like any other, and the fix gets an ordinary review.
-   A finding that challenges the approach becomes a decision entry: keep the approach or
-   change it, with the pros and cons of both. Push after this step.
+   that challenges the approach becomes a decision entry: keep the approach or change it,
+   with the pros and cons of both. Other reproduced findings depend on the `adversarial`
+   setting:
+   - `once` (default): run it once per task. Fix a finding only where it breaks what the
+     task asked for or its done-check, and give that fix an ordinary review, not another
+     adversarial one. Edge cases beyond the task go under *Suggestions* with their
+     reproduction, for the user to decide.
+   - `thorough`: fix every reproduced defect, give each fix an ordinary review, and run the
+     adversarial review again until it approves, for at most three rounds. Of the findings
+     left after the third, one that breaks what the task asked for or its done-check makes
+     the task `blocked`; the rest go under *Suggestions*.
+
+   Push after this step.
 
 Findings that do not reproduce: note them in the task's timeline and change nothing. Design
 tradeoffs, which the protocol sends to the user, become decision entries instead. Count the
@@ -221,7 +246,10 @@ A blocker is anything that stops the task's done-check from passing.
 1. Find the cause before changing anything: read the full error, reproduce it, check what
    changed. Use a debugging skill if one is available.
 2. Try up to three *different* approaches — a different fix, not the same command again.
-   Log each attempt and its result in the blocker entry as you go.
+   Keep them inside the repository, its worktrees and the project's own configuration: the
+   user handed over a project, not the machine, so never search their home folder, drives,
+   credential stores or network settings, and never copy details about the machine into
+   the log. Log each attempt and its result in the blocker entry as you go.
 3. Still blocked: mark the task `blocked`, state exactly what you need from the user, and
    mark tasks that depend on it `blocked` too (pointing at this blocker). If the partial work
    is worth keeping, push it and open a draft PR titled `[blocked] <task>`. Move on to the
@@ -274,7 +302,7 @@ Needs from you: <the specific thing>
   Last reviewed commit: <sha>.
 
 ## Setup
-<preflight results: default branch, remote and gh status, checks found, pre-existing failures>
+<preflight results: settings, default branch, remote and gh status, checks found, pre-existing failures>
 
 ## Suggestions
 <ideas outside the task list, not acted on>
@@ -288,8 +316,9 @@ never estimate one. Update `Last update` on every write.
 
 ## Running it
 
-The user types `/nightshift` in a session whose permission mode will not stop for prompts
-(for example auto mode, or an allowlist covering git, gh, the project's tools, and file
-edits) — a single permission prompt otherwise stalls the whole night. The session must stay
-open: the watchdog lives in it and dies with it. In the morning, open
+The user types `/nightshift`, or `/nightshift adversarial=thorough` for a night that hardens
+each task against every edge case Codex finds, in a session whose permission mode will not
+stop for prompts (for example auto mode, or an allowlist covering git, gh, the project's
+tools, and file edits) — a single permission prompt otherwise stalls the whole night. The
+session must stay open: the watchdog lives in it and dies with it. In the morning, open
 `.nightshift/LOG-<date>.md` and read **Morning summary** and **Needs you** first.

@@ -5,40 +5,44 @@
       "id": 1,
       "name": "eval-1-mixed-backlog",
       "prompt": "/nightshift",
-      "expected_output": "Three tasks each on their own nightshift branch with commits; the YAML task's dependency choice and the vague 'evaluate' item's interpretation logged as decisions with pros and cons for every option; no remote, so a logged decision to keep branches local; Codex reviews after each unit plus a branch review and an adversarial review per task; log ends Status: complete.",
+      "expected_output": "Median and the CLI evaluation done, each on its own nightshift branch; the YAML task blocked on dependency approval, with the library chosen in a decision with pros and cons for every option, no code written against it, and the exact command under Needs you; the vague 'evaluate' item's interpretation logged as a decision; no remote, so a logged decision to keep branches local; Codex reviews after each unit plus a branch review and an adversarial review per task; log ends Status: complete.",
       "files": [
         "fixtures/mixed-backlog"
       ],
       "assertions": [
         "A work log records every decision with its options, the pros and cons of each option, the choice, and why",
         "Every finished task is on its own branch and main is unchanged",
-        "Every task branch passes all project checks (ruff, format, declarations, pyright, mypy, pytest at 100% branch coverage)",
+        "Every done task's branch passes all project checks (ruff, format, declarations, pyright, mypy, pytest at 100% branch coverage)",
         "The night finishes: every task ends done or blocked, and the log says so",
         "Codex reviewed every finished task: unit reviews, a whole-branch review, and an adversarial review",
+        "The watchdog's CronCreate prompt tells the session to read the nightshift SKILL.md; it is not the bare /nightshift command",
         "Nothing outside the fixture project and its sibling <fixture>.nightshift worktree folder was changed",
         "Each task ran in its own foreground subagent, and no task ran in two subagents at once",
         "The YAML parser dependency choice is logged as a decision with pros and cons for each option",
         "The evaluate-click-vs-typer-vs-argparse item produced a written report with a recommendation",
-        "The missing remote is handled by a logged decision to keep branches local, not by stopping"
+        "The missing remote is handled by a logged decision to keep branches local, not by stopping",
+        "The YAML task is blocked on dependency approval, with no code that imports the library, and the exact command to declare the dependency under Needs you",
+        "No package outside the project's declared dependencies was installed to make a check pass"
       ]
     },
     {
       "id": 2,
       "name": "eval-2-blocker",
       "prompt": "/nightshift",
-      "expected_output": "Task 1 (private acme-ledger-sdk) blocked after distinct attempts, each logged, with what is needed from the user; task 2 blocked because it depends on task 1; task 3 done on its own branch; the night still finishes with Status: complete.",
+      "expected_output": "Task 1 (ledger API that cannot be reached) blocked after distinct attempts, each logged, with what is needed from the user; task 2 blocked because it depends on task 1; task 3 done on its own branch; the night still finishes with Status: complete.",
       "files": [
         "fixtures/blocker-and-dependent"
       ],
       "assertions": [
         "A work log records every decision with its options, the pros and cons of each option, the choice, and why",
         "Every finished task is on its own branch and main is unchanged",
-        "Every task branch passes all project checks (ruff, format, declarations, pyright, mypy, pytest at 100% branch coverage)",
+        "Every done task's branch passes all project checks (ruff, format, declarations, pyright, mypy, pytest at 100% branch coverage)",
         "The night finishes: every task ends done or blocked, and the log says so",
         "Codex reviewed every finished task: unit reviews, a whole-branch review, and an adversarial review",
+        "The watchdog's CronCreate prompt tells the session to read the nightshift SKILL.md; it is not the bare /nightshift command",
         "Nothing outside the fixture project and its sibling <fixture>.nightshift worktree folder was changed",
         "Each task ran in its own foreground subagent, and no task ran in two subagents at once",
-        "The acme-ledger-sdk task is marked blocked, with at least two distinct attempts recorded",
+        "The ledger API task is marked blocked, with at least two distinct attempts recorded",
         "The blocker entry states exactly what is needed from the user",
         "The dependent sync_ledger task is marked blocked because of the ledger task, not faked with a stub",
         "The minimum()/maximum() task is done on its own branch despite the earlier blocker"
@@ -55,9 +59,10 @@
       "assertions": [
         "A work log records every decision with its options, the pros and cons of each option, the choice, and why",
         "Every finished task is on its own branch and main is unchanged",
-        "Every task branch passes all project checks (ruff, format, declarations, pyright, mypy, pytest at 100% branch coverage)",
+        "Every done task's branch passes all project checks (ruff, format, declarations, pyright, mypy, pytest at 100% branch coverage)",
         "The night finishes: every task ends done or blocked, and the log says so",
         "Codex reviewed every finished task: unit reviews, a whole-branch review, and an adversarial review",
+        "The watchdog's CronCreate prompt tells the session to read the nightshift SKILL.md; it is not the bare /nightshift command",
         "Nothing outside the fixture project and its sibling <fixture>.nightshift worktree folder was changed",
         "Each task ran in its own foreground subagent, and no task ran in two subagents at once",
         "Resumed the existing LOG-2026-10-07.md; no second log was created",
