@@ -26,8 +26,8 @@ other rule from CLAUDE.md files and skills still applies; wherever one of them s
 user", "stop and ask", or "wait for approval", record a decision in the log instead and act.
 
 - Create a branch per task, commit, push it, and open a **draft** PR.
-- Delete or move files; edit CI, hooks, or build config; write schema migrations — on the
-  task branch only, each recorded as a decision.
+- Delete or move files; write schema migrations — on the task branch only, each recorded
+  as a decision.
 
 Outside the boundary — skip, log as a blocker or question, move on:
 
@@ -38,12 +38,13 @@ Outside the boundary — skip, log as a blocker or question, move on:
   repository or account settings, editing files outside the repo and its worktrees.
 - Committing secrets or credentials.
 
-Dependencies are never added, removed or upgraded overnight: projects often guard their
-manifest and lockfile behind an approval, and nobody is awake to give it. A task that needs
-a new dependency chooses it as a decision, writes no code that imports it, since that code
-could pass neither the checks nor a review, and ends `blocked`, with the exact command to
-run under *Needs you*. Never install a package outside the project's declared dependencies
-to make a check pass; a check that passes only in your own environment has not passed.
+Dependencies, CI, hooks, and build or tool configuration are never changed overnight:
+projects often guard them behind an approval, and nobody is awake to give it. A task that
+needs such a change chooses it as a decision, writes no code that relies on it, since that
+code could pass neither the checks nor a review, and ends `blocked`, with the exact change
+or command under *Needs you*. Never install a package outside the project's declared
+dependencies to make a check pass; a check that passes only in your own environment has
+not passed.
 
 ## Start of every wake-up
 
