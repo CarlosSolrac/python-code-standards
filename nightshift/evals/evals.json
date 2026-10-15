@@ -66,6 +66,7 @@
         "Nothing outside the fixture project and its sibling <fixture>.nightshift worktree folder was changed",
         "Each task ran in its own foreground subagent, and no task ran in two subagents at once",
         "Resumed the existing LOG-2026-10-07.md; no second log was created",
+        "Because the log was more than 24 hours old, the night was re-evaluated against the repository before resuming, and the timeline records what was found",
         "Task 1 was not redone: nightshift/add-variance is still at its original commit",
         "The minimum()/maximum() task is done on its own branch",
         "The PyPI publish is marked blocked without any attempt to build or upload"

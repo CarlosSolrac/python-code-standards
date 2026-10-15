@@ -50,10 +50,21 @@ not passed.
 
 1. Find tonight's log: the newest `.nightshift/LOG-*.md` in the repository root whose
    `Status:` is `in progress` or `waiting for Codex`. If there is one, resume from it, with
-   the settings recorded under `## Setup` (the watchdog passes none) — retry any *Reviews
-   pending* first (see *When Codex is unavailable*), then go to *Work loop*. A task still
-   marked `in progress` was interrupted; give it to a new task subagent, which continues in
-   the existing worktree.
+   the settings recorded under `## Setup` (the watchdog passes none). If it is stale (see
+   below), re-evaluate it first. Then retry any *Reviews pending* (see *When Codex is
+   unavailable*) and go to *Work loop*. A task still marked `in progress` was interrupted;
+   give it to a new task subagent, which continues in the existing worktree.
+
+   A log is stale when its `Last update` is more than 24 hours old; one with no date there
+   counts from the date in its file name. Such a night was abandoned rather than paused,
+   and the repository may have moved on. Before resuming, re-evaluate every unfinished task
+   against the repository as it is now: whether the default branch has moved, whether the
+   work was merged or done another way, whether the task is still in its source file, and
+   whether its branch and worktree still exist. Check every task before writing anything,
+   then update the plan table and timeline in one write, so an interrupted re-evaluation
+   leaves the log stale and the next wake-up repeats it. Resume only if open items remain:
+   tasks still `todo` or `in progress`, or reviews pending. Otherwise write the *Morning
+   summary*, set `Status: complete`, delete the watchdog with `CronDelete`, and stop.
 2. Otherwise this is a new night. Run the *Preflight*, start the *Watchdog*, then build the
    *Plan*.
 
@@ -267,7 +278,7 @@ Keep the sections in this order so the morning reader sees what needs them first
 # Nightshift log — <project> — <YYYY-MM-DD>
 
 Status: in progress | waiting for Codex | complete
-Started: <time> · Last update: <time> · Finished: <time>
+Started: <YYYY-MM-DD HH:MM> · Last update: <YYYY-MM-DD HH:MM> · Finished: <YYYY-MM-DD HH:MM>
 
 ## Morning summary
 <Written last. Done: N (PR links). Blocked: N. Decisions worth reviewing, highest stakes
@@ -312,8 +323,9 @@ Needs from you: <the specific thing>
 - <time> <event>
 ```
 
-Timestamps use local time, read from the clock (`date +%H:%M`) as each entry is written;
-never estimate one. Update `Last update` on every write.
+Timestamps use local time, read from the clock as each entry is written (`date +%H:%M`
+for the timeline, `date '+%Y-%m-%d %H:%M'` for the header); never estimate one. Update
+`Last update` on every write.
 
 ## Running it
 
