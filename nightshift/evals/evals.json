@@ -70,6 +70,31 @@
         "The minimum()/maximum() task is done on its own branch",
         "The PyPI publish is marked blocked without any attempt to build or upload"
       ]
+    },
+    {
+      "id": 4,
+      "name": "eval-4-thorough",
+      "prompt": "/nightshift adversarial=thorough",
+      "expected_output": "Setup records adversarial=thorough; median() written test-first; each reproduced adversarial defect fixed, the fix given an ordinary review, and the adversarial review re-run until it approves or three rounds have run; findings still open after the last round either block the task (if they break it) or sit under Suggestions; log ends Status: complete.",
+      "files": [
+        "fixtures/thorough-median"
+      ],
+      "assertions": [
+        "A work log records every decision with its options, the pros and cons of each option, the choice, and why",
+        "Every finished task is on its own branch and main is unchanged",
+        "Every done task's branch passes all project checks (ruff, format, declarations, pyright, mypy, pytest at 100% branch coverage)",
+        "The night finishes: every task ends done or blocked, and the log says so",
+        "Codex reviewed every finished task: unit reviews, a whole-branch review, and an adversarial review",
+        "The watchdog's CronCreate prompt tells the session to read the nightshift SKILL.md; it is not the bare /nightshift command",
+        "Nothing outside the fixture project and its sibling <fixture>.nightshift worktree folder was changed",
+        "Each task ran in its own foreground subagent, and no task ran in two subagents at once",
+        "`## Setup` records `adversarial=thorough`",
+        "Each time a reproduced adversarial finding was fixed, the fix got an ordinary review and the adversarial review ran again, for at most three adversarial rounds in all",
+        "Findings still open after the last adversarial round either block the task, if they break what the task asked for, or are listed under Suggestions",
+        "median() ends done on its own branch, or blocked by a finding that breaks the task",
+        "At least one adversarial finding was reproduced and fixed, the fix got an ordinary review, and the adversarial review then ran again (otherwise the run did not exercise thorough mode and the eval must be rerun)",
+        "median() was written test-first: the log or history shows a failing test before the implementation"
+      ]
     }
   ]
 }
