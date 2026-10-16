@@ -263,7 +263,16 @@ The pin comment's reason applies in full, so this is its own step, done last. Le
 **Check:** `uv run ruff check` and `uv run ruff format --check` on the gate paths — `conformance.py` is the drift check, so a new
 finding there means the standards' example changes or the rule is deselected, which is a standards decision, not a fix to slip in;
 `uv run pytest tests/test_setup_script.py -q`; `uv lock --check` in both projects; `git grep -n 'v0.16' -- skill/assets
-../nightshift/evals/fixtures/base` prints nothing; then the gates.
+../nightshift/evals/fixtures/base` prints nothing; then the gates. None of those runs the hook itself, and this repository has no
+pre-commit config of its own, so also run the template's CI hook step in a project built from the fixture, which carries the new rev
+— once before the edits and once after, so a failure after is the upgrade's (from the repository root; pre-commit installs the hook
+environments on first run):
+
+```bash
+dest="$(mktemp -d)/statskit"
+nightshift/evals/build-fixture.sh thorough-median "$dest"
+(cd "$dest" && uv sync --locked --all-groups && uv run pre-commit run --all-files --show-diff-on-failure)
+```
 
 Projects set up earlier: `setup-standards.sh -y --update` replaces an unedited `.pre-commit-config.yaml`, but never changes a dev tool
 the project already names ("A tool the project already names keeps its version"), so their `uv run ruff` stays on 0.16 while the hook
