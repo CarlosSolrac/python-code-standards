@@ -60,6 +60,11 @@ Each is logged with its full pros and cons in the night's log; the recommendatio
    come from the same uv as your own `uv lock`. Raise it by hand, together with your local uv.
 5. **Branch protection: do not require the checks yet.** You commit to `main` directly today; required status checks would
    reject those pushes (or need admin bypass). Turn it on later if you move to pull requests for everything.
+6. **The upgrade workflow commits on its own branch** (log D18). Each week with moves it commits `uv.lock` to `upgrade/uv-lock`
+   before you have seen it, so that CI has tested the change by the time you look. Adding `upgrade.yml` (rollout step 5) is your
+   standing approval of those side-branch commits; merging a pull request is your approval of that upgrade, and nothing reaches
+   `main` otherwise. If you want no commit you did not make, have the workflow write `uv lock $ARGS` to the job summary instead and
+   run it yourself, at the cost of CI no longer testing it first.
 
 ## Triggers
 
@@ -142,7 +147,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24" # the checker needs 22.22.2+ or 24.15+ (jsdom's minimum)
+          node-version: "24.21.0" # newest 24.x at least two weeks old; the checker needs 22.22.2+ or 24.15+
       # The tests install the pinned mermaid and jsdom into ~/.cache/design-spec-mermaid with npm on first run.
       - name: Mermaid checker tests, 100% line and branch coverage
         run: node --test --experimental-test-coverage --test-coverage-include="design-spec/skill/tools/*.mjs" --test-coverage-lines=100 --test-coverage-branches=100 "design-spec/tests/*.test.mjs"
@@ -157,8 +162,9 @@ Notes:
 - The last step is new; it ran clean on all 25 tracked Markdown files on 2026-10-16 (diagrams in `docs/plans/design-spec.md` and
   `handoff/design-spec/SKILL.draft.md`, none elsewhere). It keeps the plan files' diagrams honest, including this file's.
 - Pyright prints "there is a new pyright version available" while the lock holds an older one. Ignore it; the lock decides.
-- `node-version: "24"` takes the newest 24.x on each run. Node is not declared anywhere in this repository (PR #12 leaves it out of
-  scope); pin an exact version here if you want the two-week rule applied to it too.
+- Node is pinned exactly, by the same two-week rule: 24.21.0 was published 2026-09-07; 24.22.0 (2026-10-14) becomes eligible on
+  2026-10-28 (dates from `https://nodejs.org/dist/index.json`). Node is declared nowhere else in this repository (PR #12 leaves it
+  out of scope), so this line is its only pin; raise it by hand like the action pins.
 - Not worth an `actions/cache` step for the npm cache: the install is two packages and the job stays short without it.
 
 ### `upgrade.yml`
@@ -410,7 +416,7 @@ next to `pip-audit`.
 Do these in the daytime, in order; each step has its check. CI files are yours to approve, so this is a list for you (or for a
 Claude session you approve step by step), not for nightshift.
 
-1. **Decide** the five decisions above; adjust the YAML if you overrule any. *Check:* the log entries D15–D17 are settled.
+1. **Decide** the six decisions above; adjust the YAML if you overrule any. *Check:* the log entries D15–D18 are settled.
 2. **`ci.yml`:** on a branch, add `.github/workflows/ci.yml` from this plan, and add the four extra commands (format, Pyright,
    MyPy, pip-audit) to *Verifying the skill itself* in `python-code-standards/README.md`, bash and `cmd` blocks. Push and open a
    pull request. *Check:* both jobs pass on the pull request; open the `python` job and see 631 tests at 100%; then break one
@@ -421,7 +427,8 @@ Claude session you approve step by step), not for nightshift.
    *Check:* the box is ticked. (Skip if you chose the App token: create the app, install it on this repository, store its id and
    key as secrets, add an `actions/create-github-app-token` step, pass its token to the PR step, and drop the dispatch step and
    `actions: write`, since CI then runs on the pull request by itself.)
-5. **`upgrade.yml`:** add it the same way and merge, then run `gh workflow run upgrade.yml`. *Check:* a pull request
+5. **`upgrade.yml`:** add it the same way and merge — this is the approval of its weekly commits to `upgrade/uv-lock`
+   (decision 6) — then run `gh workflow run upgrade.yml`. *Check:* a pull request
    `Refresh uv.lock to releases at least 14 days old` appears with only `python-code-standards/uv.lock` changed; on 2026-10-16
    it would have listed PR #12's seven moves (if you have already done PR #12's step 1 by hand, expect no pull request and an empty
    `args` in the log). *Check:* a `ci` run on `upgrade/uv-lock` (event `workflow_dispatch`) starts and passes, and its checks show
