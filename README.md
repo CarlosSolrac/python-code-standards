@@ -1,6 +1,6 @@
 # python-code-standards
 
-A global `CLAUDE.md` and a Python skill for [Claude Code](https://claude.com/claude-code),
+A global `CLAUDE.md` and three skills for [Claude Code](https://claude.com/claude-code),
 installed once into `~/.claude` and active in every project.
 
 - `CLAUDE.md` — language-agnostic working rules: think first, minimal diffs, verify by
@@ -9,9 +9,17 @@ installed once into `~/.claude` and active in every project.
   variable-declaration rule with its own checker, `uv`, Ruff, Pyright, MyPy, and pytest
   coverage. Loaded when Python work triggers it. See
   [python-code-standards/README.md](python-code-standards/README.md).
+- `design-spec/skill/` — the `design-spec` skill: a sized, diagrammed design spec for a new
+  system or an existing project. Loaded when a design or documentation request triggers it.
+  See [Design or document a system](#design-or-document-a-system).
+- `nightshift/` — the `nightshift` skill: works through the project's TODO and plan files
+  overnight, one draft PR per task. Runs only when you type `/nightshift`. See
+  [Work through the backlog overnight](#work-through-the-backlog-overnight).
 
-Each rule lives in exactly one of the two files, so they can be installed together without
-conflict.
+Each rule lives in exactly one of these four files and folders; where a skill relies on
+another's rules, it points to them instead of restating them, so all four can be installed
+together without conflict. `nightshift` is the one deliberate override: while it runs, it
+logs a decision and carries on wherever another rule says to stop and ask.
 
 ## Ask Claude to install
 
