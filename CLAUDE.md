@@ -16,7 +16,8 @@ Python (`.py`, `.ipynb`): invoke the `python-code-standards` skill before readin
 - Implement test-first: a failing unit test before each unit, watched failing for the
   expected reason. Changed code reaches 100% statement and branch coverage.
 - More than two files, or a new dependency: post a numbered plan (step → check) and wait.
-  Single-file edits skip the plan.
+  Single-file edits skip the plan. A Standard or Large design produces a `design-spec` spec
+  first, and the edit plan follows its approval.
 
 ## While writing code
 
