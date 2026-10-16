@@ -278,6 +278,11 @@ Projects set up earlier: `setup-standards.sh -y --update` replaces an unedited `
 the project already names ("A tool the project already names keeps its version"), so their `uv run ruff` stays on 0.16 while the hook
 runs 0.17 until they run `uv add --dev "ruff>=0.17.N,<0.18"`. Say so wherever the skill's change is announced.
 
+Projects set up afterwards: the setup script syncs without a lock, so a new project gets the newest 0.17 patch, which can be newer than
+the hook's `rev: v0.17.N` and younger than two weeks. That is the template's existing design — the pin comment holds back minor
+releases, not patches, and 0.16 behaves the same way today — so the range stays; pinning `ruff==0.17.N` instead would be a standards
+change.
+
 ### Step 5 — what becomes eligible next
 
 Each date is the release date plus 14 days. Re-run the discovery commands below before acting on any of them.
