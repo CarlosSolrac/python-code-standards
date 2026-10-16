@@ -62,7 +62,7 @@ End the spec with open questions (at most 3). Design mode then adds "Approve or 
 1. **Read the repository's own rules first**: `CLAUDE.md`, contributing guides, the backlog. They override this skill on commit style, branching, and what may be written where.
 2. **Locate the copy of record.** If the user names a local folder, work there; if a remote copy is used for analysis, confirm both are on the same commit (`git log --oneline -1`) and that the local one has no uncommitted changes before trusting the analysis.
 3. **Inventory with commands**, not by reading every file:
-   - size: `find . -path ./.git -prune -o -type f \( -name '*.py' -o -name '*.sql' \) -print | xargs wc -l | tail -1`, plus source-only lines per package
+   - size, counting tracked files only so `.venv` and build output stay out: `git ls-files -z -- '*.py' '*.sql' | xargs -0 cat | wc -l`; outside a git repository, prune those folders instead: `find . \( -name .git -o -name .venv -o -name node_modules -o -name build -o -name dist \) -prune -o -type f \( -name '*.py' -o -name '*.sql' \) -print0 | xargs -0 cat | wc -l`; plus source-only lines per package
    - imports between internal packages (source only, not tests):
      `for d in packages/*/src/*; do me=$(basename $d); echo "$me: $(grep -rhoE '^\s*(from|import) <prefix>_[a-z]+' $d | grep -oE '<prefix>_[a-z]+' | grep -v "^$me$" | sort -u | tr '\n' ' ')"; done`
    - declared runtime dependencies, separately from dev groups:
@@ -80,7 +80,7 @@ End the spec with open questions (at most 3). Design mode then adds "Approve or 
 11. **Commit** only when asked, following the repository's rules (branch from the default branch; the repo's message style; no model identifiers if the repo forbids them). Do not push or open a pull request unless asked.
 12. **Resync** ("resync the design"): rerun this procedure and report what changed against the existing `docs/design.md` before overwriting it.
 
-Works for any codebase. Without SQLMesh, derive lineage from SQL `FROM`/`JOIN` clauses or data-flow code, and contracts from schemas, Protocols, and dataclasses; say which artifacts have no equivalent.
+Works for any codebase; adapt the inventory commands to its language and package layout. Without SQLMesh, derive lineage from SQL `FROM`/`JOIN` clauses or data-flow code, and contracts from schemas, Protocols, and dataclasses; say which artifacts have no equivalent.
 
 ## 5. Design rules
 
