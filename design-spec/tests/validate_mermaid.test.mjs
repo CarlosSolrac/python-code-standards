@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { PINS, cacheDir, checkFile, ensureDeps, extractDiagrams, loadParser, main, npmInstall } from "../skill/tools/validate_mermaid.mjs";
+import { PINS, cacheDir, checkFile, ensureDeps, extractDiagrams, loadParser, main, npmInstall, start } from "../skill/tools/validate_mermaid.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../skill/tools/validate_mermaid.mjs", import.meta.url));
 const GOOD = "flowchart LR\n    A --> B\n";
@@ -48,6 +48,10 @@ describe("extractDiagrams", () => {
             { line: 3, source: "flowchart LR\n  A --> B\n" },
             { line: 9, source: "stateDiagram-v2\n  [*] --> A\n" },
         ]);
+    });
+
+    test("accepts whitespace after the info string, as Markdown does", () => {
+        assert.deepEqual(extractDiagrams("design.md", "```mermaid \t\nflowchart LR\n```\n"), [{ line: 1, source: "flowchart LR\n" }]);
     });
 
     test("ignores non-mermaid fences in Markdown", () => {
@@ -217,11 +221,33 @@ describe("with the real parser", () => {
     });
 });
 
+describe("start", () => {
+    test("fails visibly on a Node too old to tell whether the script is the entry point", async () => {
+        const io = capture();
+        assert.equal(await start(undefined, () => assert.fail("ran"), io), 2);
+        assert.match(io.errText, /needs Node 22\.22\.2\+ or 24\.15\+.*found v/);
+    });
+
+    test("does nothing when imported as a module", async () => {
+        assert.equal(await start(false, () => assert.fail("ran"), capture()), undefined);
+    });
+
+    test("runs and returns the exit code when it is the entry point", async () => {
+        assert.equal(await start(true, async () => 1, capture()), 1);
+    });
+});
+
 describe("the script", () => {
     test("runs as a CLI and sets its exit code", () => {
         const result = spawnSync(process.execPath, [SCRIPT, file("cli.mmd", BAD)], { encoding: "utf8" });
         assert.equal(result.status, 1, result.stderr);
         assert.match(result.stdout, /cli\.mmd: block 1 \(line 1\): FAIL/);
+    });
+
+    test("leaves an importing program's exit code alone", () => {
+        const program = `process.exitCode = 7; await import(${JSON.stringify(new URL("../skill/tools/validate_mermaid.mjs", import.meta.url).href)});`;
+        const result = spawnSync(process.execPath, ["--input-type=module", "-e", program], { encoding: "utf8" });
+        assert.equal(result.status, 7, result.stderr);
     });
 
     test("runs as a hook reading JSON on stdin", () => {

@@ -18,7 +18,7 @@ Do not reopen these; log a decision only for choices this plan leaves open.
   and its `docs/adr/` holds ADR-0001 and ADR-0002, so the skill keeps no copy of either.
 - **Mermaid checker**: done before this plan. [design-spec/skill/tools/validate_mermaid.mjs](../../design-spec/skill/tools/validate_mermaid.mjs)
   checks ```` ```mermaid ```` blocks in Markdown and whole `.mmd`/`.mermaid` files. Its pinned packages (`mermaid` 11.17.2, `jsdom` 30.1.1)
-  are already installed in its cache, so running it installs nothing. Run it as
+  are already installed in its cache, so running it installs nothing. It needs Node 22.22.2+ or 24.15+ (jsdom's minimum). Run it as
   `node design-spec/skill/tools/validate_mermaid.mjs <file>...` (exit 0 = every diagram parses). Its tests:
   `node --test --experimental-test-coverage --test-coverage-include="design-spec/skill/tools/*.mjs" --test-coverage-lines=100 --test-coverage-branches=100 "design-spec/tests/*.test.mjs"`.
 - **Evals**: all five, listed under task 3.
@@ -92,7 +92,7 @@ Agent output never goes inside this repository.
 
 ### 4. README
 
-- A section on `design-spec`: what it does (the two modes, the size gate), that it needs Node for the diagram checker, and that templates
+- A section on `design-spec`: what it does (the two modes, the size gate), that its diagram checker needs Node 22.22.2+ or 24.15+, and that templates
   are listed in `template-0-summaries`.
 - A section on `nightshift` (linked into `~/.claude/skills` but not yet documented): it works through the project's TODO and plan files
   overnight, one draft PR per task, and only the user starts it with `/nightshift`.

@@ -8,6 +8,8 @@
 //
 // Mermaid and jsdom are installed at the exact versions in PINS into a shared cache folder on first use
 // (DESIGN_SPEC_MERMAID_CACHE, default ~/.cache/design-spec-mermaid), so no project gains npm files.
+// Needs Node 22.22.2+ or 24.15+, the pinned jsdom's minimum. Versions without import.meta.main exit 2 with that
+// message; other unsupported versions fail when jsdom loads (exit 2 in hook mode, an uncaught error from the CLI).
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -31,7 +33,7 @@ export function extractDiagrams(path, text) {
         return [];
     }
     const diagrams = [];
-    for (const match of text.matchAll(/```mermaid\r?\n([\s\S]*?)```/g)) {
+    for (const match of text.matchAll(/```mermaid[ \t]*\r?\n([\s\S]*?)```/g)) {
         diagrams.push({ line: text.slice(0, match.index).split("\n").length, source: match[1] });
     }
     return diagrams;
@@ -140,11 +142,25 @@ export async function main(argv, io) {
     return failed === 0 ? 0 : 1;
 }
 
-if (import.meta.main) {
-    process.exitCode = await main(process.argv.slice(2), {
-        stdin: () => readFileSync(0, "utf8"),
-        out: (text) => process.stdout.write(text),
-        err: (text) => process.stderr.write(text),
-        getParse: () => loadParser(ensureDeps(cacheDir(process.env, homedir()))),
-    });
+/**
+ * Run when isMain (import.meta.main) is true and return the exit code; return undefined when imported. Node
+ * versions without import.meta.main would otherwise skip every check and exit 0, so they fail with code 2.
+ */
+export async function start(isMain, run, io) {
+    if (isMain === undefined) {
+        io.err(`validate_mermaid.mjs needs Node 22.22.2+ or 24.15+ (the pinned jsdom's minimum); found ${process.version}\n`);
+        return 2;
+    }
+    return isMain ? run() : undefined;
+}
+
+const processIo = {
+    stdin: () => readFileSync(0, "utf8"),
+    out: (text) => process.stdout.write(text),
+    err: (text) => process.stderr.write(text),
+    getParse: () => loadParser(ensureDeps(cacheDir(process.env, homedir()))),
+};
+const exitCode = await start(import.meta.main, () => main(process.argv.slice(2), processIo), processIo);
+if (exitCode !== undefined) {
+    process.exitCode = exitCode;
 }
