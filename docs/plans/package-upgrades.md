@@ -8,7 +8,8 @@ each step with a check.
   later? Move the cutoff to "today minus 14 days" and re-read the dates (commands under [Re-reading the dates](#re-reading-the-dates)).
 - **Sources:** release dates from the PyPI JSON API (earliest non-yanked file of each release, pre-releases skipped), `npm view
   <pkg> time`, GitHub releases (`gh release list`), tags via `git ls-remote`, and python.org's release API. Breaking-change notes are
-  from each project's release notes for every major or minor release between the current and target versions.
+  from each project's release notes, or its changelog where that says more, for every major or minor release between the current
+  and target versions.
 - **Pinning rules already in the repository, kept here:** Ruff is held below its next minor (`<0.17`, "minor releases change which
   rules fire"); pytest's floor `>=9.0.3` stays ("9.0.3 fixes PYSEC-2026-1845"); the Mermaid checker pins exact versions so no project
   gains npm files; the template's `uv sync --locked` in CI means every lock change must still pass `uv lock --check`.
@@ -34,9 +35,10 @@ inside a draft; neither is a declaration this repository uses.
 
 ## Decisions for you before starting
 
-1. **Mermaid 11 → 12.** Recommend **stay on 11.17.2** (the newest 11.x) for now. The checker only parses; 12's changes are layout and
-   theme defaults, plus new diagram types that would pass the checker yet may not render where the specs are read until those
-   renderers move to 12. Moving to 12.1.0 is step 3 below if you prefer it.
+1. **Mermaid 11 → 12.** Planned: **12.1.0** (step 3). The checker only parses. Its tests parse a flowchart, a state and a C4 diagram
+   (asserting the printed type for the first two) and reject a broken flowchart, so a parse-level change to those shows up there;
+   other diagram types are not covered, and step 3 adds a run over real diagrams for that reason. The exception you may prefer: stay on 11.17.2 (the newest 11.x) and skip step 3, because a
+   checker on 12 passes diagram types and syntax new in 12 that a renderer still on 11 cannot draw.
 2. **How to pin GitHub Actions.** `setup-uv` stopped publishing major tags at v8, so `@v10` does not exist and an exact pin is needed
    anyway. Recommend **full commit SHAs with the version as a comment** (`uses: actions/checkout@3d3c42e5… # v7.0.1`), as `setup-uv`'s
    own v8 notes advise; exact tags (`@v7.0.1`) are the readable alternative. A floating major tag also breaks the two-week rule:
@@ -124,15 +126,17 @@ Breaking-change notes, and whether they touch the templates:
 
 | Package | Pin | Newest | Newest ≥ 2 weeks old | Target |
 |---|---|---|---|---|
-| mermaid | 11.17.2 (2026-08-25) | 12.2.0 (2026-10-13) | 12.1.0 (2026-10-02) | per decision 1: stay on 11.17.2 (newest 11.x), or 12.1.0 |
+| mermaid | 11.17.2 (2026-08-25) | 12.2.0 (2026-10-13) | 12.1.0 (2026-10-02) | **12.1.0** (decision 1; exception: stay on 11.17.2, the newest 11.x) |
 | jsdom | 30.1.1 (2026-09-22) | 30.1.3 (2026-10-15) | 30.1.1 | no change; 30.1.2 eligible from 2026-10-18 |
 
-Breaking-change notes for **mermaid 12.0.0** (12.1.0 adds no breaking changes): requires ES2024 and Node 22.12+ (the checker already
+Breaking-change notes. **mermaid 12.1.0** (minor changes only): a new `elk.orientFeedbackEdges` option, on by default, re-routes
+edges that feed back into a subgraph in ELK layouts — rendering only; set it to `false` to keep the old routing — and a `bitOrder`
+option for packet diagrams whose default keeps today's behaviour. **mermaid 12.0.0**: requires ES2024 and Node 22.12+ (the checker already
 needs 22.22.2+); ELK is bundled and becomes the default layout for flowchart, state, class, ER and requirement diagrams, and a new
 default look recolours them — both affect rendering, not parsing; the `defaultRenderer` option is removed (ignored, not rejected); the
 legacy `flowchart`, `class` and `state` diagram ids are gone, but with the default configuration the checker uses they were already
 unreachable, so the ids it prints (`flowchart-v2`, `stateDiagram`, `classDiagram`) should not change — the checker's tests assert
-`flowchart-v2` and would catch it; internal layout exports are removed (the checker does not use them). jsdom 30.1.1's `engines`
+`flowchart-v2` and `stateDiagram` and would catch a change to those two (`classDiagram` is not tested); internal layout exports are removed (the checker does not use them). jsdom 30.1.1's `engines`
 (`^22.22.2 || ^24.15.0 || >=26.0.0`) matches the checker's Node message. Changing a pin makes the checker run `npm install` into each
 user's cache (`~/.cache/design-spec-mermaid`) on its next run, so the first run needs the network.
 
@@ -150,8 +154,15 @@ Not declared, so no constraint changes; listed so the lock diff holds no surpris
 project (outside the repository) on 2026-10-16.
 
 **`python-code-standards/uv.lock`** with step 1's command: coverage 7.16.0 → 7.16.2 (bug fixes for branch coverage on Python 3.14+),
-filelock 3.32.5 → 4.0.9 (a major version; 4.0.0's notes list one change, a soft read-write lock fix; needs Python 3.11+; pulled in by
-virtualenv, python-discovery and cachecontrol), identify 2.6.19 → 2.6.20, nodeenv 1.10.0 → 1.11.0 (new options only), platformdirs
+filelock 3.32.5 → 4.0.9 (a major version, needs Python 3.11+; pulled in by virtualenv, python-discovery and cachecontrol). Per its
+changelog, 4.0.0 changes the on-disk protocol of `SoftReadWriteLock` — an old and a new participant on one lock path do not exclude
+each other, so every participant must be stopped, upgraded and restarted together — and makes re-creating a singleton
+`SoftReadWriteLock` with different `on_compromise` or `poll_interval` settings raise `ValueError`; 4.0.1 and 4.0.7 make `FileLock`
+reject an invalid `poll_interval`, or a `mode` that denies the owner read or write, at construction instead of on a later acquire;
+4.0.9 fixes GHSA-j8f7-rjxc-mr56 (`ReadWriteLock` followed a symlink at its database path). The read-write-lock changes do not reach
+this lock: virtualenv 21.14.5, python-discovery 1.6.0 and 1.6.1, and cachecontrol 0.14.4 import only `FileLock` and `BaseFileLock`
+(their sources searched on 2026-10-16); the gates' `uv run pip-audit` exercises `FileLock` through its cachecontrol file cache. Then
+identify 2.6.19 → 2.6.20, nodeenv 1.10.0 → 1.11.0 (new options only), platformdirs
 4.11.7 → 4.12.2, python-discovery 1.6.0 → 1.6.1, and pyright as above. A blanket `uv lock --upgrade --exclude-newer` would also
 *downgrade* ast-serialize 0.12.1 → 0.12.0, because 0.12.1 was published on 2026-10-03, after the cutoff; step 1's targeted command
 leaves it alone.
@@ -233,7 +244,7 @@ then the gates. The workflows run only in a project the script sets up — this 
 check, run `setup-standards.sh -y` in a scratch repository, push it to a throwaway GitHub repository, and watch `verify` pass on a pull
 request and `mutation` pass from `workflow_dispatch`.
 
-### Step 3 — Mermaid 12.1.0 (only if decision 1 chooses it)
+### Step 3 — Mermaid 12.1.0 (skip if you take decision 1's exception)
 
 1. In `design-spec/skill/tools/validate_mermaid.mjs`, set `PINS` to `{ mermaid: "12.1.0", jsdom: "30.1.1" }`.
 2. In `docs/plans/design-spec.md`, change the sentence naming the pinned versions.
