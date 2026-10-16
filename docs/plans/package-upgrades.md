@@ -11,14 +11,14 @@ each step with a check.
   from each project's release notes for every major or minor release between the current and target versions.
 - **Pinning rules already in the repository, kept here:** Ruff is held below its next minor (`<0.17`, "minor releases change which
   rules fire"); pytest's floor `>=9.0.3` stays ("9.0.3 fixes PYSEC-2026-1845"); the Mermaid checker pins exact versions so no project
-  gains npm files; the template's `uv sync --locked` in CI means every lock change must still pass `uv lock --locked`.
+  gains npm files; the template's `uv sync --locked` in CI means every lock change must still pass `uv lock --check`.
 
 ## Where versions are declared
 
 | File | Declares | Kept in step with |
 |---|---|---|
 | `python-code-standards/pyproject.toml` | `[dependency-groups] dev` (12 tools) | the template below, by hand (no test ties them) |
-| `python-code-standards/uv.lock` | locked versions, 67 packages | `pyproject.toml` (`uv lock --locked`) |
+| `python-code-standards/uv.lock` | locked versions, 67 packages | `pyproject.toml` (`uv lock --check`) |
 | `python-code-standards/skill/assets/pyproject-baseline.toml` | the same dev group minus `duckdb` | the `TOML` heredoc in `setup-standards.sh` (byte-identical, tested) |
 | `python-code-standards/skill/assets/pre-commit-config.yaml` | hook revs: `ruff-pre-commit`, `gitleaks` | the `YAML` heredoc (tested); the Ruff rev must equal the locked Ruff |
 | `python-code-standards/skill/assets/ci.yml` | `actions/checkout@v4`, `astral-sh/setup-uv@v5` | the `CI` heredoc (tested) |
@@ -42,7 +42,7 @@ inside a draft; neither is a declaration this repository uses.
    own v8 notes advise; exact tags (`@v7.0.1`) are the readable alternative. A floating major tag also breaks the two-week rule:
    `actions/upload-artifact@v7` already points at v7.0.2, published 2026-10-07.
 3. **The eval fixture's lock.** It was locked on 2026-10-12 (`d052384`) and holds seven transitive versions newer than the cutoff.
-   Recommend **leave it as is**: its constraints do not change, `uv lock --locked` passes on it, and applying the cutoff would only
+   Recommend **leave it as is**: its constraints do not change, `uv lock --check` passes on it, and applying the cutoff would only
    downgrade those seven (see the [appendix](#appendix-transitive-packages-the-refresh-moves)).
 4. **Python.** Recommend **no change**: 3.13 is the standards' floor ("Python 3.13+"), so raising it is a standards decision, not an
    upgrade. The `3.13` pin already picks up the newest 3.13 patch that the uv in use knows about.
@@ -202,11 +202,11 @@ uv lock -P pyright==1.1.414 -P coverage==7.16.2 -P filelock==4.0.9 -P identify==
 ```
 
 Why named targets rather than `uv lock --upgrade --exclude-newer <cutoff>`: that flag is written into `uv.lock` under `[options]`,
-and afterwards `uv lock --locked` — and so CI's `uv sync --locked` — fails until `uv lock` is run again without it; it would also
+and afterwards `uv lock --check` — and so CI's `uv sync --locked` — fails until `uv lock` is run again without it; it would also
 downgrade ast-serialize. Both were confirmed in the dry run. Use the flag with `--dry-run` to discover targets instead (see
 [Re-reading the dates](#re-reading-the-dates)).
 
-**Check:** `uv lock --locked` exits 0; `git diff --stat` lists only `uv.lock`; `git diff uv.lock | grep -E '^[-+]version'` shows seven
+**Check:** `uv lock --check` exits 0; `git diff --stat` lists only `uv.lock`; `git diff uv.lock | grep -E '^[-+]version'` shows seven
 version changes (14 lines), one per package above; the gates pass. Run Pyright first, as the only direct tool that moves: a new diagnostic is fixed in the code,
 in its own commit, never suppressed.
 
@@ -262,7 +262,7 @@ The pin comment's reason applies in full, so this is its own step, done last. Le
 
 **Check:** `uv run ruff check` and `uv run ruff format --check` on the gate paths — `conformance.py` is the drift check, so a new
 finding there means the standards' example changes or the rule is deselected, which is a standards decision, not a fix to slip in;
-`uv run pytest tests/test_setup_script.py -q`; `uv lock --locked` in both projects; `git grep -n 'v0.16' -- skill/assets
+`uv run pytest tests/test_setup_script.py -q`; `uv lock --check` in both projects; `git grep -n 'v0.16' -- skill/assets
 ../nightshift/evals/fixtures/base` prints nothing; then the gates.
 
 Projects set up earlier: `setup-standards.sh -y --update` replaces an unedited `.pre-commit-config.yaml`, but never changes a dev tool
