@@ -1,3 +1,5 @@
+PAUSED until the user says otherwise: not for nightshift, plans, or suggestions.
+
 Research these topics for useful features:
 
 https://github.com/trailofbits
