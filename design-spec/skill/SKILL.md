@@ -174,3 +174,14 @@ node "${CLAUDE_SKILL_DIR}/tools/validate_mermaid.mjs" docs/design.md
 Exit 0 means every diagram parses; exit 1 lists each failing block with its line number. It needs Node 22.22.2+ or 24.15+. Its first run installs pinned `mermaid` and `jsdom` into a shared cache (`~/.cache/design-spec-mermaid`, or `DESIGN_SPEC_MERMAID_CACHE`), which needs network once; later runs install nothing, and the project gains no npm files. Fix any failing block before showing the spec.
 
 To render the diagrams as well (not needed for validation): `npx -y @mermaid-js/mermaid-cli -i docs/design.md -o <scratch folder>/out.md`, which needs a headless Chrome.
+
+## 8. Default pattern
+
+For a Standard data pipeline, the default pattern comes from the templates indexed in [template-0-summaries](https://github.com/CarlosSolrac/template-0-summaries/tree/main). Pick the template that fits the stack; its `docs/design.md` is the worked example (match its shape and density) and its `docs/adr/` holds the decisions behind the pattern. When the project already has a pattern, follow it and record the difference from the template in an ADR; when no template fits, record why in an ADR.
+
+## 9. Implementation
+
+Python code follows the `python-code-standards` skill. With SQLMesh, also:
+
+- `uv run sqlmesh test` is among the checks that must pass before work is declared done.
+- When a pipeline run fails, the Python API raises a generic `PlanError`; rerun with the CLI (`uv run sqlmesh plan --restate-model <raw table> --auto-apply --no-prompts`) to see which audit or test failed.
