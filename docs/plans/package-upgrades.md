@@ -297,18 +297,47 @@ Each date is the release date plus 14 days. Re-run the discovery commands below 
 
 ## Re-reading the dates
 
-To list what is eligible on the day you execute, without writing anything (`date -d` is GNU; on macOS use `date -v-13d`):
+To list what is eligible on the day you execute, without writing anything. The cutoff is the end of the day 14 days ago, in UTC
+(`date -d` is GNU; on macOS use `date -v-13d`).
 
 ```bash
-# Python, per project: the cutoff is the end of the day 14 days ago, in UTC.
+# 1. Locked packages, within the current constraints (run in each project):
 uv lock --upgrade --dry-run --exclude-newer "$(date -u -d '13 days ago' +%Y-%m-%d)T00:00:00Z"
-# npm pins
+
+# 2. The newest eligible release of each direct tool, ignoring its constraint (finds a new Ruff minor, which step 1 cannot):
+uv run --no-project --with packaging python - <<'PY'
+import datetime as dt, json, urllib.request
+from packaging.version import InvalidVersion, Version
+cutoff = (dt.datetime.now(dt.UTC) - dt.timedelta(days=14)).date().isoformat()
+def final(version):  # a release, post-release included; None for a pre-release, dev release or unparsable version
+    try:
+        parsed = Version(version)
+    except InvalidVersion:
+        return None
+    return None if parsed.is_prerelease else parsed
+for name in ["complexipy", "deptry", "diff-cover", "duckdb", "mutmut", "mypy", "pip-audit", "pre-commit", "pyright", "pytest", "pytest-cov", "ruff"]:
+    releases = json.load(urllib.request.urlopen(f"https://pypi.org/pypi/{name}/json"))["releases"]
+    ok = [(final(v), v) for v, files in releases.items()
+          if final(v) and any(not f["yanked"] for f in files)
+          and min(f["upload_time"] for f in files if not f["yanked"])[:10] <= cutoff]
+    print(name, max(ok)[1])
+PY
+
+# 3. npm pins: every version with its publish time.
 npm view mermaid time --json
 npm view jsdom time --json
-# Actions and hooks: release dates, and the commit a tag points at
-gh release list -R astral-sh/setup-uv --limit 5
-git ls-remote --tags https://github.com/astral-sh/setup-uv.git
+
+# 4. Actions and hooks: the highest version published on or before the cutoff. Sorted by version, not date, because
+#    checkout publishes backports to old majors on the same day as new releases.
+cutoff="$(date -u -d '14 days ago' +%Y-%m-%d)"
+for repo in actions/checkout astral-sh/setup-uv actions/upload-artifact astral-sh/ruff-pre-commit gitleaks/gitleaks; do
+    printf '%s ' "$repo"; gh release list -R "$repo" --limit 200 --exclude-pre-releases --json tagName,publishedAt \
+        --jq ".[] | select(.publishedAt[:10] <= \"$cutoff\") | .tagName" | sort -V | tail -1
+done
+# The commit a chosen tag points at, for a SHA pin (resolves annotated tags too, which `git ls-remote` would not):
+gh api repos/actions/checkout/commits/v7.0.1 --jq .sha
 ```
 
-The `uv` command prints `Update <package> vX -> vY` for each move; a move to a *lower* version means the locked version is younger
-than the cutoff, and the targeted `-P` form of step 1 keeps it.
+Command 1 prints `Update <package> vX -> vY` for each move; a move to a *lower* version means the locked version is younger than the
+cutoff, and the targeted `-P` form of step 1 keeps it. On 2026-10-16, command 2 printed exactly the "Newest ≥ 2 weeks old"
+column of the Python tools table, and command 4 the targets of the Actions and hook tables.
