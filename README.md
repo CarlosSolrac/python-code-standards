@@ -243,12 +243,12 @@ GitHub issues assigned to you — one task at a time, each on its own branch and
 ending in one draft PR per task. See [nightshift/SKILL.md](nightshift/SKILL.md).
 
 - **Starting it.** Only you start it, by typing `/nightshift`; Claude never invokes it on its
-  own. `/nightshift adversarial=thorough` fixes every defect the adversarial review
-  finds and repeats that review until it approves, up to three rounds, instead of running
-  it once per task. Run it in a session whose
-  permission mode will not stop for prompts (auto mode, or an allowlist covering `git`,
-  `gh`, the project's tools and file edits), and leave the session open: a watchdog
-  scheduled in it restarts the work if a turn ends early, and dies with the session.
+  own. `/nightshift adversarial=thorough` fixes every defect the adversarial review finds
+  and repeats that review until it approves, up to three rounds, instead of running it once
+  per task. Run it in a session whose permission mode will not stop for prompts (auto mode,
+  or an allowlist covering `git`, `gh`, the project's tools and file edits), and leave the
+  session open: a watchdog scheduled in it restarts the work if a turn ends early, and dies
+  with the session.
 - **What it may do alone.** Create task branches and worktrees, commit, push those branches,
   open draft PRs, and delete or move files on a task branch. Everything it does is undone by
   closing a PR and deleting a branch. It never pushes to or merges into the default branch,
