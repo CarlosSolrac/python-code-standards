@@ -190,6 +190,43 @@ Removing an unused import can change behaviour when importing the module has sid
 so read the diff rather than skimming it. Commit the reformat on its own, so later
 `git blame` and reviews can tell it apart from real changes.
 
+## Design or document a system
+
+The `design-spec` skill, in `design-spec/skill/`, produces a sized, diagrammed design spec
+in `docs/design.md`. Claude loads it when a request designs a new system or documents an
+existing one; see [design-spec/skill/SKILL.md](design-spec/skill/SKILL.md).
+
+- **Two modes.** *Design mode*, for a new system or a restructure, models the domain first,
+  writes the spec, and stops for your approval before writing any code. *Document mode*,
+  for an existing project, derives the spec from the code, marks what it inferred, lists
+  deviations from the skill's design rules as findings, and changes no code. Ask for one
+  ("Design a pipeline that ...") or the other ("Document the design of this repository",
+  "Resync the design").
+- **Size gate.** The first line of the answer states the mode and a size class, and the
+  class decides how much gets written:
+
+  | Size | When | What is written |
+  | --- | --- | --- |
+  | Small | At most two layers and under ~150 lines, or an existing ADR already forces the answer | Design mode: no spec, code written directly. Document mode: a five-line summary and the component flowchart. |
+  | Standard | Three or more layers, or over ~150 lines, in one process | The full spec; a C4 context view only when the process touches two or more external systems. |
+  | Large | Multiple processes or services | The full spec with C4 context and container views. |
+
+- **Templates.** For a Standard data pipeline, the default pattern comes from the project
+  templates listed in
+  [template-0-summaries](https://github.com/CarlosSolrac/template-0-summaries); each
+  template's `docs/design.md` is the worked example. A project that already has a pattern
+  keeps it and records the difference in an ADR.
+- **Diagram checker.** Before showing a spec, the skill checks every Mermaid diagram in it
+  with Mermaid's own parser, using
+  [design-spec/skill/tools/validate_mermaid.mjs](design-spec/skill/tools/validate_mermaid.mjs).
+  The checker needs Node 22.22.2+ or 24.15+, with `npm`, on `PATH`. Its first run installs
+  pinned `mermaid` and `jsdom` into `~/.cache/design-spec-mermaid`, which needs network once;
+  the project gains no npm files. To run it yourself (exit 0 means every diagram parses):
+
+  ```bash
+  node ~/.claude/skills/design-spec/tools/validate_mermaid.mjs docs/design.md
+  ```
+
 ## Manual Install
 
 Clone, then link both into `~/.claude`. A symlink keeps one source of truth and picks up
