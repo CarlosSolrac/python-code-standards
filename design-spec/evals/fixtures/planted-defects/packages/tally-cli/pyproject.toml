@@ -1,0 +1,22 @@
+[project]
+name = "tally-cli"
+version = "0.1.0"
+description = "Command line entry point"
+requires-python = ">=3.13"
+dependencies = [
+    "tally-common",
+    "tally-io",
+    "tally-stage",
+]
+
+[project.scripts]
+tally = "tally_cli:main"
+
+[tool.uv.sources]
+tally-common = { workspace = true }
+tally-io = { workspace = true }
+tally-stage = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"

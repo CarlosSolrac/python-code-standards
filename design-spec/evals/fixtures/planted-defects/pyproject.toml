@@ -1,0 +1,23 @@
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3,<10",
+    "tally-cli",
+    "tally-common",
+    "tally-core",
+    "tally-io",
+    "tally-stage",
+]
+
+[tool.uv.sources]
+tally-cli = { workspace = true }
+tally-common = { workspace = true }
+tally-core = { workspace = true }
+tally-io = { workspace = true }
+tally-stage = { workspace = true }
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+testpaths = ["tests"]
