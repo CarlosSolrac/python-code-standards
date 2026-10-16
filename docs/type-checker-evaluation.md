@@ -36,10 +36,33 @@ primary run uses that release. A second run uses the newest release, to show how
 | MyPy | 2.4.0 (locked) | 2.4.0 | `uv run mypy skill/tools skill/assets/conformance.py tests evals/grade.py` |
 | ty | 0.0.84 (2026-09-24) | 0.0.89 (2026-10-16) | `uvx ty@0.0.84 check <scope>` |
 | Pyrefly | 1.3.2 (2026-09-28) | 1.4.0 (2026-10-15) | `uvx pyrefly@1.3.2 check <scope>` |
-| Pyre | 0.9.25 (2025-07-07, the last type-checker release) | 0.10.0 (2026-08-06, repackaged as Pysa) | in WSL: `uvx --from pyre-check==0.9.25 pyre --source-directory . --search-path <site-packages> check` |
+| Pyre | 0.9.25 (2025-07-07, the last type-checker release) | 0.10.0 (2026-08-06, repackaged as Pysa) | in WSL, see below: `uvx --from pyre-check==0.9.25 pyre --noninteractive --dot-pyre-directory ../dot-pyre --source-directory . --search-path ../spmin check` |
 
 `<scope>` is the same four paths as in the Pyright command. Each extra mode is the same command
-with one flag added: ty `--error all`; Pyrefly `--preset strict` or `--preset all`; Pyre `--strict`.
+with one flag added: ty `--error all`; Pyrefly `--preset strict` or `--preset all`; Pyre `--strict`
+before `--noninteractive`. Pyre 0.10.0 is the same command with `pyre-check==0.10.0`.
+
+Pyre's inputs were built like this, all in a scratch folder outside the repository. `<scratch>` is
+that folder: its `/c/...` path in Git Bash, its `/mnt/c/...` path in WSL.
+
+```bash
+# Windows side, from python-code-standards/: copy the tracked scope plus what imports need.
+mkdir -p <scratch>/src
+git ls-files skill/tools skill/assets/conformance.py tests evals/grade.py evals/__init__.py skill/__init__.py conftest.py pyproject.toml uv.lock | tar -cf - -T - | tar -xf - -C <scratch>/src
+# WSL side: a Linux environment from the same lock, then a search path of only the
+# third-party packages the scope imports (pytest and duckdb, with their dependencies).
+cd <scratch>/src
+UV_PROJECT_ENVIRONMENT=$PWD/../venv uv sync --all-groups
+mkdir ../spmin
+for d in pytest _pytest pluggy iniconfig packaging duckdb _duckdb-stubs; do
+    cp -r ../venv/lib/python3.13/site-packages/$d ../spmin/
+done
+uvx --from pyre-check==0.9.25 pyre --noninteractive --dot-pyre-directory ../dot-pyre --source-directory . --search-path ../spmin check
+```
+
+With `../spmin`, both versions give the same diagnostics in each mode. Runs with the whole
+`../venv/lib/python3.13/site-packages` as the search path (0.9.25 in both modes, 0.10.0 without
+`--strict`) gave the same diagnostics again.
 
 ### Baseline: Pyright and MyPy
 
@@ -103,8 +126,11 @@ errors, and `redundant-cast` as a warning. It took nothing from `[tool.pyright]`
   str))` gives "Unnecessary `str()` call; argument is already of type `str`". **True positive**,
   harmless dead code that neither Pyright nor MyPy reports. It is pre-existing and was left alone.
 - The two `# type: ignore[arg-type]` comments are honoured ("2 suppressed").
-- `--preset strict` adds only `missing-override-decorator` (26). `--preset all` is a lint pass, for
-  example `unused-call-result` on every ignored `int` return; the standards do not ask for that.
+- On this source, `--preset strict` adds only `missing-override-decorator` (26). It is not a
+  superset of the imported settings, though: a preset replaces them, and the probe below shows
+  strict dropping C02 (missing return annotation) and C08 (`Any` returned). See *Configuration
+  parity* for a table that keeps both. `--preset all` is a lint pass, for example
+  `unused-call-result` on every ignored `int` return; the standards do not ask for that.
 
 ### Pyre
 
@@ -192,8 +218,25 @@ codebase or for a check on every keystroke.
 Matching the repository's strict settings with ty is not possible today, because it has no
 annotation-completeness rules. With Pyrefly it is close: the imported mypy settings cover
 annotations and `Any` returns. They do not cover unused ignores, which `--preset all` reports, or
-private use, which nothing reports. Its strict preset adds `@override`, which the standards do not
-require.
+private use, which nothing reports.
+
+Choosing `preset = "strict"` replaces the imported settings instead of adding to them, so C02 and
+C08 go unreported. Naming the rules keeps them. This table, tried on the probe with Pyrefly 1.3.2,
+reports 14 of the 18 checks: C01–C08, C11–C15 and C17. It misses C09a, C09b, C10 and C16:
+
+```toml
+[tool.pyrefly]
+python-version = "3.13"
+preset = "strict"
+
+[tool.pyrefly.errors]
+unannotated-return = "error"
+implicit-any-parameter = "error"
+no-any-return = "error"
+unused-type-ignore = "error"
+```
+
+The strict preset also asks for `@override`, which the standards do not require.
 
 ## Maturity, release cadence and licence
 
@@ -205,7 +248,7 @@ From PyPI metadata (classifiers, release dates) on 2026-10-16.
 | MyPy | python/mypy | stable, 2.x | MIT | 2012 | 2 | any |
 | ty | Astral | Beta, 0.0.x (no stability promise) | MIT | 2025-04-30 (0.0.0a1) | 29 (about two a week) | Windows, macOS, Linux wheels |
 | Pyrefly | Meta | Production/Stable, 1.x | MIT | 2025-02-19 | 15 (a minor about every five weeks, plus patch and dev releases) | Windows, macOS, Linux wheels |
-| Pyre (pyre-check) | Meta | the type checker is deprecated: the 0.9.25 page says "Check out Pyrefly, our next-generation Python typechecker"; 0.10.0 describes itself as Pysa, "historically bundled with Pyre, Meta's (deprecated) type checker" | MIT | 2018 | 0 (last: 0.10.0, 2026-08-06) | manylinux x86_64 and macOS arm64 only; no Windows |
+| Pyre (pyre-check) | Meta | the type checker is deprecated: the 0.9.25 page says "Check out Pyrefly, our next-generation Python typechecker"; 0.10.0 describes itself as Pysa, "historically bundled with Pyre, Meta's (deprecated) type checker" | MIT | 2018 | 1 (0.10.0, 2026-08-06; the one before was 0.9.25, 2025-07-07) | manylinux x86_64 and macOS arm64 only; no Windows |
 
 ## What would change the verdicts
 
@@ -213,10 +256,11 @@ From PyPI metadata (classifiers, release dates) on 2026-10-16.
   `# type: ignore[...]` or the standards accept `# ty: ignore[...]`, with `check_suppressions.py`
   extended to match. A release past 0.0.x with a stable rule set would also count. Then trial it
   as a third, fast pre-commit check, not as a replacement.
-- **Pyrefly**: re-run this evaluation on a larger or slower codebase, where its speed matters. Try a
-  `[tool.pyrefly]` table that turns on `unused-type-ignore` and the annotation errors, and replace
-  MyPy only if it then matches MyPy's column of the probe, or nearly. It still reports nothing for
-  C16 (Pyright's `reportPrivateUsage`), so Pyright would stay.
+- **Pyrefly**: re-run this evaluation on a larger or slower codebase, where its speed matters,
+  using the `[tool.pyrefly]` table in *Configuration parity*. Replace MyPy only if Pyrefly also
+  covers what that table still misses and MyPy catches: C09b (unreachable) and C10 (redundant
+  cast). It still reports nothing for C16 (Pyright's `reportPrivateUsage`), so Pyright would
+  stay.
 - **Pyre**: nothing. Its successor is Pyrefly.
 
 Changing the standards (`skill/SKILL.md`, `references/typing.md`, `assets/pyproject-baseline.toml`)
