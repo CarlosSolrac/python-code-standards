@@ -227,6 +227,36 @@ existing one; see [design-spec/skill/SKILL.md](design-spec/skill/SKILL.md).
   node ~/.claude/skills/design-spec/tools/validate_mermaid.mjs docs/design.md
   ```
 
+## Work through the backlog overnight
+
+The `nightshift` skill, in `nightshift/`, works unattended through the current project's
+TODO and plan files overnight — `TODO.md`, `docs/plans/`, `PLAN.md`, `ROADMAP.md`, and open
+GitHub issues assigned to you — one task at a time, each on its own branch and worktree,
+ending in one draft PR per task. See [nightshift/SKILL.md](nightshift/SKILL.md).
+
+- **Starting it.** Only you start it, by typing `/nightshift`; Claude never invokes it on its
+  own. `/nightshift adversarial=thorough` fixes every defect the adversarial review
+  finds and repeats that review until it approves, up to three rounds, instead of running
+  it once per task. Run it in a session whose
+  permission mode will not stop for prompts (auto mode, or an allowlist covering `git`,
+  `gh`, the project's tools and file edits), and leave the session open: a watchdog
+  scheduled in it restarts the work if a turn ends early, and dies with the session.
+- **What it may do alone.** Create task branches and worktrees, commit, push those branches,
+  open draft PRs, and delete or move files on a task branch. Everything it does is undone by
+  closing a PR and deleting a branch. It never pushes to or merges into the default branch,
+  merges a PR, force-pushes, deploys, or acts outside the repository, and it never changes
+  dependencies, CI, hooks, or build configuration: a task that needs one ends blocked, with
+  the exact change listed for you.
+- **Reviews.** Codex reviews every unit and every finished task, then challenges each task's
+  approach in an adversarial review. This needs the Codex plugin for Claude Code; while
+  Codex is unavailable the work goes on and the reviews wait, listed as pending.
+- **Needs.** A git repository; `gh` logged in to push and open PRs, or the branches stay
+  local.
+- **In the morning.** Open `.nightshift/LOG-<date>.md` in the repository root and read
+  *Morning summary* and *Needs you* first. The log records every decision it made alone,
+  with the options, the pros and cons of each, and how to reverse it, and every blocker with
+  what it needs from you.
+
 ## Manual Install
 
 Clone, then link both into `~/.claude`. A symlink keeps one source of truth and picks up
