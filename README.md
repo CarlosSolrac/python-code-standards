@@ -46,8 +46,8 @@ Use this when you have no `~/.claude/CLAUDE.md` yet.
   ```text
   Install the python-code-standards from https://github.com/CarlosSolrac/python-code-standards.
   Clone it to ~/src/python-code-standards, then follow its README's Manual Install section to link
-  CLAUDE.md into ~/.claude and the skill into ~/.claude/skills/python-code-standards. If
-  ~/.claude/CLAUDE.md or that skill folder already exists, stop and ask me. Finish by running
+  CLAUDE.md into ~/.claude and the three skills into ~/.claude/skills. If
+  ~/.claude/CLAUDE.md or any of those skill folders already exists, stop and ask me. Finish by running
   the README's Verify step and showing me the output.
   ```
 
@@ -63,7 +63,7 @@ Use this to switch to this repository's rules, keeping a backup of yours.
   changing anything, copy ~/.claude/CLAUDE.md to ~/.claude/CLAUDE.md.bak-<today's date> and
   show me that the backup exists. Then delete the original ~/.claude/CLAUDE.md, because a
   link cannot be created over an existing file. Follow the README's Manual Install section to link
-  CLAUDE.md and the skill, run the README's Verify step, and show me the output.
+  CLAUDE.md and the skills, run the README's Verify step, and show me the output.
   ```
 
 ### Scenario 3: merge with your current CLAUDE.md
@@ -80,12 +80,12 @@ writes nothing until you approve the merged file.
   Then go through both files section by section: keep any rule only one file has, and for each
   rule where they overlap or conflict, show me both versions and ask which to keep. Show me the
   complete merged file and wait for my approval before writing it. Write ~/.claude/CLAUDE.md as
-  a regular file, not a link, and link only the skill. Finish by running the README's Verify
+  a regular file, not a link, and link only the skills. Finish by running the README's Verify
   step and showing me the output.
   ```
 
 A merged `CLAUDE.md` is your own file, so later changes to this repository's `CLAUDE.md` do
-not reach it; pull them in by running the merge prompt again. The skill stays linked either
+not reach it; pull them in by running the merge prompt again. The skills stay linked either
 way.
 
 Claude Code asks permission before changing anything in `~/.claude`, even when it is set to
@@ -267,8 +267,8 @@ ending in one draft PR per task. See [nightshift/SKILL.md](nightshift/SKILL.md).
 
 ## Manual Install
 
-Clone, then link both into `~/.claude`. A symlink keeps one source of truth and picks up
-edits immediately.
+Clone, then link `CLAUDE.md` and the three skills into `~/.claude`. A symlink keeps one
+source of truth and picks up edits immediately.
 
 Linux and macOS:
 
@@ -278,6 +278,8 @@ cd python-code-standards
 mkdir -p ~/.claude/skills
 ln -s "$PWD/CLAUDE.md" ~/.claude/CLAUDE.md
 ln -s "$PWD/python-code-standards/skill" ~/.claude/skills/python-code-standards
+ln -s "$PWD/design-spec/skill" ~/.claude/skills/design-spec
+ln -s "$PWD/nightshift" ~/.claude/skills/nightshift
 ```
 
 Windows, in either shell, needs Developer Mode enabled or an elevated prompt.
@@ -290,6 +292,8 @@ Set-Location python-code-standards
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills"
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\CLAUDE.md" -Target "$PWD\CLAUDE.md"
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\python-code-standards" -Target "$PWD\python-code-standards\skill"
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\design-spec" -Target "$PWD\design-spec\skill"
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\nightshift" -Target "$PWD\nightshift"
 ```
 
 `cmd`:
@@ -300,12 +304,14 @@ cd /d python-code-standards
 mkdir "%USERPROFILE%\.claude\skills"
 mklink "%USERPROFILE%\.claude\CLAUDE.md" "%CD%\CLAUDE.md"
 mklink /D "%USERPROFILE%\.claude\skills\python-code-standards" "%CD%\python-code-standards\skill"
+mklink /D "%USERPROFILE%\.claude\skills\design-spec" "%CD%\design-spec\skill"
+mklink /D "%USERPROFILE%\.claude\skills\nightshift" "%CD%\nightshift"
 ```
 
 Both Windows forms name the link first and the target second — the reverse of `ln -s`. In
 `cmd`, use `cd /d` when the clone is on another drive; plain `cd` does not change drives,
-while `Set-Location` handles them. Link the skill *inside* `skills\`; linking `skills\`
-itself hides every other skill and stops this one loading, because Claude Code scans
+while `Set-Location` handles them. Link each skill *inside* `skills\`; linking `skills\`
+itself hides every other skill and stops these loading, because Claude Code scans
 subdirectories for `SKILL.md`.
 
 ### Copy instead of link
@@ -315,16 +321,22 @@ A copy is pinned and survives this repository moving, but must be refreshed afte
 ```bash
 cp CLAUDE.md ~/.claude/CLAUDE.md
 cp -r python-code-standards/skill ~/.claude/skills/python-code-standards
+cp -r design-spec/skill ~/.claude/skills/design-spec
+cp -r nightshift ~/.claude/skills/nightshift
 ```
 
 ```powershell
 Copy-Item CLAUDE.md "$env:USERPROFILE\.claude\CLAUDE.md"
 Copy-Item -Recurse python-code-standards\skill "$env:USERPROFILE\.claude\skills\python-code-standards"
+Copy-Item -Recurse design-spec\skill "$env:USERPROFILE\.claude\skills\design-spec"
+Copy-Item -Recurse nightshift "$env:USERPROFILE\.claude\skills\nightshift"
 ```
 
 ```cmd
 copy CLAUDE.md "%USERPROFILE%\.claude\CLAUDE.md"
 xcopy /E /I python-code-standards\skill "%USERPROFILE%\.claude\skills\python-code-standards"
+xcopy /E /I design-spec\skill "%USERPROFILE%\.claude\skills\design-spec"
+xcopy /E /I nightshift "%USERPROFILE%\.claude\skills\nightshift"
 ```
 
 Do not install the skill both personally and per project under the same name; resolution
@@ -333,18 +345,19 @@ order between the two scopes is not something to rely on.
 ### Verify
 
 ```bash
-ls -l ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards/SKILL.md
+ls -l ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards/SKILL.md ~/.claude/skills/design-spec/SKILL.md ~/.claude/skills/nightshift/SKILL.md
 ```
 
 ```powershell
-Get-Item "$env:USERPROFILE\.claude\CLAUDE.md", "$env:USERPROFILE\.claude\skills\python-code-standards\SKILL.md"
+Get-Item "$env:USERPROFILE\.claude\CLAUDE.md", "$env:USERPROFILE\.claude\skills\python-code-standards\SKILL.md", "$env:USERPROFILE\.claude\skills\design-spec\SKILL.md", "$env:USERPROFILE\.claude\skills\nightshift\SKILL.md"
 ```
 
 ```cmd
-dir "%USERPROFILE%\.claude\CLAUDE.md" "%USERPROFILE%\.claude\skills\python-code-standards\SKILL.md"
+dir "%USERPROFILE%\.claude\CLAUDE.md" "%USERPROFILE%\.claude\skills\python-code-standards\SKILL.md" "%USERPROFILE%\.claude\skills\design-spec\SKILL.md" "%USERPROFILE%\.claude\skills\nightshift\SKILL.md"
 ```
 
-In a Claude Code session, `/python-code-standards` appears in the skill list.
+In a Claude Code session, `/python-code-standards`, `/design-spec` and `/nightshift` appear
+in the skill list.
 
 ### Uninstall
 
@@ -352,16 +365,21 @@ Removing a link removes the link, not this repository.
 
 ```bash
 rm ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards
+rm ~/.claude/skills/design-spec ~/.claude/skills/nightshift
 ```
 
 ```powershell
 Remove-Item "$env:USERPROFILE\.claude\CLAUDE.md"
 Remove-Item "$env:USERPROFILE\.claude\skills\python-code-standards"
+Remove-Item "$env:USERPROFILE\.claude\skills\design-spec"
+Remove-Item "$env:USERPROFILE\.claude\skills\nightshift"
 ```
 
 ```cmd
 del "%USERPROFILE%\.claude\CLAUDE.md"
 rmdir "%USERPROFILE%\.claude\skills\python-code-standards"
+rmdir "%USERPROFILE%\.claude\skills\design-spec"
+rmdir "%USERPROFILE%\.claude\skills\nightshift"
 ```
 
 ## Switching between local Qwen and Anthropic
