@@ -70,9 +70,8 @@ it once approved:
   recommend one"), so the night does not have to interpret them.
 - **Fence off** files that must not be worked with a first line such as
   `PAUSED until the user says otherwise: not for nightshift` or
-  `Not for nightshift: <reason>`. Nightshift's *Plan* has no rule for this line; the night
-  reads it as an instruction and has honoured it. Where that is not certain enough, move
-  the work out of the files *Plan* scans instead.
+  `Not for nightshift: <reason>`. Nightshift's *Plan* skips any file whose first line says
+  so.
 - **Pre-approve** inside the task's own text what the night may do that it would
   otherwise skip or log, for example `(approved: run each through uvx; do not add any as
   a dependency)`.

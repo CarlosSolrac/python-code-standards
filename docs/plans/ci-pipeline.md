@@ -1,3 +1,5 @@
+Not for nightshift: its steps change CI and dependencies; work it in a daytime session.
+
 # Plan: a CI pipeline that upgrades packages and runs the tests
 
 A plan, not the pipeline: no workflow, bot configuration or dependency file has been created or changed. It gives the
@@ -7,7 +9,7 @@ mechanism, and a rollout checklist. The workflows are written out in full so rol
 - **Snapshot:** 2026-10-16. Every command below was run on `origin/main` (58e395a) that day unless it says otherwise; action
   versions are the newest release at least two weeks old on that day.
 - **Companion plan:** which versions to move to, and the manual procedure for every declaration a bot cannot touch, are in
-  `docs/plans/package-upgrades.md` (see [PR #12](https://github.com/CarlosSolrac/python-code-standards/pull/12), not merged).
+  `docs/plans/package-upgrades.md` (see [PR #12](https://github.com/CarlosSolrac/python-code-standards/pull/12), merged).
   This plan does not repeat it; it automates the part of it that is safe to automate and runs the tests on everything.
 
 ## What exists today

@@ -1,20 +1,27 @@
 ---
 name: design-spec
 description: "Use when designing a new system from inputs and outputs, or documenting and diagramming an existing project: produces a sized, diagrammed design spec."
+hooks:
+  PostToolUse:
+    - matcher: "Write|Edit"
+      hooks:
+        - type: command
+          command: 'node "$HOME/.claude/skills/design-spec/tools/validate_mermaid.mjs" --hook'
+          timeout: 180
 ---
 
 # Design Spec
 
 Two modes share one spec format, one set of rules, and one size gate:
 
-- **Design mode**: a new system or a restructure. Design from the domain outward, produce the spec, STOP for approval, then implement.
+- **Design mode**: a new system or a restructure. Design from the domain outward, produce the spec (except Small), STOP for approval, then implement.
 - **Document mode**: an existing project. Derive the spec from the code, mark what was inferred, list deviations from the rules as findings, and change no code.
 
 Pick the mode from the request. "Design", "build", "architect", or given inputs and outputs means design mode. "Document", "diagram", "explain the architecture", "resync the design", or "review the design of" an existing codebase means document mode. State the mode and size class in the first line.
 
 ## 1. Size gate (both modes)
 
-- **Small**: at most two layers and under ~150 lines, or an existing ADR already forces the answer. Design mode: skip the spec and skip SQLMesh; plain `duckdb` in one typed module is fine. Document mode: a five-line summary plus the component flowchart only.
+- **Small**: at most two layers and under ~150 lines, or, in design mode only, an existing ADR already forces the answer. Design mode: skip the spec and skip SQLMesh; plain `duckdb` in one typed module is fine. Document mode: a five-line summary plus the component flowchart only.
 - **Standard**: three or more layers, or over ~150 lines, in one process. Full spec (section 3). Add a C4 context view only when the process touches two or more external systems (storage, APIs, services).
 - **Large**: multiple processes or services. Full spec plus C4 context and container views.
 

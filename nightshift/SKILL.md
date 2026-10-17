@@ -105,8 +105,8 @@ Check once and record the results under `## Setup` in the log.
 
 Collect tasks from what the project already has: `TODO.md`/`TODO`, plan or roadmap files
 (`docs/plans/`, `PLAN.md`, `ROADMAP.md`), `TODO:` notes the files themselves point to, and
-open GitHub issues assigned to the user or labelled for the work if `gh` works. Do not invent
-work. Ideas you have along the way go under `## Suggestions` in the log, not into the plan.
+open GitHub issues assigned to the user or labelled for the work if `gh` works. Skip a file
+whose first line says it is not for nightshift. Do not invent work. Ideas you have along the way go under `## Suggestions` in the log, not into the plan.
 
 For each task write a one-line done-check (a command, test, or observable result). Vague
 items ("Evaluate X, Y, Z") become a concrete deliverable — usually a written report in

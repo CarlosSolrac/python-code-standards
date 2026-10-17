@@ -1,3 +1,5 @@
+Not for nightshift: its steps change dependencies; work it in a daytime session.
+
 # Plan: upgrade all packages
 
 A plan, not the upgrade: nothing here has been changed yet. It lists every place this repository declares a version, the newest

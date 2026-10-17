@@ -218,7 +218,7 @@ existing one; see [design-spec/skill/SKILL.md](design-spec/skill/SKILL.md).
 
   | Size | When | What is written |
   | --- | --- | --- |
-  | Small | At most two layers and under ~150 lines, or an existing ADR already forces the answer | Design mode: no spec, code written directly. Document mode: a five-line summary and the component flowchart. |
+  | Small | At most two layers and under ~150 lines, or (design mode only) an existing ADR already forces the answer | Design mode: no spec, code written directly. Document mode: a five-line summary and the component flowchart. |
   | Standard | Three or more layers, or over ~150 lines, in one process | The full spec; a C4 context view only when the process touches two or more external systems. |
   | Large | Multiple processes or services | The full spec with C4 context and container views. |
 
@@ -257,7 +257,7 @@ ending in one draft PR per task. See [nightshift/SKILL.md](nightshift/SKILL.md).
   session open: a watchdog scheduled in it restarts the work if a turn ends early, and dies
   with the session.
 - **What it may do alone.** Create task branches and worktrees, commit, push those branches,
-  open draft PRs, and delete or move files on a task branch. Everything it does is undone by
+  open draft PRs, and delete or move files and write schema migrations on a task branch. Everything it does is undone by
   closing a PR and deleting a branch. It never pushes to or merges into the default branch,
   merges a PR, force-pushes, deploys, or acts outside the repository, and it never changes
   dependencies, CI, hooks, or build configuration: a task that needs one ends blocked, with

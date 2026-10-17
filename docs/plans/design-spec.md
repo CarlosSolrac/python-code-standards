@@ -1,3 +1,5 @@
+Not for nightshift: all tasks done (2026-10-17); kept as the record of decisions.
+
 # Plan: add the `design-spec` skill
 
 Source material: [handoff/design-spec/HANDOFF.md](https://github.com/CarlosSolrac/python-code-standards/blob/eb189bb/handoff/design-spec/HANDOFF.md)
