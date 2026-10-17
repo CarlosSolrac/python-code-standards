@@ -315,7 +315,7 @@ Each date is the release date plus 14 days. Re-run the discovery commands below 
 ## Re-reading the dates
 
 To list what is eligible on the day you execute, without writing anything. The cutoff is the end of the day 14 days ago, in UTC
-(`date -d` is GNU; on macOS use `date -v-13d`).
+(`date -d` is GNU; on macOS, command 1 uses `date -u -v-13d` and command 4 `date -u -v-14d`).
 
 ```bash
 # 1. Locked packages, within the current constraints (run in each project):
@@ -348,11 +348,11 @@ npm view jsdom time --json
 #    checkout publishes backports to old majors on the same day as new releases.
 cutoff="$(date -u -d '14 days ago' +%Y-%m-%d)"
 for repo in actions/checkout astral-sh/setup-uv actions/upload-artifact astral-sh/ruff-pre-commit gitleaks/gitleaks; do
-    printf '%s ' "$repo"; gh release list -R "$repo" --limit 200 --exclude-pre-releases --json tagName,publishedAt \
+    printf '%s ' "$repo"; gh release list -R "$repo" --limit 200 --exclude-pre-releases --exclude-drafts --json tagName,publishedAt \
         --jq ".[] | select(.publishedAt[:10] <= \"$cutoff\") | .tagName" | sort -V | tail -1
 done
 # The commit a chosen tag points at, for a SHA pin (resolves annotated tags too, which `git ls-remote` would not):
-gh api repos/actions/checkout/commits/v7.0.1 --jq .sha
+gh api repos/<repo>/commits/<tag printed above> --jq .sha
 ```
 
 Command 1 prints `Update <package> vX -> vY` for each move; a move to a *lower* version means the locked version is younger than the

@@ -188,7 +188,9 @@ Protocol* describes (trigger in the background, poll `status --json`, fetch with
    unit on the task branch. The commit marks the reviewed boundary, so the next working-tree
    review sees only new work.
 2. **After applying fixes.** Re-review the fix before committing it. Stop after three
-   rounds that each still produce reproduced findings — that is a blocker.
+   rounds that each still produce reproduced findings. Of the findings left then, one that
+   breaks what the task asked for or its done-check is a blocker; the rest go under
+   *Suggestions* with their reproduction.
 3. **Task complete.** Review the whole task with `--scope branch --base <task base>`,
    because unit reviews cannot see how the units fit together.
 4. **Then challenge it.** Once that review is clean, run
@@ -323,7 +325,8 @@ Needs from you: <the specific thing>
 - <time> <event>
 ```
 
-Timestamps use local time, read from the clock as each entry is written (`date +%H:%M`
+Each `##` heading appears once: update a section in place, never append a second copy of
+it. Timestamps use local time, read from the clock as each entry is written (`date +%H:%M`
 for the timeline, `date '+%Y-%m-%d %H:%M'` for the header); never estimate one. Update
 `Last update` on every write.
 
