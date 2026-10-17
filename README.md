@@ -1,6 +1,6 @@
 # python-code-standards
 
-A global `CLAUDE.md` and a Python skill for [Claude Code](https://claude.com/claude-code),
+A global `CLAUDE.md` and three skills for [Claude Code](https://claude.com/claude-code),
 installed once into `~/.claude` and active in every project.
 
 - `CLAUDE.md` — language-agnostic working rules: think first, minimal diffs, verify by
@@ -9,9 +9,17 @@ installed once into `~/.claude` and active in every project.
   variable-declaration rule with its own checker, `uv`, Ruff, Pyright, MyPy, and pytest
   coverage. Loaded when Python work triggers it. See
   [python-code-standards/README.md](python-code-standards/README.md).
+- `design-spec/skill/` — the `design-spec` skill: a sized, diagrammed design spec for a new
+  system or an existing project. Loaded when a design or documentation request triggers it.
+  See [Design or document a system](#design-or-document-a-system).
+- `nightshift/` — the `nightshift` skill: works through the project's TODO and plan files
+  overnight, one draft PR per task. Runs only when you type `/nightshift`. See
+  [Work through the backlog overnight](#work-through-the-backlog-overnight).
 
-Each rule lives in exactly one of the two files, so they can be installed together without
-conflict.
+Each rule lives in exactly one of these four files and folders; where a skill relies on
+another's rules, it points to them instead of restating them, so all four can be installed
+together without conflict. `nightshift` is the one deliberate override: while it runs, it
+logs a decision and carries on wherever another rule says to stop and ask.
 
 ## Ask Claude to install
 
@@ -38,8 +46,8 @@ Use this when you have no `~/.claude/CLAUDE.md` yet.
   ```text
   Install the python-code-standards from https://github.com/CarlosSolrac/python-code-standards.
   Clone it to ~/src/python-code-standards, then follow its README's Manual Install section to link
-  CLAUDE.md into ~/.claude and the skill into ~/.claude/skills/python-code-standards. If
-  ~/.claude/CLAUDE.md or that skill folder already exists, stop and ask me. Finish by running
+  CLAUDE.md into ~/.claude and the three skills into ~/.claude/skills. If
+  ~/.claude/CLAUDE.md or any of those skill folders already exists, stop and ask me. Finish by running
   the README's Verify step and showing me the output.
   ```
 
@@ -55,7 +63,7 @@ Use this to switch to this repository's rules, keeping a backup of yours.
   changing anything, copy ~/.claude/CLAUDE.md to ~/.claude/CLAUDE.md.bak-<today's date> and
   show me that the backup exists. Then delete the original ~/.claude/CLAUDE.md, because a
   link cannot be created over an existing file. Follow the README's Manual Install section to link
-  CLAUDE.md and the skill, run the README's Verify step, and show me the output.
+  CLAUDE.md and the skills, run the README's Verify step, and show me the output.
   ```
 
 ### Scenario 3: merge with your current CLAUDE.md
@@ -72,12 +80,12 @@ writes nothing until you approve the merged file.
   Then go through both files section by section: keep any rule only one file has, and for each
   rule where they overlap or conflict, show me both versions and ask which to keep. Show me the
   complete merged file and wait for my approval before writing it. Write ~/.claude/CLAUDE.md as
-  a regular file, not a link, and link only the skill. Finish by running the README's Verify
+  a regular file, not a link, and link only the skills. Finish by running the README's Verify
   step and showing me the output.
   ```
 
 A merged `CLAUDE.md` is your own file, so later changes to this repository's `CLAUDE.md` do
-not reach it; pull them in by running the merge prompt again. The skill stays linked either
+not reach it; pull them in by running the merge prompt again. The skills stay linked either
 way.
 
 Claude Code asks permission before changing anything in `~/.claude`, even when it is set to
@@ -190,10 +198,77 @@ Removing an unused import can change behaviour when importing the module has sid
 so read the diff rather than skimming it. Commit the reformat on its own, so later
 `git blame` and reviews can tell it apart from real changes.
 
+## Design or document a system
+
+The `design-spec` skill, in `design-spec/skill/`, produces a sized, diagrammed design spec
+in `docs/design.md`. Claude loads it when a request designs a new system or documents an
+existing one; see [design-spec/skill/SKILL.md](design-spec/skill/SKILL.md).
+
+- **Two modes.** *Design mode*, for a new system or a restructure, models the domain first,
+  writes the spec, and stops for your approval before writing any code. *Document mode*,
+  for an existing project, derives the spec from the code, marks what it inferred, lists
+  deviations from the skill's design rules as findings, and changes no code. Ask for one
+  ("Design a pipeline that ...") or the other ("Document the design of this repository",
+  "Resync the design").
+- **Size gate.** The first line of the answer states the mode and a size class, and the
+  class decides how much gets written:
+
+  | Size | When | What is written |
+  | --- | --- | --- |
+  | Small | At most two layers and under ~150 lines, or an existing ADR already forces the answer | Design mode: no spec, code written directly. Document mode: a five-line summary and the component flowchart. |
+  | Standard | Three or more layers, or over ~150 lines, in one process | The full spec; a C4 context view only when the process touches two or more external systems. |
+  | Large | Multiple processes or services | The full spec with C4 context and container views. |
+
+- **Templates.** For a Standard data pipeline, the default pattern comes from the project
+  templates listed in
+  [template-0-summaries](https://github.com/CarlosSolrac/template-0-summaries); each
+  template's `docs/design.md` is the worked example. A project that already has a pattern
+  keeps it and records the difference in an ADR.
+- **Diagram checker.** Before showing a spec, the skill checks every Mermaid diagram in it
+  with Mermaid's own parser, using
+  [design-spec/skill/tools/validate_mermaid.mjs](design-spec/skill/tools/validate_mermaid.mjs).
+  The checker needs Node 22.22.2+ or 24.15+, with `npm`, on `PATH`. Its first run installs
+  pinned `mermaid` and `jsdom` into `~/.cache/design-spec-mermaid`, which needs network once;
+  the project gains no npm files. To run it yourself (exit 0 means every diagram parses):
+
+  ```bash
+  node ~/.claude/skills/design-spec/tools/validate_mermaid.mjs docs/design.md
+  ```
+
+## Work through the backlog overnight
+
+The `nightshift` skill, in `nightshift/`, works unattended through the current project's
+TODO and plan files overnight — `TODO.md`, `docs/plans/`, `PLAN.md`, `ROADMAP.md`, and open
+GitHub issues assigned to you — one task at a time, each on its own branch and worktree,
+ending in one draft PR per task. See [nightshift/SKILL.md](nightshift/SKILL.md).
+
+- **Starting it.** Only you start it, by typing `/nightshift`; Claude never invokes it on its
+  own. `/nightshift adversarial=thorough` fixes every defect the adversarial review finds
+  and repeats that review until it approves, up to three rounds, instead of running it once
+  per task. Run it in a session whose permission mode will not stop for prompts (auto mode,
+  or an allowlist covering `git`, `gh`, the project's tools and file edits), and leave the
+  session open: a watchdog scheduled in it restarts the work if a turn ends early, and dies
+  with the session.
+- **What it may do alone.** Create task branches and worktrees, commit, push those branches,
+  open draft PRs, and delete or move files on a task branch. Everything it does is undone by
+  closing a PR and deleting a branch. It never pushes to or merges into the default branch,
+  merges a PR, force-pushes, deploys, or acts outside the repository, and it never changes
+  dependencies, CI, hooks, or build configuration: a task that needs one ends blocked, with
+  the exact change listed for you.
+- **Reviews.** Codex reviews every unit and every finished task, then challenges each task's
+  approach in an adversarial review. This needs the Codex plugin for Claude Code; while
+  Codex is unavailable the work goes on and the reviews wait, listed as pending.
+- **Needs.** A git repository; `gh` logged in to push and open PRs, or the branches stay
+  local.
+- **In the morning.** Open `.nightshift/LOG-<date>.md` in the repository root and read
+  *Morning summary* and *Needs you* first. The log records every decision it made alone,
+  with the options, the pros and cons of each, and how to reverse it, and every blocker with
+  what it needs from you.
+
 ## Manual Install
 
-Clone, then link both into `~/.claude`. A symlink keeps one source of truth and picks up
-edits immediately.
+Clone, then link `CLAUDE.md` and the three skills into `~/.claude`. A symlink keeps one
+source of truth and picks up edits immediately.
 
 Linux and macOS:
 
@@ -203,6 +278,8 @@ cd python-code-standards
 mkdir -p ~/.claude/skills
 ln -s "$PWD/CLAUDE.md" ~/.claude/CLAUDE.md
 ln -s "$PWD/python-code-standards/skill" ~/.claude/skills/python-code-standards
+ln -s "$PWD/design-spec/skill" ~/.claude/skills/design-spec
+ln -s "$PWD/nightshift" ~/.claude/skills/nightshift
 ```
 
 Windows, in either shell, needs Developer Mode enabled or an elevated prompt.
@@ -215,6 +292,8 @@ Set-Location python-code-standards
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.claude\skills"
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\CLAUDE.md" -Target "$PWD\CLAUDE.md"
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\python-code-standards" -Target "$PWD\python-code-standards\skill"
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\design-spec" -Target "$PWD\design-spec\skill"
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\nightshift" -Target "$PWD\nightshift"
 ```
 
 `cmd`:
@@ -225,12 +304,14 @@ cd /d python-code-standards
 mkdir "%USERPROFILE%\.claude\skills"
 mklink "%USERPROFILE%\.claude\CLAUDE.md" "%CD%\CLAUDE.md"
 mklink /D "%USERPROFILE%\.claude\skills\python-code-standards" "%CD%\python-code-standards\skill"
+mklink /D "%USERPROFILE%\.claude\skills\design-spec" "%CD%\design-spec\skill"
+mklink /D "%USERPROFILE%\.claude\skills\nightshift" "%CD%\nightshift"
 ```
 
 Both Windows forms name the link first and the target second — the reverse of `ln -s`. In
 `cmd`, use `cd /d` when the clone is on another drive; plain `cd` does not change drives,
-while `Set-Location` handles them. Link the skill *inside* `skills\`; linking `skills\`
-itself hides every other skill and stops this one loading, because Claude Code scans
+while `Set-Location` handles them. Link each skill *inside* `skills\`; linking `skills\`
+itself hides every other skill and stops these loading, because Claude Code scans
 subdirectories for `SKILL.md`.
 
 ### Copy instead of link
@@ -240,16 +321,22 @@ A copy is pinned and survives this repository moving, but must be refreshed afte
 ```bash
 cp CLAUDE.md ~/.claude/CLAUDE.md
 cp -r python-code-standards/skill ~/.claude/skills/python-code-standards
+cp -r design-spec/skill ~/.claude/skills/design-spec
+cp -r nightshift ~/.claude/skills/nightshift
 ```
 
 ```powershell
 Copy-Item CLAUDE.md "$env:USERPROFILE\.claude\CLAUDE.md"
 Copy-Item -Recurse python-code-standards\skill "$env:USERPROFILE\.claude\skills\python-code-standards"
+Copy-Item -Recurse design-spec\skill "$env:USERPROFILE\.claude\skills\design-spec"
+Copy-Item -Recurse nightshift "$env:USERPROFILE\.claude\skills\nightshift"
 ```
 
 ```cmd
 copy CLAUDE.md "%USERPROFILE%\.claude\CLAUDE.md"
 xcopy /E /I python-code-standards\skill "%USERPROFILE%\.claude\skills\python-code-standards"
+xcopy /E /I design-spec\skill "%USERPROFILE%\.claude\skills\design-spec"
+xcopy /E /I nightshift "%USERPROFILE%\.claude\skills\nightshift"
 ```
 
 Do not install the skill both personally and per project under the same name; resolution
@@ -258,18 +345,19 @@ order between the two scopes is not something to rely on.
 ### Verify
 
 ```bash
-ls -l ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards/SKILL.md
+ls -l ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards/SKILL.md ~/.claude/skills/design-spec/SKILL.md ~/.claude/skills/nightshift/SKILL.md
 ```
 
 ```powershell
-Get-Item "$env:USERPROFILE\.claude\CLAUDE.md", "$env:USERPROFILE\.claude\skills\python-code-standards\SKILL.md"
+Get-Item "$env:USERPROFILE\.claude\CLAUDE.md", "$env:USERPROFILE\.claude\skills\python-code-standards\SKILL.md", "$env:USERPROFILE\.claude\skills\design-spec\SKILL.md", "$env:USERPROFILE\.claude\skills\nightshift\SKILL.md"
 ```
 
 ```cmd
-dir "%USERPROFILE%\.claude\CLAUDE.md" "%USERPROFILE%\.claude\skills\python-code-standards\SKILL.md"
+dir "%USERPROFILE%\.claude\CLAUDE.md" "%USERPROFILE%\.claude\skills\python-code-standards\SKILL.md" "%USERPROFILE%\.claude\skills\design-spec\SKILL.md" "%USERPROFILE%\.claude\skills\nightshift\SKILL.md"
 ```
 
-In a Claude Code session, `/python-code-standards` appears in the skill list.
+In a Claude Code session, `/python-code-standards`, `/design-spec` and `/nightshift` appear
+in the skill list.
 
 ### Uninstall
 
@@ -277,16 +365,21 @@ Removing a link removes the link, not this repository.
 
 ```bash
 rm ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards
+rm ~/.claude/skills/design-spec ~/.claude/skills/nightshift
 ```
 
 ```powershell
 Remove-Item "$env:USERPROFILE\.claude\CLAUDE.md"
 Remove-Item "$env:USERPROFILE\.claude\skills\python-code-standards"
+Remove-Item "$env:USERPROFILE\.claude\skills\design-spec"
+Remove-Item "$env:USERPROFILE\.claude\skills\nightshift"
 ```
 
 ```cmd
 del "%USERPROFILE%\.claude\CLAUDE.md"
 rmdir "%USERPROFILE%\.claude\skills\python-code-standards"
+rmdir "%USERPROFILE%\.claude\skills\design-spec"
+rmdir "%USERPROFILE%\.claude\skills\nightshift"
 ```
 
 ## Switching between local Qwen and Anthropic
