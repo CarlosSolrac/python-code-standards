@@ -30,8 +30,7 @@ each step with a check.
 | `design-spec/skill/tools/validate_mermaid.mjs` | `PINS`: `mermaid` 11.17.2, `jsdom` 30.1.1 | `docs/plans/design-spec.md` (names both versions) |
 
 Not declared anywhere: **uv** (no `required-version`; `setup-uv` installs the latest; local 0.11.29) and **Node** (the Mermaid checker
-needs 22.22.2+ or 24.15+; local v24.19.0). `handoff/design-spec/SKILL.draft.md` mentions `mermaid@11` and a sample `sqlmesh` pin
-inside a draft; neither is a declaration this repository uses.
+needs 22.22.2+ or 24.15+; local v24.19.0).
 
 ## Decisions for you before starting
 
@@ -254,11 +253,11 @@ request and `mutation` pass from `workflow_dispatch`.
 ```bash
 export DESIGN_SPEC_MERMAID_CACHE="$(mktemp -d)"
 node --test --experimental-test-coverage --test-coverage-include="design-spec/skill/tools/*.mjs" --test-coverage-lines=100 --test-coverage-branches=100 "design-spec/tests/*.test.mjs"
-node design-spec/skill/tools/validate_mermaid.mjs handoff/design-spec/SKILL.draft.md
+node design-spec/skill/tools/validate_mermaid.mjs design-spec/skill/SKILL.md
 ```
 
-The tests pass at 100% line and branch coverage, and the last command prints `OK stateDiagram` and `OK flowchart-v2` for blocks 1 and
-2, as it does on 11.17.2 today (add `design-spec/skill/SKILL.md` once PR #9 merges). The first run downloads the new pins.
+The tests pass at 100% line and branch coverage (they parse flowchart, state and C4 diagrams), and the last command prints
+`OK flowchart-v2` for block 1, as it does on 11.17.2 today. The first run downloads the new pins.
 
 ### Step 4 — Ruff 0.17 (from 2026-10-23)
 

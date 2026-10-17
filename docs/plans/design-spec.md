@@ -1,7 +1,9 @@
 # Plan: add the `design-spec` skill
 
-Source material: [handoff/design-spec/HANDOFF.md](../../handoff/design-spec/HANDOFF.md) (context, conflicts, original tasks) and
-[handoff/design-spec/SKILL.draft.md](../../handoff/design-spec/SKILL.draft.md) (the skill as drafted). Where this plan and the handoff
+Source material: [handoff/design-spec/HANDOFF.md](https://github.com/CarlosSolrac/python-code-standards/blob/eb189bb/handoff/design-spec/HANDOFF.md)
+(context, conflicts, original tasks) and
+[handoff/design-spec/SKILL.draft.md](https://github.com/CarlosSolrac/python-code-standards/blob/eb189bb/handoff/design-spec/SKILL.draft.md)
+(the skill as drafted), removed from the tree once the skill landed and linked here at the last commit that has them. Where this plan and the handoff
 differ, this plan wins: it records the user's decisions of 2026-10-15 and 2026-10-16.
 
 ## Decisions already made by the user
