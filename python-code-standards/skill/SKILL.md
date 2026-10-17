@@ -69,7 +69,7 @@ Google-style docstrings on every module, class, and non-trivial function in sour
 
 ## Design and testing
 
-- **Top-down design.** Write the public entry point first, expressed as calls to helpers that do not exist yet; then build each helper the same way, one level down at a time, until every leaf is concrete.
+- **Top-down implementation.** Architecture is designed from the domain outward, per the `design-spec` skill. Implement each unit top-down: write its public entry point first, expressed as calls to helpers that do not exist yet; then build each helper the same way, one level down at a time, until every leaf is concrete.
 - **Test-driven development.** No production code without a failing test that demands it. Red: write one unit test and watch it fail for the expected reason. Green: write the least code that passes. Refactor with the suite green. Repeat per unit, top level first.
 - **Unit tests.** Each test exercises one unit in isolation, with collaborators injected as fakes; I/O, clocks, randomness, and the network stay out of unit tests.
 
