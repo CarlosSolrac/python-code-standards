@@ -1,0 +1,88 @@
+{
+  "skill_name": "design-spec",
+  "evals": [
+    {
+      "id": 1,
+      "name": "eval-1-design-standard",
+      "prompt": "Pull orders from a CSV and a REST API into DuckDB, dedupe, and produce a daily revenue table.",
+      "expected_output": "Design mode, sized Standard. A spec in docs/design.md (plus ADRs in docs/adr/) built from the domain outward: derived numbers or open questions, a state diagram before the component flowchart, components labelled with the decisions they own, a boundary contract table, a C4 context view with the CSV and the API as two external systems, the default pattern taken from a template indexed in template-0-summaries (or an ADR saying why not). Every diagram parses. The reply ends with 'Approve or correct before I implement.' and no code is written.",
+      "files": [],
+      "assertions": [
+        "The first line states design mode and the Standard size class",
+        "Every number that can change the design (row volumes, growth, refresh frequency, latency, memory) is derived with its arithmetic or listed as an open question; none is invented",
+        "The state diagram (stateDiagram-v2) of the domain entities comes before the component flowchart",
+        "Every component in the flowchart is labelled with the decision it owns",
+        "A boundary contract table (boundary | input | output | invariants | owner) has a row for every boundary in the flowchart",
+        "A C4 context view (C4Context) shows the CSV source and the REST API as two separate external systems",
+        "The default pattern comes from a template found through template-0-summaries, or an ADR records why no template is followed",
+        "Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)",
+        "The reply ends with \"Approve or correct before I implement.\"",
+        "No code is written: the only files added are docs/design.md and ADRs under docs/adr/"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "eval-2-small",
+      "prompt": "Script to convert one CSV to Parquet.",
+      "expected_output": "Sized Small: no spec, no ADR, no SQLMesh. One typed module and its tests written directly under the python-code-standards skill, passing the project's gates.",
+      "files": [],
+      "assertions": [
+        "The first line states the Small size class",
+        "No docs/design.md, other spec, or ADR is written",
+        "No SQLMesh: no sqlmesh dependency, config, or models",
+        "The script is written directly, without a design step, and follows python-code-standards: ruff check, ruff format --check, the declarations checker, pyright, mypy and pytest with 100% statement and branch coverage of the new code all pass"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "eval-3-document-parquettoxl",
+      "prompt": "Document the design of this repository.",
+      "expected_output": "Document mode on ParquetToXL at 8ffaa6f. The spec matches the answer key in expected/eval-3/ (design.md and backlog2.md from PR #7's merge commit f8f4a41): a dependency matrix whose pqx-report row marks pqx-frame '!' and pqx-plan and pqx-verify 'd', with a finding for it; a rule 14 finding for the CLAUDE.md layering diagram; backlog item 9.1 labelled known and cited. No code changes.",
+      "files": [
+        "fixtures/parquettoxl-8ffaa6f.bundle"
+      ],
+      "answer_key": [
+        "expected/eval-3/design.md",
+        "expected/eval-3/backlog2.md"
+      ],
+      "assertions": [
+        "The first line states document mode and a size class",
+        "The dependency matrix marks pqx-report's import of pqx-frame '!' and its unused declarations of pqx-plan and pqx-verify 'd', and a finding reports the defect",
+        "A finding reports that the layering diagram in CLAUDE.md disagrees with the imports (rule 14)",
+        "Backlog item 9.1 (data refusals escape the per-profile catch) is labelled known and cited, not re-argued",
+        "No code is changed: git status and git diff 8ffaa6f show changes to documentation files only"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "eval-4-resync",
+      "prompt": "Resync the design.",
+      "expected_output": "Document mode, resync. Before overwriting docs/design.md, the reply reports that the import direction changed (ports.py now imports adapters). The template has fewer than five modules, so the spec keeps an import-direction line rather than a matrix; a rule 6 finding is added. No code changes. Cannot run until template-sqlmesh-duckdb has a docs/design.md; build-fixture.sh 4 says so and stops.",
+      "files": [],
+      "assertions": [
+        "Before docs/design.md is overwritten, the reply reports that the import direction changed: ports.py now imports from adapters",
+        "The resynced spec states import direction in one line, not a dependency matrix",
+        "A rule 6 finding reports ports.py importing from adapters",
+        "No code is changed: ports.py keeps the reversed import, and only documentation files differ from the build's commit"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "eval-3b-document-planted-defects",
+      "prompt": "Document the design of this repository.",
+      "expected_output": "Document mode on the tally workspace. A dependency matrix over its five packages and the six findings in expected/eval-3b/answer-key.md, each with its rule number and file: tally-cli imports tally-core undeclared ('!'); tally-io declares tally-core unused ('d'); tally-stage declares tally-io unused ('d', known: BACKLOG.md item 2); tally-stage only forwards (rule 2); a dict crosses the core-to-io boundary (rule 4); the CLAUDE.md layering diagram disagrees with the code (rule 14). Deduced items marked inferred. No code changes.",
+      "files": [
+        "fixtures/planted-defects"
+      ],
+      "answer_key": [
+        "expected/eval-3b/answer-key.md"
+      ],
+      "assertions": [
+        "All six defects in expected/eval-3b/answer-key.md are reported as findings, each with its rule number and file",
+        "Each finding is labelled new or known as the answer key says: only the unused tally-io declaration in tally-stage is known, citing BACKLOG.md item 2",
+        "Items deduced rather than read from the code (domain states, the decision each component owns) are marked inferred",
+        "No code is changed: git status shows changes to documentation files only"
+      ]
+    }
+  ]
+}
