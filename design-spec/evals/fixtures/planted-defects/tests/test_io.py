@@ -42,6 +42,17 @@ def test_read_refuses_a_file_without_the_header(tmp_path: Path, text: str) -> No
         CsvOrders().read(path)
 
 
+@pytest.mark.parametrize(
+    ("text", "line"),
+    [("order_id,day,amount\n" + "A" * 200_000 + ",2026-10-01,1\n", "line 2"), ("order_id" + "x" * 200_000 + ",day,amount\n", "line 1")],
+    ids=["row", "header"],
+)
+def test_read_refuses_a_field_over_the_csv_limit_with_its_line(tmp_path: Path, text: str, line: str) -> None:
+    path: Path = _csv(tmp_path, text)
+    with pytest.raises(TallyError, match=f"{line}: field larger than field limit"):
+        CsvOrders().read(path)
+
+
 def test_read_refuses_a_missing_file(tmp_path: Path) -> None:
     with pytest.raises(TallyError, match="cannot read"):
         CsvOrders().read(tmp_path / "missing.csv")
