@@ -36,7 +36,8 @@ Check what nightshift's *Preflight* and *Running it* need, read-only, and report
 per check, pass or fail:
 
 - **Default branch matches origin.** `git fetch`; find the default branch
-  (`git symbolic-ref --short refs/remotes/origin/HEAD`); compare
+  (`git symbolic-ref --short refs/remotes/origin/HEAD` prints `origin/main`; drop the
+  `origin/` prefix to get `main`); compare
   `git rev-list --left-right --count <default>...origin/<default>` (want `0 0`).
 - **gh logged in.** `gh auth status`.
 - **Codex answers.** Resolve `$CX` as nightshift's *Preflight* does and run
@@ -45,7 +46,8 @@ per check, pass or fail:
   `permissions` in `.claude/settings.json`, `.claude/settings.local.json` and
   `~/.claude/settings.json`, and ask which mode the session that will run `/nightshift`
   uses. Auto mode passes; an allowlist must cover git, gh, `node "$CX"`, the project's
-  checks, and edits in the task worktrees (`<repo-parent>/<repo-name>.nightshift/`).
+  checks, and edits in the task worktrees (`<repo-parent>/<repo-name>.nightshift/`), in
+  `.nightshift/` at the repository root (the log) and in `.git/info/exclude`.
   Name what is missing; change settings only if the user asks.
 - **Machine and session.** Remind the user to stop the machine sleeping and to keep this
   session open: nightshift's watchdog lives in the session and dies with it.
@@ -82,7 +84,9 @@ so it sees nothing that exists only here. Look for what a confirmed task needs a
 
 - untracked and ignored files: `git status --porcelain --untracked-files=all --ignored`;
 - uncommitted changes, and commits not on `origin/<default>`:
-  `git log origin/<default>..<default>`, `git branch -vv`;
+  `git log origin/<default>..<default>`, `git log origin/<default>..HEAD --stat` (the
+  branch you are on), `git branch -vv`; inputs a task needs that sit on another branch
+  move to the default branch once approved;
 - plans, decisions and constraints that live only in this conversation or in the user's
   head.
 
@@ -101,7 +105,7 @@ Write the plan file as `docs/plans/<name>.md`, one per body of work, with:
 
 Nightshift collects tasks from TODO files, plan files and issues alike, so each task must
 live in one place. When a plan task takes over a TODO item, propose deleting that item;
-when it takes over an issue, propose removing the assignment or label that makes
+when it takes over an issue, propose removing every assignment and label that makes
 nightshift collect it, or leave the task in the issue and out of the plan.
 
 Steps 4 to 6 fill in the rest of the draft.
