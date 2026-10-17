@@ -1,6 +1,6 @@
 # python-code-standards
 
-A global `CLAUDE.md` and three skills for [Claude Code](https://claude.com/claude-code),
+A global `CLAUDE.md` and four skills for [Claude Code](https://claude.com/claude-code),
 installed once into `~/.claude` and active in every project.
 
 - `CLAUDE.md` — language-agnostic working rules: think first, minimal diffs, verify by
@@ -15,9 +15,12 @@ installed once into `~/.claude` and active in every project.
 - `nightshift/` — the `nightshift` skill: works through the project's TODO and plan files
   overnight, one draft PR per task. Runs only when you type `/nightshift`. See
   [Work through the backlog overnight](#work-through-the-backlog-overnight).
+- `prep-nightshift/` — the `prep-nightshift` skill: readies a repository for a nightshift
+  run while you are awake. Runs only when you type `/prep-nightshift`. See
+  [Work through the backlog overnight](#work-through-the-backlog-overnight).
 
-Each rule lives in exactly one of these four files and folders; where a skill relies on
-another's rules, it points to them instead of restating them, so all four can be installed
+Each rule lives in exactly one of these five files and folders; where a skill relies on
+another's rules, it points to them instead of restating them, so all five can be installed
 together without conflict. `nightshift` is the one deliberate override: while it runs, it
 logs a decision and carries on wherever another rule says to stop and ask.
 
@@ -46,7 +49,7 @@ Use this when you have no `~/.claude/CLAUDE.md` yet.
   ```text
   Install the python-code-standards from https://github.com/CarlosSolrac/python-code-standards.
   Clone it to ~/src/python-code-standards, then follow its README's Manual Install section to link
-  CLAUDE.md into ~/.claude and the three skills into ~/.claude/skills. If
+  CLAUDE.md into ~/.claude and the four skills into ~/.claude/skills. If
   ~/.claude/CLAUDE.md or any of those skill folders already exists, stop and ask me. Finish by running
   the README's Verify step and showing me the output.
   ```
@@ -242,6 +245,10 @@ TODO and plan files overnight — `TODO.md`, `docs/plans/`, `PLAN.md`, `ROADMAP.
 GitHub issues assigned to you — one task at a time, each on its own branch and worktree,
 ending in one draft PR per task. See [nightshift/SKILL.md](nightshift/SKILL.md).
 
+- **Preparing for it.** Type `/prep-nightshift` while you are awake: it checks that the
+  night can run unattended, confirms tonight's scope with you, commits the inputs the tasks
+  need as a plan file once you approve, and lists the steps left for the morning. See
+  [prep-nightshift/SKILL.md](prep-nightshift/SKILL.md).
 - **Starting it.** Only you start it, by typing `/nightshift`; Claude never invokes it on its
   own. `/nightshift adversarial=thorough` fixes every defect the adversarial review finds
   and repeats that review until it approves, up to three rounds, instead of running it once
@@ -267,7 +274,7 @@ ending in one draft PR per task. See [nightshift/SKILL.md](nightshift/SKILL.md).
 
 ## Manual Install
 
-Clone, then link `CLAUDE.md` and the three skills into `~/.claude`. A symlink keeps one
+Clone, then link `CLAUDE.md` and the four skills into `~/.claude`. A symlink keeps one
 source of truth and picks up edits immediately.
 
 Linux and macOS:
@@ -280,6 +287,7 @@ ln -s "$PWD/CLAUDE.md" ~/.claude/CLAUDE.md
 ln -s "$PWD/python-code-standards/skill" ~/.claude/skills/python-code-standards
 ln -s "$PWD/design-spec/skill" ~/.claude/skills/design-spec
 ln -s "$PWD/nightshift" ~/.claude/skills/nightshift
+ln -s "$PWD/prep-nightshift" ~/.claude/skills/prep-nightshift
 ```
 
 Windows, in either shell, needs Developer Mode enabled or an elevated prompt.
@@ -294,6 +302,7 @@ New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\CLAUDE.md" -Targ
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\python-code-standards" -Target "$PWD\python-code-standards\skill"
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\design-spec" -Target "$PWD\design-spec\skill"
 New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\nightshift" -Target "$PWD\nightshift"
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.claude\skills\prep-nightshift" -Target "$PWD\prep-nightshift"
 ```
 
 `cmd`:
@@ -306,6 +315,7 @@ mklink "%USERPROFILE%\.claude\CLAUDE.md" "%CD%\CLAUDE.md"
 mklink /D "%USERPROFILE%\.claude\skills\python-code-standards" "%CD%\python-code-standards\skill"
 mklink /D "%USERPROFILE%\.claude\skills\design-spec" "%CD%\design-spec\skill"
 mklink /D "%USERPROFILE%\.claude\skills\nightshift" "%CD%\nightshift"
+mklink /D "%USERPROFILE%\.claude\skills\prep-nightshift" "%CD%\prep-nightshift"
 ```
 
 Both Windows forms name the link first and the target second — the reverse of `ln -s`. In
@@ -323,6 +333,7 @@ cp CLAUDE.md ~/.claude/CLAUDE.md
 cp -r python-code-standards/skill ~/.claude/skills/python-code-standards
 cp -r design-spec/skill ~/.claude/skills/design-spec
 cp -r nightshift ~/.claude/skills/nightshift
+cp -r prep-nightshift ~/.claude/skills/prep-nightshift
 ```
 
 ```powershell
@@ -330,6 +341,7 @@ Copy-Item CLAUDE.md "$env:USERPROFILE\.claude\CLAUDE.md"
 Copy-Item -Recurse python-code-standards\skill "$env:USERPROFILE\.claude\skills\python-code-standards"
 Copy-Item -Recurse design-spec\skill "$env:USERPROFILE\.claude\skills\design-spec"
 Copy-Item -Recurse nightshift "$env:USERPROFILE\.claude\skills\nightshift"
+Copy-Item -Recurse prep-nightshift "$env:USERPROFILE\.claude\skills\prep-nightshift"
 ```
 
 ```cmd
@@ -337,6 +349,7 @@ copy CLAUDE.md "%USERPROFILE%\.claude\CLAUDE.md"
 xcopy /E /I python-code-standards\skill "%USERPROFILE%\.claude\skills\python-code-standards"
 xcopy /E /I design-spec\skill "%USERPROFILE%\.claude\skills\design-spec"
 xcopy /E /I nightshift "%USERPROFILE%\.claude\skills\nightshift"
+xcopy /E /I prep-nightshift "%USERPROFILE%\.claude\skills\prep-nightshift"
 ```
 
 Do not install the skill both personally and per project under the same name; resolution
@@ -345,19 +358,19 @@ order between the two scopes is not something to rely on.
 ### Verify
 
 ```bash
-ls -l ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards/SKILL.md ~/.claude/skills/design-spec/SKILL.md ~/.claude/skills/nightshift/SKILL.md
+ls -l ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards/SKILL.md ~/.claude/skills/design-spec/SKILL.md ~/.claude/skills/nightshift/SKILL.md ~/.claude/skills/prep-nightshift/SKILL.md
 ```
 
 ```powershell
-Get-Item "$env:USERPROFILE\.claude\CLAUDE.md", "$env:USERPROFILE\.claude\skills\python-code-standards\SKILL.md", "$env:USERPROFILE\.claude\skills\design-spec\SKILL.md", "$env:USERPROFILE\.claude\skills\nightshift\SKILL.md"
+Get-Item "$env:USERPROFILE\.claude\CLAUDE.md", "$env:USERPROFILE\.claude\skills\python-code-standards\SKILL.md", "$env:USERPROFILE\.claude\skills\design-spec\SKILL.md", "$env:USERPROFILE\.claude\skills\nightshift\SKILL.md", "$env:USERPROFILE\.claude\skills\prep-nightshift\SKILL.md"
 ```
 
 ```cmd
-dir "%USERPROFILE%\.claude\CLAUDE.md" "%USERPROFILE%\.claude\skills\python-code-standards\SKILL.md" "%USERPROFILE%\.claude\skills\design-spec\SKILL.md" "%USERPROFILE%\.claude\skills\nightshift\SKILL.md"
+dir "%USERPROFILE%\.claude\CLAUDE.md" "%USERPROFILE%\.claude\skills\python-code-standards\SKILL.md" "%USERPROFILE%\.claude\skills\design-spec\SKILL.md" "%USERPROFILE%\.claude\skills\nightshift\SKILL.md" "%USERPROFILE%\.claude\skills\prep-nightshift\SKILL.md"
 ```
 
-In a Claude Code session, `/python-code-standards`, `/design-spec` and `/nightshift` appear
-in the skill list.
+In a Claude Code session, `/python-code-standards`, `/design-spec`, `/nightshift` and
+`/prep-nightshift` appear in the skill list.
 
 ### Uninstall
 
@@ -365,7 +378,7 @@ Removing a link removes the link, not this repository.
 
 ```bash
 rm ~/.claude/CLAUDE.md ~/.claude/skills/python-code-standards
-rm ~/.claude/skills/design-spec ~/.claude/skills/nightshift
+rm ~/.claude/skills/design-spec ~/.claude/skills/nightshift ~/.claude/skills/prep-nightshift
 ```
 
 ```powershell
@@ -373,6 +386,7 @@ Remove-Item "$env:USERPROFILE\.claude\CLAUDE.md"
 Remove-Item "$env:USERPROFILE\.claude\skills\python-code-standards"
 Remove-Item "$env:USERPROFILE\.claude\skills\design-spec"
 Remove-Item "$env:USERPROFILE\.claude\skills\nightshift"
+Remove-Item "$env:USERPROFILE\.claude\skills\prep-nightshift"
 ```
 
 ```cmd
@@ -380,6 +394,7 @@ del "%USERPROFILE%\.claude\CLAUDE.md"
 rmdir "%USERPROFILE%\.claude\skills\python-code-standards"
 rmdir "%USERPROFILE%\.claude\skills\design-spec"
 rmdir "%USERPROFILE%\.claude\skills\nightshift"
+rmdir "%USERPROFILE%\.claude\skills\prep-nightshift"
 ```
 
 ## Switching between local Qwen and Anthropic
