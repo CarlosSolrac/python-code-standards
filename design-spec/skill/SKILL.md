@@ -62,6 +62,20 @@ Boundary contract table columns: `boundary | input | output | invariants | owner
 
 Dependency matrix: rows import columns. Mark each cell `Y` (imported and declared), `!` (imported but not declared), or `d` (declared but not imported). For a uv workspace, use packages as the unit; otherwise modules. Follow it with one line on cycles and direction.
 
+Import contract: whenever the dependency matrix applies, enforce its direction with [import-linter](https://import-linter.readthedocs.io/) so the code cannot drift from the diagram (rule 14). Below that size, the one-line direction statement is enough. In design mode, the spec's directory tree shows the contract, and the implementation plan adds `import-linter` as a dev dependency and `uv run lint-imports` to the project's checks (pre-commit and CI). List the layers highest first, matching the component flowchart: a layer may import the layers below it, never the ones above:
+
+```toml
+[tool.importlinter]
+root_packages = ["<prefix>_cli", "<prefix>_io", "<prefix>_core", "<prefix>_common"]
+
+[[tool.importlinter.contracts]]
+name = "Dependencies point inward"
+type = "layers"
+layers = ["<prefix>_cli", "<prefix>_io", "<prefix>_core", "<prefix>_common"]
+```
+
+Each `ignore_imports` entry needs a comment naming the ADR or finding that allows it.
+
 End the spec with open questions (at most 3). Design mode then adds "Approve or correct before I implement." and stops.
 
 ## 4. Document mode procedure
@@ -72,6 +86,7 @@ End the spec with open questions (at most 3). Design mode then adds "Approve or 
    - size, counting tracked files only so `.venv` and build output stay out: `git ls-files -z -- '*.py' '*.sql' | xargs -0 cat | wc -l`; outside a git repository, prune those folders instead: `find . \( -name .git -o -name .venv -o -name node_modules -o -name build -o -name dist \) -prune -o -type f \( -name '*.py' -o -name '*.sql' \) -print0 | xargs -0 cat | wc -l`; plus source-only lines per package
    - imports between internal packages (source only, not tests):
      `for d in packages/*/src/*; do me=$(basename $d); echo "$me: $(grep -rhoE '^\s*(from|import) <prefix>_[a-z]+' $d | grep -oE '<prefix>_[a-z]+' | grep -v "^$me$" | sort -u | tr '\n' ' ')"; done`
+   - import contracts: if `[tool.importlinter]` or `.importlinter` exists, run `uv run lint-imports`. A broken contract is a rule 6 finding, and a contract that disagrees with the dependency matrix is a rule 14 finding. If there is no contract and the matrix applies, its absence is a rule 6 finding whose fix is the contract in section 3
    - declared runtime dependencies, separately from dev groups:
      `python3 -c "import tomllib; d=tomllib.load(open('<pkg>/pyproject.toml','rb')); print(d['project'].get('dependencies', []))"`
    - models: `grep -rnE 'name |kind |grain |audits|FROM |JOIN ' models`
@@ -98,7 +113,7 @@ Works for any codebase; adapt the inventory commands to its language and package
 | 3 | One responsibility per component: ingestion (adapters), transformation (models or pure core), and orchestration (composition root) are separate. The composition root calls; it never transforms, queries, or writes files itself. | Component flowchart subgraphs |
 | 4 | Boundaries are typed: raw tables declared with column types; models declare `grain` and cast every output column; Python contracts use Protocols (read-only attributes as `@property`, so frozen dataclasses satisfy them) and frozen slotted dataclasses. Never dicts or bare tuples across a boundary. | Boundary contract table; class diagram if needed |
 | 5 | Each boundary's invariants are enforced where the data is produced (SQLMesh audits, model validators). Failures are values or one project exception family, caught once per unit of work. Audits are blocking: a failure raises `PlanError`, skips downstream models, but the failing model's own table keeps the failing rows; consumers read marts only. | Boundary contract table; state diagram failure states |
-| 6 | Dependencies point inward and are declared exactly: each package declares what it imports and imports what it declares. Core logic depends on Protocols; concrete adapters are chosen only in the composition root. | Dependency matrix with `Y`/`!`/`d` |
+| 6 | Dependencies point inward and are declared exactly: each package declares what it imports and imports what it declares. Core logic depends on Protocols; concrete adapters are chosen only in the composition root. | Dependency matrix with `Y`/`!`/`d`, enforced by an import-linter contract |
 | 7 | Set-based work stays in DuckDB SQL models. A Python model is allowed only when SQL cannot express the step, and the spec names it. | Lineage DAG or flowchart |
 | 8 | SQL lives in `models/` and `audits/` files. No SQL assembled in Python beyond identifier-only DDL inside adapters, and every identifier in it is first checked against an allowlist of declared tables (for SQLMesh projects, read from `external_models.yaml`); never interpolate an unchecked name. | Directory tree |
 | 9 | Prefer many small models or stages with one purpose each over large multi-purpose ones. | Lineage DAG or flowchart |
