@@ -22,18 +22,24 @@ class CsvOrders:
         """Return every order in ``path``, in file order.
 
         Raises:
-            TallyError: The file cannot be read or lacks the header, or a row lacks a column, has a day that is not an ISO date,
-                or an amount that is not a non-negative number of whole cents below 10**12.
+            TallyError: The file cannot be read, is not well-formed CSV (for example a field over the csv module's size limit), or lacks
+                the header, or a row lacks a column, has a day that is not an ISO date, or an amount that is not a non-negative number
+                of whole cents below 10**12.
         """
         handle: TextIO
         try:
             with path.open(newline="", encoding="utf-8") as handle:
                 reader: csv.DictReader[str] = csv.DictReader(handle)
-                if reader.fieldnames != _HEADER:
-                    header: str = f"line 1: expected the header {','.join(_HEADER)}, found {reader.fieldnames}"
-                    raise TallyError(header)
-                # line_num is the physical line the reader has reached, so a quoted line break does not shift the reported line.
-                return [_parse(row, reader.line_num) for row in reader]
+                try:
+                    if reader.fieldnames != _HEADER:
+                        header: str = f"line 1: expected the header {','.join(_HEADER)}, found {reader.fieldnames}"
+                        raise TallyError(header)
+                    # line_num is the physical line the reader has reached, so a quoted line break does not shift the reported line.
+                    return [_parse(row, reader.line_num) for row in reader]
+                except csv.Error as error:
+                    # The reader raises before it counts the record it was parsing, so line_num + 1 is the line that record starts on.
+                    malformed: str = f"line {reader.line_num + 1}: {error}"
+                    raise TallyError(malformed) from error
         except (OSError, UnicodeDecodeError) as error:
             unreadable: str = f"cannot read {path}: {error}"
             raise TallyError(unreadable) from error
