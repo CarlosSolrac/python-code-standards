@@ -623,6 +623,16 @@ def test_documentation_only_names_code_changes_committed_staged_and_untracked(re
     assert documentation_only(_repo_run(repo)) == Verdict(passed=False, evidence="changed outside documentation files: src/app.py, staged.py, untracked.toml")
 
 
+def test_documentation_only_names_a_staged_change_the_worktree_undoes(repo: tuple[Path, str]) -> None:
+    root: Path = repo[0]
+    (root / "src" / "app.py").write_text("a = 1\n", encoding="utf-8")
+    (root / "added.py").write_text("", encoding="utf-8")
+    _git(root, "add", "src/app.py", "added.py")
+    _git(root, "restore", "--source=HEAD", "--worktree", "src/app.py")
+    (root / "added.py").unlink()
+    assert documentation_only(_repo_run(repo)) == Verdict(passed=False, evidence="changed outside documentation files: added.py, src/app.py")
+
+
 def test_documentation_only_fails_when_git_cannot_compare(repo: tuple[Path, str]) -> None:
     verdict: Verdict = documentation_only(_repo_run(repo, commit="nope"))
     assert verdict.passed is False

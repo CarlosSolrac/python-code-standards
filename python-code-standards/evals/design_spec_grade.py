@@ -533,14 +533,20 @@ def _changes(run: Run, allowed: Callable[[str], bool], what: str) -> Verdict:
     """Check the files changed since the build commit, committed or not, tracked or not, against ``allowed``.
 
     ``git diff <commit>`` compares the commit with the working tree, so it sees later
-    commits as well as staged and unstaged edits; ``--no-renames`` lists both sides of
-    a rename, so code moved under a documentation name still counts. ``git ls-files
-    --others`` adds the untracked files ``git status`` would list. Ignored files are
-    left out, as ``git status`` leaves them out.
+    commits as well as staged and unstaged edits; ``git diff --cached <commit>`` adds a
+    staged change the working tree has since undone, which ``git status`` still lists.
+    ``--no-renames`` lists both sides of a rename, so code moved under a documentation
+    name still counts. ``git ls-files --others`` adds the untracked files ``git status``
+    would list. Ignored files are left out, as ``git status`` leaves them out.
     """
     changed: set[str] = set()
+    commands: tuple[list[str], ...] = (
+        ["git", "diff", "--no-renames", "--name-only", "-z", run.commit],
+        ["git", "diff", "--cached", "--no-renames", "--name-only", "-z", run.commit],
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+    )
     command: list[str]
-    for command in (["git", "diff", "--no-renames", "--name-only", "-z", run.commit], ["git", "ls-files", "--others", "--exclude-standard", "-z"]):
+    for command in commands:
         status: int
         output: str
         error: str
