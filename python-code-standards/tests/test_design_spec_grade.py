@@ -44,6 +44,7 @@ from evals.design_spec_grade import (
     dependency_matrix,
     diagrams_parse,
     documentation_only,
+    find_evals,
     first_line,
     grade,
     impact_nodes,
@@ -218,6 +219,26 @@ def test_main_rejects_bad_arguments(tmp_path: Path, capsys: pytest.CaptureFixtur
         main([*argv, "--evals", str(_evals(tmp_path))], rules={})
     assert exit_info.value.code == 2
     assert message in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("depth", [2, 3], ids=["in-the-repository", "in-mutmuts-copy"])
+def test_find_evals_walks_up_to_the_nearest_design_spec(tmp_path: Path, depth: int) -> None:
+    evals: Path = tmp_path / "design-spec" / "evals" / "evals.json"
+    evals.parent.mkdir(parents=True)
+    evals.write_text("{}", encoding="utf-8")
+    module: Path = tmp_path.joinpath(*["sub"] * depth, "design_spec_grade.py")
+    assert find_evals(module) == evals
+
+
+def test_find_evals_names_the_start_when_no_ancestor_holds_design_spec(tmp_path: Path) -> None:
+    module: Path = tmp_path / "evals" / "design_spec_grade.py"
+    with pytest.raises(FileNotFoundError, match=r"design-spec/evals/evals\.json above .*design_spec_grade\.py"):
+        find_evals(module)
+
+
+def test_evals_is_found_from_this_module() -> None:
+    assert find_evals(Path(sys.modules["evals.design_spec_grade"].__file__ or "")) == EVALS
+    assert EVALS.is_file()
 
 
 def test_rules_match_the_assertions_in_evals_json() -> None:
@@ -728,10 +749,12 @@ class FakeValidator:
     ids=["parse", "no-diagrams", "parse-error", "cannot-run", "crash-before-parsing"],
 )
 def test_diagrams_parse_reports_the_checker(monkeypatch: pytest.MonkeyPatch, fake: FakeValidator, verdict: Verdict) -> None:
-    monkeypatch.setattr("evals.design_spec_grade._run", fake)
+    # A fresh copy: parametrize builds ``fake`` once per process, and mutmut runs the suite more than once in one.
+    validator: FakeValidator = replace(fake, calls=[])
+    monkeypatch.setattr("evals.design_spec_grade._run", validator)
     run: Run = _run(spec="# Spec\n")
     assert diagrams_parse(run) == verdict
-    assert fake.calls == [(["node", str(VALIDATOR), str(run.spec_path)], VALIDATOR.parent)]
+    assert validator.calls == [(["node", str(VALIDATOR), str(run.spec_path)], VALIDATOR.parent)]
     assert VALIDATOR.is_file()
 
 
