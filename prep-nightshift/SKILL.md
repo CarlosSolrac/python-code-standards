@@ -42,7 +42,11 @@ per check, pass or fail:
 - **gh logged in.** `gh auth status`.
 - **Codex answers.** Resolve `$CX` as nightshift's *Preflight* does and run
   `node "$CX" status --json`.
-- **Permission mode will not prompt.** One prompt stalls the night (*Running it*). Read
+- **Permission mode will not prompt.** With nightshift's permission hook installed, a
+  prompt ends as a blocker on that task rather than stalling the night (*Running it*), but
+  every blocker is work left undone. Check that `~/.claude/settings.json` runs
+  `nightshift/hooks/deny-unattended.sh` for `PermissionRequest` and for `Notification`
+  with matcher `permission_prompt`; without it one prompt stalls the night. Read
   `permissions` in `.claude/settings.json`, `.claude/settings.local.json` and
   `~/.claude/settings.json`, and ask which mode the session that will run `/nightshift`
   uses. Auto mode passes; an allowlist must cover git, gh, `node "$CX"`, the project's
@@ -136,7 +140,8 @@ the task's text. The `adversarial=once|thorough` setting is typed by the user af
 ### 6. List the morning steps
 
 In the plan file and in your reply, in order: open the log and read *Morning summary* and
-*Needs you* first (*Running it*); mark each draft PR ready for review and merge them in
+*Needs you* first, then close the nightshift session and start a fresh one (*Running it*);
+mark each draft PR ready for review and merge them in
 dependency order, retargeting any stacked PR after its base merges; then every step moved out in step 4, each with its exact
 command or change.
 

@@ -256,6 +256,11 @@ ending in one draft PR per task. See [nightshift/SKILL.md](nightshift/SKILL.md).
   or an allowlist covering `git`, `gh`, the project's tools and file edits), and leave the
   session open: a watchdog scheduled in it restarts the work if a turn ends early, and dies
   with the session.
+- **Permission prompts.** Some prompts appear in any mode, such as a hook's `ask`, and one
+  unanswered prompt would stall the night. Install `nightshift/hooks/deny-unattended.sh`
+  as a user hook (see *Manual Install*): it denies every prompt in the nightshift session
+  and its subagents while the night runs, so the call ends as a blocker for the morning.
+  Other sessions, even in the same repository, keep their prompts.
 - **What it may do alone.** Create task branches and worktrees, commit, push those branches,
   open draft PRs, and delete or move files and write schema migrations on a task branch. Everything it does is undone by
   closing a PR and deleting a branch. It never pushes to or merges into the default branch,
@@ -270,7 +275,8 @@ ending in one draft PR per task. See [nightshift/SKILL.md](nightshift/SKILL.md).
 - **In the morning.** Open `.nightshift/LOG-<date>.md` in the repository root and read
   *Morning summary* and *Needs you* first. The log records every decision it made alone,
   with the options, the pros and cons of each, and how to reverse it, and every blocker with
-  what it needs from you.
+  what it needs from you. Then close the nightshift session and start a fresh one for
+  daytime work.
 
 ## Manual Install
 
@@ -323,6 +329,27 @@ Both Windows forms name the link first and the target second — the reverse of 
 while `Set-Location` handles them. Link each skill *inside* `skills\`; linking `skills\`
 itself hides every other skill and stops these loading, because Claude Code scans
 subdirectories for `SKILL.md`.
+
+### Nightshift's permission hook
+
+Merge this into `~/.claude/settings.json`, keeping any hooks already there. It needs
+`bash` and `git`, and is untested on Windows.
+
+```json
+{
+  "hooks": {
+    "PermissionRequest": [
+      {"hooks": [{"type": "command", "command": "bash ~/.claude/skills/nightshift/hooks/deny-unattended.sh"}]}
+    ],
+    "Notification": [
+      {"matcher": "permission_prompt",
+       "hooks": [{"type": "command", "command": "bash ~/.claude/skills/nightshift/hooks/deny-unattended.sh"}]}
+    ]
+  }
+}
+```
+
+It does nothing outside a running nightshift session, so it can stay installed.
 
 ### Copy instead of link
 

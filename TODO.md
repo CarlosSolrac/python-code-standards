@@ -4,9 +4,16 @@ Not for nightshift: item 1 edits other repositories; items 2–7 moved to docs/p
 
 1. **Fill the template.** Skill §8 sends every Standard pipeline to `template-0-summaries`, whose index holds only a README; `template-sqlmesh-duckdb` is empty. Until it is filled, eval 1 (template found) fails and eval 4 can't build its fixture. Planned for a separate session.
 
-## Nightshift: turn permission prompts into blockers instead of stalls (option A)
+## ✅ Completed: Nightshift: turn permission prompts into blockers instead of stalls (option A)
 
 Not for nightshift: it adds a hook to a skill's frontmatter.
+
+**Status: completed 2026-10-17, with option B scoped to the session.** Option A failed step 3:
+a skill-frontmatter hook does not reach subagents, so their prompts still appeared. Results:
+step 2 denied, step 3 prompted, step 4 denied, step 5 prompted again. Shipped instead:
+`nightshift/hooks/deny-unattended.sh`, a user-level hook that denies only for the session
+whose id the running log records as `Session:` (subagents carry their parent's id), so other
+sessions keep their prompts. With it installed, steps 2–5 all pass, the subagent included.
 
 **Why.** One unanswered permission prompt stalls a whole night. The task subagent waits, the
 coordinator waits on it, and the watchdog fires only while the session is idle. A PreToolUse

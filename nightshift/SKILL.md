@@ -50,7 +50,11 @@ not passed.
 
 1. Find tonight's log: the newest `.nightshift/LOG-*.md` in the repository root whose
    `Status:` is `in progress` or `waiting for Codex`. If there is one, resume from it, with
-   the settings recorded under `## Setup` (the watchdog passes none). If it is stale (see
+   the settings recorded under `## Setup` (the watchdog passes none). If you were started by
+   the user typing `/nightshift` (this session's id is `${CLAUDE_SESSION_ID}`), set the
+   log's `Session:` line to that id, so the permission hook (*Running it*) covers it. A
+   watchdog wake-up sees that placeholder unfilled; it runs in the same session, so leave
+   the line as it is. If it is stale (see
    below), re-evaluate it first. Then retry any *Reviews pending* (see *When Codex is
    unavailable*) and go to *Work loop*. A task still marked `in progress` was interrupted;
    give it to a new task subagent, which continues in the existing worktree.
@@ -64,7 +68,8 @@ not passed.
    then update the plan table and timeline in one write, so an interrupted re-evaluation
    leaves the log stale and the next wake-up repeats it. Resume only if open items remain:
    tasks still `todo` or `in progress`, or reviews pending. Otherwise write the *Morning
-   summary*, set `Status: complete`, delete the watchdog with `CronDelete`, and stop.
+   summary*, set `Status: complete`, delete the watchdog with `CronDelete`, and stop with
+   the *Close-the-session warning*.
 2. Otherwise this is a new night. Run the *Preflight*, start the *Watchdog*, then build the
    *Plan*.
 
@@ -87,6 +92,11 @@ Check once and record the results under `## Setup` in the log.
 - Settings, from the arguments typed after `/nightshift`. There is one:
   `adversarial=once` (the default) or `adversarial=thorough`; see *Codex reviews*. Record
   the value in effect, and any argument you did not recognise, which is otherwise ignored.
+- Session: write `Session: ${CLAUDE_SESSION_ID}` into the log header (see *Log format*).
+- Unattended permissions: check that `~/.claude/settings.json` runs
+  `nightshift/hooks/deny-unattended.sh` for `PermissionRequest` and for `Notification` with
+  matcher `permission_prompt` (see *Running it*). If it does not, the first permission
+  prompt stalls the night: log it under *Needs you* and continue.
 - Repository root (`git rev-parse --show-toplevel`) and default branch. Not a git
   repository: write the log, mark it `complete` with a blocker explaining that nightshift
   needs git to keep work reversible, and stop.
@@ -143,7 +153,23 @@ Repeat until every task is `done` or `blocked`:
 When no task is left `todo`, write the *Morning summary*. If reviews are still pending, set
 `Status: waiting for Codex`, keep the watchdog, and end the turn; each watchdog wake-up
 retries them and updates the summary. Once none are pending, set `Status: complete`, delete
-the watchdog with `CronDelete`, and stop. Do not look for more work.
+the watchdog with `CronDelete`, and stop with the *Close-the-session warning*. Do not look
+for more work.
+
+### Close-the-session warning
+
+Whenever the night ends with `Status: complete`, open the *Morning summary* and the final
+reply with this banner, word for word. Terminal replies show no colours, so the coloured
+emoji carry them:
+
+```markdown
+> 🛑🟥🟥🟥 **CLOSE THIS NIGHTSHIFT SESSION** 🟥🟥🟥🛑
+>
+> ⚠️ Start a fresh session for daytime work. This one ran unattended:
+> - 🔓 its permission mode was chosen so nothing would stop for you;
+> - 🧠 its context is full of the night's work, so your instructions and skills are no
+>   longer fresh in it.
+```
 
 ### Task steps
 
@@ -270,6 +296,9 @@ A blocker is anything that stops the task's done-check from passing.
    next task.
 
 Something that would cross the authority boundary is a blocker immediately — no attempts.
+A permission prompt denied with "Unattended: nobody can approve this call" is one: that
+message comes from the user's own hook (*Running it*), so act on it. Log the exact tool
+call as the blocker, and run no other command to get the same result.
 
 ## Log format
 
@@ -281,11 +310,12 @@ Keep the sections in this order so the morning reader sees what needs them first
 
 Status: in progress | waiting for Codex | complete
 Started: <YYYY-MM-DD HH:MM> · Last update: <YYYY-MM-DD HH:MM> · Finished: <YYYY-MM-DD HH:MM>
+Session: <id of the session running the night>
 
 ## Morning summary
-<Written last. Done: N (PR links). Blocked: N. Decisions worth reviewing, highest stakes
-first, one line each with a link to the entry. Anything left running or left behind, such
-as worktrees kept after a failed push.>
+<Written last. Once complete, the Close-the-session warning first. Done: N (PR links).
+Blocked: N. Decisions worth reviewing, highest stakes first, one line each with a link to
+the entry. Anything left running or left behind, such as worktrees kept after a failed push.>
 
 ## Needs you
 - B2 — <one line: what is needed to unblock>
@@ -335,6 +365,13 @@ for the timeline, `date '+%Y-%m-%d %H:%M'` for the header); never estimate one. 
 The user types `/nightshift`, or `/nightshift adversarial=thorough` for a night that hardens
 each task against every edge case Codex finds, in a session whose permission mode will not
 stop for prompts (for example auto mode, or an allowlist covering git, gh, the project's
-tools, and file edits) — a single permission prompt otherwise stalls the whole night. The
-session must stay open: the watchdog lives in it and dies with it. In the morning, open
-`.nightshift/LOG-<date>.md` and read **Morning summary** and **Needs you** first.
+tools, and file edits). Some prompts appear in any mode, such as a hook's `ask`, and one
+unanswered prompt would stall the whole night. So `~/.claude/settings.json` runs
+`hooks/deny-unattended.sh` from this skill's folder for `PermissionRequest` and for
+`Notification` with matcher `permission_prompt` (the README shows the entry). It denies
+every prompt, in this session and its subagents, while the log names this session and is
+`in progress` or `waiting for Codex`; the denied call ends as a blocker (*Blockers*).
+Other sessions keep their prompts. The session must stay open: the watchdog lives in it and
+dies with it. In the morning, open `.nightshift/LOG-<date>.md` and read **Morning summary**
+and **Needs you** first, then close the nightshift session and start a fresh one: until the
+log is `complete` it still denies every prompt.
