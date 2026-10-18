@@ -38,7 +38,25 @@ import grimp
 GRADER_VERSION: str = "1.1.0"
 """Bump on any change to what is graded, so grades from different versions are not compared."""
 
-EVALS: Path = Path(__file__).resolve().parents[2] / "design-spec" / "evals" / "evals.json"
+
+def find_evals(start: Path) -> Path:
+    """Return ``design-spec/evals/evals.json`` in the nearest folder above ``start`` that holds it.
+
+    Searched for rather than counted up to, because mutmut runs this module from a copy one folder deeper.
+
+    Raises:
+        FileNotFoundError: no folder above ``start`` holds it.
+    """
+    folder: Path
+    for folder in start.parents:
+        evals: Path = folder / "design-spec" / "evals" / "evals.json"
+        if evals.is_file():
+            return evals
+    message: str = f"no design-spec/evals/evals.json above {start}"
+    raise FileNotFoundError(message)
+
+
+EVALS: Path = find_evals(Path(__file__).resolve())
 """The design-spec evals whose assertions are graded."""
 
 VALIDATOR: Path = EVALS.parents[1] / "skill" / "tools" / "validate_mermaid.mjs"
