@@ -26,6 +26,7 @@ from evals.design_spec_grade import (
     EVALS,
     GRADER_VERSION,
     RULES,
+    VALIDATOR,
     Check,
     Result,
     Rule,
@@ -38,6 +39,7 @@ from evals.design_spec_grade import (
     closing_line,
     contract_header,
     contract_sources,
+    diagrams_parse,
     documentation_only,
     first_line,
     grade,
@@ -672,3 +674,61 @@ def test_rules_decide_the_fixture_assertions(repo: tuple[Path, str], number: int
     assert _graded(number, start, _repo_run(repo, "Cites `src/app.py:2`.")).status == "pass"
     (root / "src" / "new.py").write_text("", encoding="utf-8")
     assert _graded(number, start, _repo_run(repo, "Cites `src/new.py:1`.")).status == "fail"
+
+
+@dataclass
+class FakeValidator:
+    """Stand-in for ``_run`` that answers as validate_mermaid.mjs would and records each command."""
+
+    status: int
+    output: str
+    error: str = ""
+    calls: list[tuple[list[str], Path]] = field(default_factory=list[tuple[list[str], Path]])
+
+    def __call__(self, command: list[str], cwd: Path) -> tuple[int, str, str]:
+        """Record the call and return the canned result."""
+        self.calls.append((command, cwd))
+        return self.status, self.output, self.error
+
+
+@pytest.mark.parametrize(
+    ("fake", "verdict"),
+    [
+        (
+            FakeValidator(0, "d.md: block 1 (line 20): OK flowchart-v2\nd.md: block 2 (line 40): OK stateDiagram\n"),
+            Verdict(passed=True, evidence="validate_mermaid.mjs exit 0: 2 diagrams parse"),
+        ),
+        (FakeValidator(0, "d.md: no Mermaid diagrams\n"), Verdict(passed=True, evidence="validate_mermaid.mjs exit 0: 0 diagrams parse")),
+        (
+            FakeValidator(1, "d.md: block 1 (line 2): OK flowchart-v2\nd.md: block 2 (line 9): FAIL Error: Parse error on line 4\n"),
+            Verdict(passed=False, evidence="validate_mermaid.mjs exit 1: d.md: block 2 (line 9): FAIL Error: Parse error on line 4"),
+        ),
+        (FakeValidator(2, "", "needs Node 22.22.2+\n"), Verdict(passed=None, evidence="validate_mermaid.mjs could not run (exit 2): needs Node 22.22.2+")),
+    ],
+    ids=["parse", "no-diagrams", "parse-error", "cannot-run"],
+)
+def test_diagrams_parse_reports_the_checker(monkeypatch: pytest.MonkeyPatch, fake: FakeValidator, verdict: Verdict) -> None:
+    monkeypatch.setattr("evals.design_spec_grade._run", fake)
+    run: Run = _run(spec="# Spec\n")
+    assert diagrams_parse(run) == verdict
+    assert fake.calls == [(["node", str(VALIDATOR), str(run.spec_path)], VALIDATOR.parent)]
+    assert VALIDATOR.is_file()
+
+
+def test_diagrams_parse_fails_without_a_spec() -> None:
+    assert diagrams_parse(_run(spec=None)) == Verdict(passed=False, evidence=f"no spec at {Path('fixture/docs/design.md')}")
+
+
+def test_run_reports_a_missing_program_as_exit_127(tmp_path: Path) -> None:
+    status: int
+    output: str
+    error: str
+    status, output, error = run_command(["no-such-program-for-the-grader"], tmp_path)
+    assert (status, output) == (127, "")
+    assert error
+
+
+@pytest.mark.parametrize(("number", "status"), [(1, "pass"), (6, "pass")])
+def test_rules_run_the_diagram_checker(monkeypatch: pytest.MonkeyPatch, number: int, status: Status) -> None:
+    monkeypatch.setattr("evals.design_spec_grade._run", FakeValidator(0, "d.md: block 1 (line 2): OK flowchart-v2\n"))
+    assert _graded(number, "Every Mermaid diagram in the spec passes", _run(spec="# Spec\n")).status == status

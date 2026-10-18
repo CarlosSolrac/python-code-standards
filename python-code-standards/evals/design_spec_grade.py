@@ -33,6 +33,9 @@ GRADER_VERSION: str = "1.0.0"
 EVALS: Path = Path(__file__).resolve().parents[2] / "design-spec" / "evals" / "evals.json"
 """The design-spec evals whose assertions are graded."""
 
+VALIDATOR: Path = EVALS.parents[1] / "skill" / "tools" / "validate_mermaid.mjs"
+"""design-spec's own diagram checker: Mermaid's parser on every Mermaid block."""
+
 EMPTY_TREE: str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 """Git's empty tree: eval 1's fixture has no commit, so its changes are compared with nothing."""
 
@@ -384,6 +387,21 @@ def inferred_marker(run: Run) -> Verdict:
     return Verdict(passed=True, evidence=f"diagrams applying the inferred class: {marked}, each defining classDef inferred dashed")
 
 
+def diagrams_parse(run: Run) -> Verdict:
+    """Check every Mermaid block with ``validate_mermaid.mjs``; a checker that cannot run decides nothing."""
+    if run.spec is None:
+        return _no_spec(run)
+    status: int
+    output: str
+    error: str
+    status, output, error = _run(["node", str(VALIDATOR), str(run.spec_path)], VALIDATOR.parent)
+    if status == 0:
+        return Verdict(passed=True, evidence=f"validate_mermaid.mjs exit 0: {output.count(': OK ')} diagrams parse")
+    if status == 1:
+        return Verdict(passed=False, evidence=f"validate_mermaid.mjs exit 1: {'; '.join(line for line in output.splitlines() if ': FAIL ' in line)}")
+    return Verdict(passed=None, evidence=f"validate_mermaid.mjs could not run (exit {status}): {(error or output).strip()}")
+
+
 def _no_spec(run: Run) -> Verdict:
     """Fail a spec check because there is no spec to read."""
     return Verdict(passed=False, evidence=f"no spec at {run.spec_path}")
@@ -535,8 +553,15 @@ def _changes(run: Run, allowed: Callable[[str], bool], what: str) -> Verdict:
 
 
 def _run(command: list[str], cwd: Path) -> tuple[int, str, str]:
-    """Execute a command, returning its exit status, stdout and stderr, decoded as UTF-8."""
-    completed: subprocess.CompletedProcess[str] = subprocess.run(command, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace", check=False)
+    """Execute a command, returning its exit status, stdout and stderr, decoded as UTF-8.
+
+    A program that cannot be started (``node`` or ``git`` missing) reports exit 127,
+    as a shell would, so the check reports it instead of the grader crashing.
+    """
+    try:
+        completed: subprocess.CompletedProcess[str] = subprocess.run(command, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace", check=False)
+    except OSError as error:
+        return 127, "", str(error)
     return completed.returncode, completed.stdout, completed.stderr
 
 
@@ -553,6 +578,7 @@ RULES: Mapping[int, Sequence[Rule]] = {
             no_c4,
             complete=False,
         ),
+        Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
         Rule('The reply ends with "Approve or correct before I implement."', closing_line),
         Rule("No code is written: the only files added are docs/design.md and ADRs under docs/adr/", spec_and_adrs_only),
     ),
@@ -581,6 +607,7 @@ RULES: Mapping[int, Sequence[Rule]] = {
     6: (
         Rule("The first line states design mode and the Standard size class, and the spec treats tally as an existing codebase being restructured, not a new system", first_line("design", "Standard"), complete=False),
         Rule("A change-impact flowchart defines classDef added, classDef changed and classDef removed", change_classdefs),
+        Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
         Rule('The reply ends with "Approve or correct before I implement."', closing_line),
         Rule("No code is written: git status and git diff <build commit> show changes to documentation files only", documentation_only),
     ),
