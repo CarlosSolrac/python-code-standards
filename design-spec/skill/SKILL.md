@@ -65,6 +65,8 @@ Change-impact diagram: one node per package (uv workspace) or module the restruc
 
 Boundary contract table columns: `boundary | input | output | grain/key | invariants | owner`; document mode adds `source`, the code that defines the output and enforces the invariants. `grain/key` says what one record crossing the boundary is and which fields identify it (one row per order, keyed by `order_id`), or that none do (one document per run; raw rows before deduplication).
 
+If the project exposes an HTTP API with an OpenAPI file, its row in the contract table cites that file instead of restating the endpoints; without one, the row is derived like any other.
+
 Dependency matrix: rows import columns. Mark each cell `Y` (imported and declared), `!` (imported but not declared), or `d` (declared but not imported). For a uv workspace, use packages as the unit; otherwise modules. Follow it with one line on cycles and direction. In document mode, footnote it with a `cell | source` table: one row per `!` or `d` cell, citing the import (`!`) or the declaration (`d`).
 
 Import contract: whenever the dependency matrix applies, enforce its direction with [import-linter](https://import-linter.readthedocs.io/) so the code cannot drift from the diagram (rule 14). Below that size, the one-line direction statement is enough. In design mode, the spec's directory tree shows the contract, and the implementation plan adds `import-linter` as a dev dependency and `uv run lint-imports` to the project's checks (pre-commit and CI). List the layers highest first, matching the component flowchart: a layer may import the layers below it, never the ones above:
