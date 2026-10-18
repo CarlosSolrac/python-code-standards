@@ -426,8 +426,8 @@ def test_citation_pattern(text: str, found: list[tuple[str, str]]) -> None:
     ("spec", "verdict"),
     [
         (_mermaid("flowchart LR", "    A --> B"), Verdict(passed=True, evidence="no Mermaid C4 diagram")),
-        (_mermaid("%% context", "C4Context", "  Person(a, 'A')") + _mermaid("  C4Container"), Verdict(passed=False, evidence="Mermaid C4 diagrams used: C4Context, C4Container")),
-        ("C4Context named in prose is not a diagram\n", Verdict(passed=True, evidence="no Mermaid C4 diagram")),
+        (_mermaid("%% context", "C4Component", "  Person(a, 'A')") + _mermaid("  C4Deployment"), Verdict(passed=False, evidence="Mermaid C4 diagrams used: C4Component, C4Deployment")),
+        ("C4Component named in prose is not a diagram\n", Verdict(passed=True, evidence="no Mermaid C4 diagram")),
     ],
     ids=["flowchart", "c4-blocks", "prose"],
 )
@@ -494,7 +494,7 @@ DOCUMENT_SPEC: str = f"{DOCUMENT_HEADER}| Config | JSON | `Config` | one per run
         (1, "A boundary contract table", f"{DESIGN_HEADER}| CSV | rows | `Order` | one per order | typed | `io` |\n", "manual"),
         (1, "A boundary contract table", DOCUMENT_SPEC, "fail"),
         (1, "A context view drawn as a flowchart", _mermaid("flowchart LR", "  A --> B"), "manual"),
-        (1, "A context view drawn as a flowchart", _mermaid("C4Context"), "fail"),
+        (1, "A context view drawn as a flowchart", _mermaid("C4Dynamic"), "fail"),
         (3, "Every boundary in the contract table", DOCUMENT_SPEC, "manual"),
         (3, "Every boundary in the contract table", DESIGN_HEADER, "fail"),
         (5, "Every boundary in the contract table", DOCUMENT_SPEC, "manual"),

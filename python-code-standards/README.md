@@ -104,21 +104,21 @@ The repository copy is authoritative wherever both exist: it is the one CI runs.
 
 ```bash
 uv sync --all-groups
-uv run pytest --cov=skill.tools --cov=evals.grade --cov-branch
-uv run ruff check skill/tools skill/assets/conformance.py tests evals/grade.py
+uv run pytest --cov=skill.tools --cov=evals.grade --cov=evals.design_spec_grade --cov-branch
+uv run ruff check skill/tools skill/assets/conformance.py tests evals/grade.py evals/design_spec_grade.py
 # evals/fixtures/ is deliberately non-conforming — it is a baseline input, not source
-uv run python skill/tools/check_declarations.py skill/tools skill/assets/conformance.py tests evals/grade.py
-uv run complexipy skill/tools tests evals/grade.py
+uv run python skill/tools/check_declarations.py skill/tools skill/assets/conformance.py tests evals/grade.py evals/design_spec_grade.py
+uv run complexipy skill/tools tests evals/grade.py evals/design_spec_grade.py
 uv run deptry .
 ```
 
 ```cmd
 uv sync --all-groups
-uv run pytest --cov=skill.tools --cov=evals.grade --cov-branch
-uv run ruff check skill/tools skill/assets/conformance.py tests evals/grade.py
+uv run pytest --cov=skill.tools --cov=evals.grade --cov=evals.design_spec_grade --cov-branch
+uv run ruff check skill/tools skill/assets/conformance.py tests evals/grade.py evals/design_spec_grade.py
 REM evals/fixtures/ is deliberately non-conforming - it is a baseline input, not source
-uv run python skill\tools\check_declarations.py skill\tools skill\assets\conformance.py tests evals\grade.py
-uv run complexipy skill\tools tests evals\grade.py
+uv run python skill\tools\check_declarations.py skill\tools skill\assets\conformance.py tests evals\grade.py evals\design_spec_grade.py
+uv run complexipy skill\tools tests evals\grade.py evals\design_spec_grade.py
 uv run deptry .
 ```
 
