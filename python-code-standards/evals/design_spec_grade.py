@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -457,6 +458,88 @@ def _diagram_type(block: str) -> str:
     return lines[0].split()[0] if lines else ""
 
 
+def citations_exist(run: Run) -> Verdict:
+    """Check that every ``path:line`` the spec cites is a tracked file with at least that many lines at the build commit."""
+    if run.spec is None:
+        return _no_spec(run)
+    status: int = _run(["git", "rev-parse", "--verify", "--quiet", f"{run.commit}^{{commit}}"], run.fixture)[0]
+    if status != 0:
+        return Verdict(passed=False, evidence=f"build commit {run.commit} is not a commit in {run.fixture}")
+    cited: list[tuple[str, int]] = sorted({(path, int(line)) for path, line in CITATION.findall(run.spec)})
+    if not cited:
+        return Verdict(passed=False, evidence="the spec cites no path:line")
+    lengths: dict[str, int | None] = {path: _line_count(run, path) for path in {path for path, _ in cited}}
+    missing: list[str] = []
+    path: str
+    line: int
+    for path, line in cited:
+        length: int | None = lengths[path]
+        if length is None:
+            missing.append(f"{path}:{line} (not tracked)")
+        elif not 1 <= line <= length:
+            missing.append(f"{path}:{line} ({path} has {length} lines)")
+    if missing:
+        return Verdict(passed=False, evidence=f"{len(missing)} of {len(cited)} citations do not exist at {run.commit}: {'; '.join(missing)}")
+    return Verdict(passed=True, evidence=f"all {len(cited)} cited path:line exist at {run.commit}")
+
+
+def _line_count(run: Run, path: str) -> int | None:
+    """Return how many lines a file has at the build commit, or None when it is not a tracked file there."""
+    blob: tuple[int, str, str] = _run(["git", "cat-file", "blob", f"{run.commit}:{path}"], run.fixture)
+    if blob[0] != 0:
+        return None
+    content: str = blob[1]
+    return content.count("\n") + (0 if content.endswith("\n") or not content else 1)
+
+
+def documentation_only(run: Run) -> Verdict:
+    """Check that every file changed since the build commit is documentation, that is Markdown (the spec, ADRs, a backlog)."""
+    return _changes(run, _is_documentation, "documentation files")
+
+
+def spec_and_adrs_only(run: Run) -> Verdict:
+    """Check that the only files written are ``docs/design.md`` and Markdown ADRs under ``docs/adr/`` (eval 1)."""
+    return _changes(run, lambda path: path == "docs/design.md" or (path.startswith("docs/adr/") and _is_documentation(path)), "docs/design.md and Markdown ADRs under docs/adr/")
+
+
+def _is_documentation(path: str) -> bool:
+    """Return whether a changed file counts as documentation."""
+    return path.lower().endswith(".md")
+
+
+def _changes(run: Run, allowed: Callable[[str], bool], what: str) -> Verdict:
+    """Check the files changed since the build commit, committed or not, tracked or not, against ``allowed``.
+
+    ``git diff <commit>`` compares the commit with the working tree, so it sees later
+    commits as well as staged and unstaged edits; ``--no-renames`` lists both sides of
+    a rename, so code moved under a documentation name still counts. ``git ls-files
+    --others`` adds the untracked files ``git status`` would list. Ignored files are
+    left out, as ``git status`` leaves them out.
+    """
+    changed: set[str] = set()
+    command: list[str]
+    for command in (["git", "diff", "--no-renames", "--name-only", "-z", run.commit], ["git", "ls-files", "--others", "--exclude-standard", "-z"]):
+        status: int
+        output: str
+        error: str
+        status, output, error = _run(command, run.fixture)
+        if status != 0:
+            return Verdict(passed=False, evidence=f"{' '.join(command)} failed: {error.strip()}")
+        changed.update(path for path in output.split("\0") if path)
+    outside: list[str] = sorted(path for path in changed if not allowed(path))
+    if outside:
+        return Verdict(passed=False, evidence=f"changed outside {what}: {', '.join(outside)}")
+    if not changed:
+        return Verdict(passed=True, evidence=f"nothing changed since {run.commit}")
+    return Verdict(passed=True, evidence=f"changed since {run.commit}: {', '.join(sorted(changed))}")
+
+
+def _run(command: list[str], cwd: Path) -> tuple[int, str, str]:
+    """Execute a command, returning its exit status, stdout and stderr, decoded as UTF-8."""
+    completed: subprocess.CompletedProcess[str] = subprocess.run(command, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace", check=False)
+    return completed.returncode, completed.stdout, completed.stderr
+
+
 RULES: Mapping[int, Sequence[Rule]] = {
     1: (
         Rule("The first line states design mode and the Standard size class", first_line("design", "Standard")),
@@ -471,13 +554,20 @@ RULES: Mapping[int, Sequence[Rule]] = {
             complete=False,
         ),
         Rule('The reply ends with "Approve or correct before I implement."', closing_line),
+        Rule("No code is written: the only files added are docs/design.md and ADRs under docs/adr/", spec_and_adrs_only),
     ),
     2: (Rule("The first line states the Small size class", first_line(None, "Small")),),
     3: (
         Rule("The first line states document mode and a size class", first_line("document", None)),
         Rule("Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source", contract_sources, complete=False),
+        Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
+        Rule("No code is changed: git status and git diff 8ffaa6f show changes to documentation files only", documentation_only),
     ),
-    4: (Rule("The first line states document mode and a size class", first_line("document", None)),),
+    4: (
+        Rule("The first line states document mode and a size class", first_line("document", None)),
+        Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
+        Rule("No code is changed: names.py keeps the reversed import, and git status and git diff bb6b246 show changes to documentation files only", documentation_only),
+    ),
     5: (
         Rule(
             "Items deduced rather than read from the code (domain states, the decision each component owns) are marked inferred: *inferred* in text; in diagrams, a label ending in ` ?` plus the `inferred` classDef (stroke-dasharray, a dashed border), or one line above a diagram whose every node is inferred. No dashed arrow is used to mark inference",
@@ -485,11 +575,14 @@ RULES: Mapping[int, Sequence[Rule]] = {
             complete=False,
         ),
         Rule("Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source", contract_sources, complete=False),
+        Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
+        Rule("No code is changed: git status shows changes to documentation files only", documentation_only),
     ),
     6: (
         Rule("The first line states design mode and the Standard size class, and the spec treats tally as an existing codebase being restructured, not a new system", first_line("design", "Standard"), complete=False),
         Rule("A change-impact flowchart defines classDef added, classDef changed and classDef removed", change_classdefs),
         Rule('The reply ends with "Approve or correct before I implement."', closing_line),
+        Rule("No code is written: git status and git diff <build commit> show changes to documentation files only", documentation_only),
     ),
 }
 """The rules for each eval id in ``evals.json``; an assertion without a rule is graded by hand."""

@@ -34,15 +34,19 @@ from evals.design_spec_grade import (
     Verdict,
     bind,
     change_classdefs,
+    citations_exist,
     closing_line,
     contract_header,
     contract_sources,
+    documentation_only,
     first_line,
     grade,
     inferred_marker,
     main,
     no_c4,
+    spec_and_adrs_only,
 )
+from evals.design_spec_grade import _run as run_command  # pyright: ignore[reportPrivateUsage]
 
 
 def _run(spec: str | None = None, reply: str | None = None) -> Run:
@@ -515,3 +519,156 @@ DOCUMENT_SPEC: str = f"{DOCUMENT_HEADER}| Config | JSON | `Config` | one per run
 )
 def test_rules_decide_the_spec_assertions(number: int, start: str, spec: str, status: Status) -> None:
     assert _graded(number, start, _run(spec=spec)).status == status
+
+
+def _git(cwd: Path, *args: str) -> str:
+    """Run git in ``cwd`` with a fixed identity and no signing; return its output."""
+    command: list[str] = ["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.autocrlf=false", *args]
+    status: int
+    output: str
+    error: str
+    status, output, error = run_command(command, cwd)
+    assert status == 0, error
+    return output.strip()
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> tuple[Path, str]:
+    """A git repository with one commit: three-line code, a one-line README without a newline, docs."""
+    root: Path = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    (root / "docs").mkdir()
+    (root / "src" / "app.py").write_text("a = 1\nb = 2\nc = 3\n", encoding="utf-8")
+    (root / "README.md").write_text("tally", encoding="utf-8")
+    (root / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")
+    (root / ".gitignore").write_text(".venv/\n", encoding="utf-8")
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "build")
+    return root, _git(root, "rev-parse", "HEAD")
+
+
+def _repo_run(repo: tuple[Path, str], spec: str | None = None, commit: str | None = None) -> Run:
+    """Return run inputs for the repository fixture, at its build commit unless ``commit`` is given."""
+    root: Path
+    sha: str
+    root, sha = repo
+    return Run(fixture=root, commit=commit or sha, spec_path=root / "docs" / "design.md", spec=spec, reply=None)
+
+
+def test_run_returns_status_and_both_streams_from_cwd(tmp_path: Path) -> None:
+    status: int
+    output: str
+    error: str
+    status, output, error = run_command([sys.executable, "-c", "import os, sys; print(os.getcwd()); sys.stderr.buffer.write('→'.encode())"], tmp_path)
+    assert (status, output.strip(), error.strip()) == (0, str(tmp_path), "→")
+
+
+def test_citations_exist_passes_when_every_line_is_there(repo: tuple[Path, str]) -> None:
+    spec: str = "Rows (`src/app.py:1`, `src/app.py:3`) and README.md:1."
+    assert citations_exist(_repo_run(repo, spec)) == Verdict(passed=True, evidence=f"all 3 cited path:line exist at {repo[1]}")
+
+
+def test_citations_exist_names_each_missing_citation(repo: tuple[Path, str]) -> None:
+    root: Path = repo[0]
+    (root / "src" / "app.py").write_text("x = 1\n" * 10, encoding="utf-8")
+    (root / "new.py").write_text("y = 1\n", encoding="utf-8")
+    spec: str = "`src/app.py:5` changed after the build, `new.py:1` untracked, `README.md:2`, `src/app.py:0`, `src/:1` a folder, `src/app.py:2` fine"
+    assert citations_exist(_repo_run(repo, spec)) == Verdict(
+        passed=False,
+        evidence=(
+            f"5 of 6 citations do not exist at {repo[1]}: README.md:2 (README.md has 1 lines); new.py:1 (not tracked); src/:1 (not tracked); src/app.py:0 (src/app.py has 3 lines); src/app.py:5 (src/app.py has 3 lines)"
+        ),
+    )
+
+
+def test_citations_exist_fails_a_spec_that_cites_nothing(repo: tuple[Path, str]) -> None:
+    assert citations_exist(_repo_run(repo, "No citations here.")) == Verdict(passed=False, evidence="the spec cites no path:line")
+
+
+def test_citations_exist_fails_an_unknown_build_commit(repo: tuple[Path, str]) -> None:
+    assert citations_exist(_repo_run(repo, "`src/app.py:1`", commit="0" * 40)) == Verdict(passed=False, evidence=f"build commit {'0' * 40} is not a commit in {repo[0]}")
+
+
+def test_citations_exist_fails_without_a_spec(repo: tuple[Path, str]) -> None:
+    assert citations_exist(_repo_run(repo)) == Verdict(passed=False, evidence=f"no spec at {repo[0] / 'docs' / 'design.md'}")
+
+
+def test_documentation_only_passes_a_clean_fixture(repo: tuple[Path, str]) -> None:
+    assert documentation_only(_repo_run(repo)) == Verdict(passed=True, evidence=f"nothing changed since {repo[1]}")
+
+
+def test_documentation_only_passes_documentation_changes(repo: tuple[Path, str]) -> None:
+    root: Path = repo[0]
+    (root / "docs" / "design.md").write_text("# Design\n", encoding="utf-8")
+    (root / "docs" / "adr").mkdir()
+    (root / "docs" / "adr" / "0001-x.md").write_text("# ADR\n", encoding="utf-8")
+    (root / "README.md").write_text("tally, documented", encoding="utf-8")
+    (root / ".venv").mkdir()
+    (root / ".venv" / "ignored.py").write_text("", encoding="utf-8")
+    assert documentation_only(_repo_run(repo)) == Verdict(passed=True, evidence=f"changed since {repo[1]}: README.md, docs/adr/0001-x.md, docs/design.md")
+
+
+def test_documentation_only_names_code_changes_committed_staged_and_untracked(repo: tuple[Path, str]) -> None:
+    root: Path = repo[0]
+    (root / "src" / "app.py").write_text("a = 1\n", encoding="utf-8")
+    _git(root, "commit", "-q", "-am", "after the build")
+    (root / "staged.py").write_text("", encoding="utf-8")
+    _git(root, "add", "staged.py")
+    (root / "untracked.toml").write_text("", encoding="utf-8")
+    (root / "docs" / "design.md").write_text("# Design\n", encoding="utf-8")
+    assert documentation_only(_repo_run(repo)) == Verdict(passed=False, evidence="changed outside documentation files: src/app.py, staged.py, untracked.toml")
+
+
+def test_documentation_only_fails_when_git_cannot_compare(repo: tuple[Path, str]) -> None:
+    verdict: Verdict = documentation_only(_repo_run(repo, commit="nope"))
+    assert verdict.passed is False
+    assert verdict.evidence.startswith("git diff --no-renames --name-only -z nope failed: ")
+
+
+def test_spec_and_adrs_only_accepts_only_the_spec_and_adrs(tmp_path: Path) -> None:
+    root: Path = tmp_path / "empty"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    run: Run = Run(fixture=root, commit=EMPTY_TREE, spec_path=root / "docs" / "design.md", spec=None, reply=None)
+    assert spec_and_adrs_only(run) == Verdict(passed=True, evidence=f"nothing changed since {EMPTY_TREE}")
+    (root / "docs" / "adr").mkdir(parents=True)
+    (root / "docs" / "design.md").write_text("# Design\n", encoding="utf-8")
+    (root / "docs" / "adr" / "0001-x.md").write_text("# ADR\n", encoding="utf-8")
+    assert spec_and_adrs_only(run) == Verdict(passed=True, evidence=f"changed since {EMPTY_TREE}: docs/adr/0001-x.md, docs/design.md")
+    (root / "docs" / "notes.md").write_text("notes\n", encoding="utf-8")
+    (root / "main.py").write_text("", encoding="utf-8")
+    (root / "docs" / "adr" / "helper.py").write_text("", encoding="utf-8")
+    _git(root, "add", "main.py")
+    assert spec_and_adrs_only(run) == Verdict(passed=False, evidence="changed outside docs/design.md and Markdown ADRs under docs/adr/: docs/adr/helper.py, docs/notes.md, main.py")
+
+
+def test_documentation_only_names_code_under_docs(repo: tuple[Path, str]) -> None:
+    (repo[0] / "docs" / "conf.py").write_text("", encoding="utf-8")
+    assert documentation_only(_repo_run(repo)) == Verdict(passed=False, evidence="changed outside documentation files: docs/conf.py")
+
+
+def test_documentation_only_names_both_sides_of_a_rename(repo: tuple[Path, str]) -> None:
+    root: Path = repo[0]
+    _git(root, "mv", "src/app.py", "docs/app.md")
+    assert documentation_only(_repo_run(repo)) == Verdict(passed=False, evidence="changed outside documentation files: src/app.py")
+
+
+@pytest.mark.parametrize(
+    ("number", "start"),
+    [
+        (1, "No code is written: the only files added"),
+        (3, "Every path:line the spec cites"),
+        (3, "No code is changed"),
+        (4, "Every path:line the spec cites"),
+        (4, "No code is changed"),
+        (5, "Every path:line the spec cites"),
+        (5, "No code is changed"),
+        (6, "No code is written"),
+    ],
+)
+def test_rules_decide_the_fixture_assertions(repo: tuple[Path, str], number: int, start: str) -> None:
+    root: Path = repo[0]
+    assert _graded(number, start, _repo_run(repo, "Cites `src/app.py:2`.")).status == "pass"
+    (root / "src" / "new.py").write_text("", encoding="utf-8")
+    assert _graded(number, start, _repo_run(repo, "Cites `src/new.py:1`.")).status == "fail"
