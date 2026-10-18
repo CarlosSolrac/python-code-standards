@@ -53,12 +53,15 @@ Text diagrams only (Mermaid, Markdown tables, directory trees). No rendered SVG 
 | 12 | Findings (rule deviations) | Document mode only |
 | 13 | Class diagram | Only when Python contracts are under review |
 | 14 | Error-flow sequence diagram | Only when validation, quarantine, or retries are non-trivial |
+| 15 | Change-impact diagram (`flowchart LR`) | Design mode restructuring an existing codebase only |
 
 In a full spec (Standard, Large), when an artifact is skipped by its condition, keep its heading with one line saying why.
 
 Component flowchart: subgraphs by responsibility (ingestion, pure core, data path, assurance, storage, orchestration as they exist); each node labeled with the decision it owns; arrows labeled with the type or table crossing them; dashed arrows to Protocols.
 
 Context and container views: plain flowcharts, not Mermaid's experimental C4 diagrams, so they take `classDef` styles. The system is one `subgraph`, its boundary; each person and each external system is its own node outside it, and arrows are labeled with what crosses. Inside the boundary, the context view has one node for the whole system and the container view one node per process or service.
+
+Change-impact diagram: one node per package (uv workspace) or module the restructure touches, named as in the code, each taking one of `classDef added fill:#dafbe1,stroke:#1a7f37`, `classDef changed fill:#fff8c5,stroke:#9a6700`, or `classDef removed fill:#ffebe9,stroke:#cf222e`. A `changed` or `removed` node names a package or module that exists; an `added` node names one that does not. Untouched neighbours may appear unstyled for context. The same diagram serves as the pull request's diagram.
 
 Boundary contract table columns: `boundary | input | output | invariants | owner`.
 

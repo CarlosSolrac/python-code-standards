@@ -83,6 +83,25 @@
         "Items deduced rather than read from the code (domain states, the decision each component owns) are marked inferred: *inferred* in text; in diagrams, a label ending in ` ?` plus the `inferred` classDef (stroke-dasharray, a dashed border), or one line above a diagram whose every node is inferred. No dashed arrow is used to mark inference",
         "No code is changed: git status shows changes to documentation files only"
       ]
+    },
+    {
+      "id": 6,
+      "name": "eval-6-change-impact-planted-defects",
+      "prompt": "Restructure tally: remove the tally-stage pass-through and replace the dict that daily_revenue returns with a typed record. Design the change.",
+      "expected_output": "Design mode on an existing codebase: the tally workspace, built as for eval 3b, sized Standard (five packages). The spec in docs/design.md has a change-impact flowchart using classDef added, changed and removed: tally-stage removed; tally-core (returns the typed record), tally-io (writes it) and tally-cli (stops calling load_orders, drops tally-stage) changed; tally-common may be changed too if the record lives there; if the design adds a package or module (none is required), its added node names one that does not exist yet. Every diagram parses. The reply ends with 'Approve or correct before I implement.' and no code is written.",
+      "files": [
+        "fixtures/planted-defects"
+      ],
+      "assertions": [
+        "The first line states design mode and the Standard size class, and the spec treats tally as an existing codebase being restructured, not a new system",
+        "A change-impact flowchart defines classDef added, classDef changed and classDef removed",
+        "tally-stage is marked removed",
+        "tally-core, tally-io and tally-cli are each marked changed",
+        "Every changed or removed node names a workspace package (such as tally-stage) or module (such as tally_stage) that exists in the fixture, and every added node, if any, names one that does not",
+        "Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)",
+        "The reply ends with \"Approve or correct before I implement.\"",
+        "No code is written: git status and git diff <build commit> show changes to documentation files only"
+      ]
     }
   ]
 }

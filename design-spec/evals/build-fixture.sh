@@ -4,8 +4,8 @@
 #
 #   design-spec/evals/build-fixture.sh <eval> <dest>
 #
-# <eval> is an id from evals.json: 1, 2, 3, 4, or 5 for eval 3b, which may also
-# be given as 3b, its label in docs/plans/design-spec.md. <dest> must not exist
+# <eval> is an id from evals.json: 1 to 6, where 5 is eval 3b and may also be
+# given as 3b, its label in docs/plans/design-spec.md. <dest> must not exist
 # yet; build it outside this repository, in an empty folder of its own. Agent
 # output must never land inside this repository.
 #
@@ -16,6 +16,7 @@
 #   3   ParquetToXL at 8ffaa6f (the base of its PR #7), cloned from
 #       fixtures/parquettoxl-8ffaa6f.bundle
 #   3b  (id 5) fixtures/planted-defects/ committed on main
+#   6   the same build as 3b: eval 6 designs a change to that workspace
 #   4   template-sqlmesh-duckdb cloned from GitHub, with ports.py made to import
 #       from adapters and committed. Fails while the template has no
 #       docs/design.md, since there is then no design to resync.
@@ -30,7 +31,7 @@
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
-    echo "usage: $0 <1|2|3|4|5|3b> <dest>" >&2
+    echo "usage: $0 <1|2|3|4|5|3b|6> <dest>" >&2
     exit 2
 fi
 
@@ -115,9 +116,9 @@ case "$eval_id" in
     1) build_empty ;;
     2) build_small_project ;;
     3) build_parquettoxl ;;
-    3b | 5) build_planted_defects ;;
+    3b | 5 | 6) build_planted_defects ;;
     4) build_resync ;;
-    *) echo "no eval '$eval_id'; expected 1, 2, 3, 4, or 5 (also written 3b)" >&2; exit 2 ;;
+    *) echo "no eval '$eval_id'; expected 1, 2, 3, 4, 5 (also written 3b), or 6" >&2; exit 2 ;;
 esac
 
 built=1
