@@ -387,7 +387,11 @@ def inferred_marker(run: Run) -> Verdict:
 
 
 def diagrams_parse(run: Run) -> Verdict:
-    """Check every Mermaid block with ``validate_mermaid.mjs``; a checker that cannot run decides nothing."""
+    """Check every Mermaid block with ``validate_mermaid.mjs``; a checker that cannot run decides nothing.
+
+    Exit 1 is a failure only with a ``FAIL`` diagram line: the CLI also exits 1
+    when it crashes before parsing, such as a failed first-use npm install.
+    """
     if run.spec is None:
         return _no_spec(run)
     status: int
@@ -396,8 +400,9 @@ def diagrams_parse(run: Run) -> Verdict:
     status, output, error = _run(["node", str(VALIDATOR), str(run.spec_path)], VALIDATOR.parent)
     if status == 0:
         return Verdict(passed=True, evidence=f"validate_mermaid.mjs exit 0: {output.count(': OK ')} diagrams parse")
-    if status == 1:
-        return Verdict(passed=False, evidence=f"validate_mermaid.mjs exit 1: {'; '.join(line for line in output.splitlines() if ': FAIL ' in line)}")
+    failures: list[str] = [line for line in output.splitlines() if ": FAIL " in line]
+    if status == 1 and failures:
+        return Verdict(passed=False, evidence=f"validate_mermaid.mjs exit 1: {'; '.join(failures)}")
     return Verdict(passed=None, evidence=f"validate_mermaid.mjs could not run (exit {status}): {(error or output).strip()}")
 
 

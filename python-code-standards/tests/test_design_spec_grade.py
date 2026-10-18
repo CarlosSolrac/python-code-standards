@@ -705,8 +705,12 @@ class FakeValidator:
             Verdict(passed=False, evidence="validate_mermaid.mjs exit 1: d.md: block 2 (line 9): FAIL Error: Parse error on line 4"),
         ),
         (FakeValidator(2, "", "needs Node 22.22.2+\n"), Verdict(passed=None, evidence="validate_mermaid.mjs could not run (exit 2): needs Node 22.22.2+")),
+        (
+            FakeValidator(1, "", "Error: npm install failed in cache: ECONNREFUSED\n"),
+            Verdict(passed=None, evidence="validate_mermaid.mjs could not run (exit 1): Error: npm install failed in cache: ECONNREFUSED"),
+        ),
     ],
-    ids=["parse", "no-diagrams", "parse-error", "cannot-run"],
+    ids=["parse", "no-diagrams", "parse-error", "cannot-run", "crash-before-parsing"],
 )
 def test_diagrams_parse_reports_the_checker(monkeypatch: pytest.MonkeyPatch, fake: FakeValidator, verdict: Verdict) -> None:
     monkeypatch.setattr("evals.design_spec_grade._run", fake)
