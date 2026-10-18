@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -573,6 +574,172 @@ def _run(command: list[str], cwd: Path) -> tuple[int, str, str]:
     except OSError as error:
         return 127, "", str(error)
     return completed.returncode, completed.stdout, completed.stderr
+
+
+type Cell = tuple[str, str]
+"""A dependency-matrix cell: the importing package's name, then the imported one's."""
+
+_MARKS: Mapping[tuple[bool, bool], str] = {(True, True): "Y", (True, False): "!", (False, True): "d", (False, False): ""}
+"""A matrix mark by (imported, declared), as design-spec SKILL.md section 3 defines them."""
+
+
+@dataclass(frozen=True)
+class Package:
+    """A workspace package at the build commit; names are normalised distribution names (PEP 503)."""
+
+    name: str
+    modules: frozenset[str]
+    declared: frozenset[str]
+
+
+@dataclass(frozen=True)
+class Workspace:
+    """A fixture's workspace packages at the build commit, and the imports grimp found between them.
+
+    ``imports`` holds each (importer, imported) pair of package names where code
+    under the importer's ``src`` imports the other's modules; ``modules`` is every
+    module grimp found.
+    """
+
+    packages: tuple[Package, ...]
+    imports: frozenset[Cell]
+    modules: frozenset[str]
+
+    def matrix(self) -> dict[Cell, str]:
+        """Return the non-blank cells of the dependency matrix the code implies, ``!`` and ``d`` included."""
+        return {
+            (importer.name, imported.name): mark
+            for importer in self.packages
+            for imported in self.packages
+            if importer is not imported and (mark := _MARKS[(importer.name, imported.name) in self.imports, imported.name in importer.declared])
+        }
+
+    def key(self, label: str) -> str:
+        """Return the package a matrix label names, by distribution name, import name, or name without the shared prefix.
+
+        A label naming no package comes back normalised, so it still compares, and differs.
+        """
+        name: str = _canonical(label)
+        aliases: dict[str, str] = {}
+        package: Package
+        for package in self.packages:
+            aliases.update({_canonical(module): package.name for module in package.modules})
+            aliases[package.name.removeprefix(self._prefix())] = package.name
+            aliases[package.name] = package.name
+        return aliases.get(name, name)
+
+    def label(self, name: str) -> str:
+        """Return a package's name as a matrix labels it, without the prefix every package shares."""
+        known: bool = any(package.name == name for package in self.packages)
+        return name.removeprefix(self._prefix()) if known else name
+
+    def _prefix(self) -> str:
+        """Return the hyphen-ended prefix every package name shares (``pqx-``), or an empty string."""
+        shared: str = os.path.commonprefix([package.name for package in self.packages])
+        return shared[: shared.rfind("-") + 1]
+
+
+def _canonical(label: str) -> str:
+    """Normalise a package or module name as PEP 503 does, after dropping Markdown backticks, emphasis and spaces."""
+    return re.sub(r"[-_.]+", "-", re.sub(r"[\s`*]", "", label).lower())
+
+
+def dependency_matrix(read: Callable[[Run], Workspace | Verdict], *cells: Cell) -> Check:
+    """Return a check that the spec's dependency matrix equals the one the code at the build commit implies.
+
+    The code's matrix comes from ``read``: ``Y`` imported and declared, ``!`` imported
+    only, ``d`` declared only. Cells compare; a package the spec leaves out of both
+    rows and columns is named in the evidence. ``cells`` are the cells the assertion
+    is about, named as a matrix labels them: one of them differing fails the
+    assertion, while a difference elsewhere is reported without deciding it. With no
+    ``cells`` the comparison is evidence only and never fails.
+    """
+
+    def check(run: Run) -> Verdict:
+        table: list[list[str]] | Verdict = _matrix_table(run)
+        if isinstance(table, Verdict):
+            return table if cells else Verdict(passed=None, evidence=table.evidence)
+        workspace: Workspace | Verdict = read(run)
+        if isinstance(workspace, Verdict):
+            return workspace
+        named: set[Cell] = {(workspace.key(importer), workspace.key(imported)) for importer, imported in cells}
+        return _compare(_Matrices.read(table, workspace), named, run.commit)
+
+    return check
+
+
+def _matrix_table(run: Run) -> list[list[str]] | Verdict:
+    """Return the spec's first table whose first header cell starts with ``imports``, or a failing verdict."""
+    if run.spec is None:
+        return _no_spec(run)
+    table: list[list[str]]
+    for table in _tables(run.spec):
+        if _normal(table[0][0]).startswith("imports"):
+            return table
+    return Verdict(passed=False, evidence="no dependency matrix (a table whose first header cell starts with 'imports')")
+
+
+@dataclass(frozen=True)
+class _Matrices:
+    """The spec's dependency matrix beside the code's, over one workspace."""
+
+    workspace: Workspace
+    written: dict[Cell, str]
+    labelled: frozenset[str]
+    code: dict[Cell, str]
+
+    @classmethod
+    def read(cls, table: list[list[str]], workspace: Workspace) -> _Matrices:
+        """Read a matrix table's non-blank, off-diagonal cells, keyed by the packages its labels name."""
+        columns: list[str] = [workspace.key(label) for label in table[0][1:]]
+        rows: list[str] = [workspace.key(row[0]) for row in table[1:]]
+        written: dict[Cell, str] = {}
+        importer: str
+        row: list[str]
+        for importer, row in zip(rows, table[1:], strict=True):
+            imported: str
+            cell: str
+            for imported, cell in zip(columns, row[1:], strict=False):
+                mark: str = re.sub(r"[\s`*_]", "", cell)
+                if mark and importer != imported:
+                    written[importer, imported] = mark
+        return cls(workspace=workspace, written=written, labelled=frozenset(columns + rows), code=workspace.matrix())
+
+    def differ(self) -> list[Cell]:
+        """Return the cells whose marks differ, blank counting as a mark."""
+        return sorted(cell for cell in self.written.keys() | self.code.keys() if self.written.get(cell, "") != self.code.get(cell, ""))
+
+    def name(self, cell: Cell) -> str:
+        """Return a cell as ``importer → imported``, in the matrix's labels."""
+        return f"{self.workspace.label(cell[0])} → {self.workspace.label(cell[1])}"
+
+    def describe(self, cells: Sequence[Cell]) -> str:
+        """Describe each differing cell by its mark in the spec and in the code."""
+        return ", ".join(f"{self.name(cell)} is {self.written.get(cell) or 'blank'} in the spec, {self.code.get(cell) or 'blank'} in the code" for cell in cells)
+
+    def equal(self, commit: str) -> str:
+        """Describe a matrix equal to the code's: its size, its ``!`` and ``d`` cells, and packages it leaves out."""
+        marks: str = ", ".join(f"{self.name(cell)} {self.code[cell]}" for cell in sorted(self.code) if self.code[cell] != "Y") or "no ! or d cells"
+        found: int = sum(mark == "Y" for mark in self.code.values())
+        absent: list[str] = [self.workspace.label(package.name) for package in self.workspace.packages if package.name not in self.labelled]
+        missing: str = f"; not in the matrix: {', '.join(absent)}" if absent else ""
+        return f"the dependency matrix equals the code's at {commit} ({len(self.workspace.packages)} packages, {found} Y cells): {marks}{missing}"
+
+
+def _compare(matrices: _Matrices, named: set[Cell], commit: str) -> Verdict:
+    """Compare the spec's matrix with the code's; only a differing named cell fails."""
+    differ: list[Cell] = matrices.differ()
+    wrong: list[Cell] = [cell for cell in differ if cell in named]
+    others: list[Cell] = [cell for cell in differ if cell not in named]
+    if wrong:
+        elsewhere: str = f"; and elsewhere: {matrices.describe(others)}" if others else ""
+        return Verdict(passed=False, evidence=f"the dependency matrix differs from the code at {commit} where the assertion looks: {matrices.describe(wrong)}{elsewhere}")
+    if not differ:
+        return Verdict(passed=True, evidence=matrices.equal(commit))
+    if named:
+        agreed: str = ", ".join(f"{matrices.name(cell)} {matrices.code.get(cell) or 'blank'}" for cell in sorted(named))
+        return Verdict(passed=True, evidence=f"the named cells agree with the code at {commit} ({agreed}); the rest of the matrix differs: {matrices.describe(others)}")
+    return Verdict(passed=None, evidence=f"the dependency matrix differs from the code at {commit}: {matrices.describe(differ)}")
 
 
 RULES: Mapping[int, Sequence[Rule]] = {

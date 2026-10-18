@@ -11,7 +11,7 @@ import io
 import json
 import runpy
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import cast
 
@@ -28,17 +28,20 @@ from evals.design_spec_grade import (
     RULES,
     VALIDATOR,
     Check,
+    Package,
     Result,
     Rule,
     Run,
     Status,
     Verdict,
+    Workspace,
     bind,
     change_classdefs,
     citations_exist,
     closing_line,
     contract_header,
     contract_sources,
+    dependency_matrix,
     diagrams_parse,
     documentation_only,
     first_line,
@@ -747,3 +750,114 @@ def test_run_reports_a_missing_program_as_exit_127(tmp_path: Path) -> None:
 def test_rules_run_the_diagram_checker(monkeypatch: pytest.MonkeyPatch, number: int, status: Status) -> None:
     monkeypatch.setattr("evals.design_spec_grade._run", FakeValidator(0, "d.md: block 1 (line 2): OK flowchart-v2\n"))
     assert _graded(number, "Every Mermaid diagram in the spec passes", _run(spec="# Spec\n")).status == status
+
+
+SHOP: Workspace = Workspace(
+    packages=(
+        Package("shop-common", frozenset({"shop_common"}), frozenset()),
+        Package("shop-core", frozenset({"shop_core"}), frozenset({"shop-common"})),
+        Package("shop-io", frozenset({"shop_io"}), frozenset({"shop-common", "shop-core"})),
+        Package("shop-cli", frozenset({"shop_cli"}), frozenset({"shop-common", "shop-io"})),
+    ),
+    imports=frozenset({("shop-core", "shop-common"), ("shop-io", "shop-common"), ("shop-cli", "shop-common"), ("shop-cli", "shop-io"), ("shop-cli", "shop-core")}),
+    modules=frozenset({"shop_common", "shop_common.types", "shop_core", "shop_io", "shop_cli"}),
+)
+"""A workspace whose CLI imports core undeclared and whose io declares core unused."""
+
+
+def _matrix(*rows: str) -> str:
+    """Return a dependency matrix over SHOP's packages, one ``| label | cells |`` row per argument."""
+    return "| imports ↓ / of → | common | core | io | cli |\n|---|---|---|---|---|\n" + "".join(f"{row}\n" for row in rows)
+
+
+SHOP_MATRIX: str = _matrix("| common | | | | |", "| core | Y | | | |", "| io | Y | **d** | | |", "| cli | Y | **!** | Y | |")
+
+
+@dataclass
+class FakeReader:
+    """Stand-in for ``read_workspace`` that returns a canned workspace and records each run."""
+
+    answer: Workspace | Verdict
+    runs: list[Run] = field(default_factory=list[Run])
+
+    def __call__(self, run: Run) -> Workspace | Verdict:
+        """Record the run and return the canned answer."""
+        self.runs.append(run)
+        return self.answer
+
+
+@pytest.mark.parametrize(
+    ("cells", "spec", "verdict"),
+    [
+        ((("cli", "core"),), SHOP_MATRIX, Verdict(passed=True, evidence="the dependency matrix equals the code's at abc1234 (4 packages, 4 Y cells): cli → core !, io → core d")),
+        ((), SHOP_MATRIX, Verdict(passed=True, evidence="the dependency matrix equals the code's at abc1234 (4 packages, 4 Y cells): cli → core !, io → core d")),
+        (
+            (("shop-cli", "shop-core"),),
+            _matrix("| core | Y | | | |", "| io | Y | d | | |", "| cli | Y | Y | Y | |"),
+            Verdict(passed=False, evidence="the dependency matrix differs from the code at abc1234 where the assertion looks: cli → core is Y in the spec, ! in the code"),
+        ),
+        (
+            (("cli", "core"),),
+            _matrix("| core | Y | | | |", "| io | Y | | | |", "| cli | Y | Y | Y | |"),
+            Verdict(
+                passed=False,
+                evidence="the dependency matrix differs from the code at abc1234 where the assertion looks: cli → core is Y in the spec, ! in the code; and elsewhere: io → core is blank in the spec, d in the code",
+            ),
+        ),
+        (
+            (("cli", "core"), ("io", "core")),
+            _matrix("| core | Y | | | |", "| io | | d | | |", "| cli | Y | ! | Y | |"),
+            Verdict(passed=True, evidence="the named cells agree with the code at abc1234 (cli → core !, io → core d); the rest of the matrix differs: io → common is blank in the spec, Y in the code"),
+        ),
+        (
+            (),
+            _matrix("| core | Y | | | |", "| io | Y | | | |", "| cli | Y | ! | Y | |"),
+            Verdict(passed=None, evidence="the dependency matrix differs from the code at abc1234: io → core is blank in the spec, d in the code"),
+        ),
+    ],
+    ids=["equal", "equal-no-cells", "named-cell-differs", "named-and-other-cells-differ", "other-cell-differs", "differs-no-cells"],
+)
+def test_dependency_matrix_compares_the_spec_with_the_code(cells: tuple[tuple[str, str], ...], spec: str, verdict: Verdict) -> None:
+    reader: FakeReader = FakeReader(SHOP)
+    run: Run = _run(spec=spec)
+    assert dependency_matrix(reader, *cells)(run) == verdict
+    assert reader.runs == [run]
+
+
+def test_dependency_matrix_reads_labels_as_package_or_module_names() -> None:
+    spec: str = "| Imports | `shop-common` | shop_core | **io** | cli |\n|---|---|---|---|---|\n| Shop-Core | `Y` | — | | |\n| shop_io | Y | *d* | — | |\n| `cli` | Y | ! | Y | — |\n| shop-web | Y | | | |\n"
+    assert dependency_matrix(FakeReader(SHOP), ("cli", "core"))(_run(spec=spec)) == Verdict(
+        passed=True, evidence="the named cells agree with the code at abc1234 (cli → core !); the rest of the matrix differs: shop-web → common is Y in the spec, blank in the code"
+    )
+
+
+def test_dependency_matrix_reads_the_first_matrix_and_ignores_short_rows() -> None:
+    spec: str = f"| Cell | Source |\n|---|---|\n| cli → core | `x.py:1` |\n\n{_matrix('| core | Y |', '| io | Y | d |', '| cli | Y | ! | Y |')}\n{_matrix('| cli | | | | |')}"
+    assert dependency_matrix(FakeReader(SHOP))(_run(spec=spec)).passed is True
+
+
+@pytest.mark.parametrize(("cells", "passed"), [((("cli", "core"),), False), ((), None)], ids=["named-cells-fail", "no-cells-manual"])
+def test_dependency_matrix_without_a_matrix(cells: tuple[tuple[str, str], ...], *, passed: bool | None) -> None:
+    no_table: Verdict = dependency_matrix(FakeReader(SHOP), *cells)(_run(spec="# Spec\n\nNo matrix.\n"))
+    assert no_table == Verdict(passed=passed, evidence="no dependency matrix (a table whose first header cell starts with 'imports')")
+    no_spec: Verdict = dependency_matrix(FakeReader(SHOP), *cells)(_run(spec=None))
+    assert no_spec == Verdict(passed=passed, evidence=f"no spec at {Path('fixture/docs/design.md')}")
+
+
+def test_dependency_matrix_names_packages_in_neither_a_row_nor_a_column() -> None:
+    docs: Package = Package("shop-docs", frozenset({"shop_docs"}), frozenset())
+    workspace: Workspace = replace(SHOP, packages=(*SHOP.packages, docs))
+    spec: str = "| imports | common | core | io |\n|---|---|---|---|\n| core | Y | | |\n| io | Y | d | |\n| cli | Y | ! | Y |\n"
+    assert dependency_matrix(FakeReader(workspace))(_run(spec=spec)) == Verdict(
+        passed=True, evidence="the dependency matrix equals the code's at abc1234 (5 packages, 4 Y cells): cli → core !, io → core d; not in the matrix: docs"
+    )
+
+
+def test_workspace_matrix_leaves_imports_within_a_package_out() -> None:
+    workspace: Workspace = replace(SHOP, imports=SHOP.imports | {("shop-io", "shop-io")})
+    assert workspace.matrix() == SHOP.matrix()
+
+
+def test_dependency_matrix_decides_nothing_when_the_code_cannot_be_read() -> None:
+    unreadable: Verdict = Verdict(passed=None, evidence="git archive failed")
+    assert dependency_matrix(FakeReader(unreadable), ("cli", "core"))(_run(spec=SHOP_MATRIX)) == unreadable
