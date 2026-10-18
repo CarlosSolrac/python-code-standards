@@ -46,7 +46,8 @@ The build prints the fixture's last commit; save it, since grading compares agai
 
 ## 4. Collect
 
-- The reply, and the session transcript (`~/.claude/projects/<folder>/<session-id>.jsonl`).
+- The reply, saved as a text file outside the fixture (the grader reads its first and last lines), and the session transcript
+  (`~/.claude/projects/<folder>/<session-id>.jsonl`).
 - In the fixture: `git status --untracked-files=all` and `git log --oneline -3`, plus `git diff <build commit>` for every eval but 1,
   whose repository has no commit (its status lists every file the session wrote).
 - `docs/design.md` and `docs/adr/`, if written, and the checker's result on the spec, run from this repository's root:
@@ -57,8 +58,22 @@ The build prints the fixture's last commit; save it, since grading compares agai
 
 ## 5. Grade
 
-Mark each assertion in `evals.json` pass or fail, quoting the evidence. The answer keys are references, not templates: a spec
-that words things differently passes as long as the assertion holds.
+First run the mechanical grader, from `python-code-standards/` (the build commit is the one `build-fixture.sh` printed; eval 1
+has none):
+
+```bash
+uv run python -m evals.design_spec_grade <eval id> <fixture> <build commit> --reply <saved reply> --json <grade.json>
+```
+
+It prints one line per assertion: `pass` or `fail` with the evidence for what a tool can decide (diagrams parse, classDefs and
+contract-table columns present, cited `path:line` exist at the build commit, only documentation changed, the reply's first and last
+lines), and `manual` for the rest, with any mechanical part's evidence. A check runs only where the eval asserts it: evals 3, 4 and
+3b assert neither that diagrams parse nor that no C4 diagram is used, so for them the grader runs neither check and the §4 checker
+result is the only parse check; their other diagram assertions are graded as usual. Without `--reply`, the reply checks are `manual`. Keep its
+`pass` and `fail` grades unless the evidence shows the grader misread the spec, and say so in the grade if you overrule one.
+
+Then mark each remaining assertion in `evals.json` pass or fail by hand, quoting the evidence. The answer keys are references, not
+templates: a spec that words things differently passes as long as the assertion holds.
 
 | Eval | Answer key | What to compare |
 |---|---|---|
