@@ -132,10 +132,11 @@ describe("with the real parser", () => {
         parse = await loadParser(ensureDeps(cacheDir(process.env, homedir())));
     });
 
-    test("accepts flowchart, state, and C4 diagrams and names their type", async () => {
+    test("accepts flowchart and state diagrams, including boundary subgraphs, and names their type", async () => {
         assert.deepEqual(await parse(GOOD), { ok: true, detail: "flowchart-v2" });
         assert.deepEqual(await parse("stateDiagram-v2\n    [*] --> Landed\n"), { ok: true, detail: "stateDiagram" });
-        assert.equal((await parse('C4Context\n    System(s, "Pipeline")\n')).ok, true);
+        const context = 'flowchart LR\n    subgraph System["Pipeline"]\n        P["pipeline"]\n    end\n    Api["REST API"] --> P\n';
+        assert.deepEqual(await parse(context), { ok: true, detail: "flowchart-v2" });
     });
 
     test("rejects a broken diagram with the parser's message", async () => {

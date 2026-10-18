@@ -22,8 +22,8 @@ Pick the mode from the request. "Design", "build", "architect", or given inputs 
 ## 1. Size gate (both modes)
 
 - **Small**: at most two layers and under ~150 lines, or, in design mode only, an existing ADR already forces the answer. Design mode: skip the spec and skip SQLMesh; plain `duckdb` in one typed module is fine. Document mode: a five-line summary plus the component flowchart only.
-- **Standard**: three or more layers, or over ~150 lines, in one process. Full spec (section 3). Add a C4 context view only when the process touches two or more external systems (storage, APIs, services).
-- **Large**: multiple processes or services. Full spec plus C4 context and container views.
+- **Standard**: three or more layers, or over ~150 lines, in one process. Full spec (section 3). Add a context view only when the process touches two or more external systems (storage, APIs, services).
+- **Large**: multiple processes or services. Full spec plus context and container views.
 
 A single process with external storage is Standard, not Large: external systems earn the context view, separate processes earn the container view.
 
@@ -40,8 +40,8 @@ Text diagrams only (Mermaid, Markdown tables, directory trees). No rendered SVG 
 | # | Artifact | When |
 |---|----------|------|
 | 1 | Size and numbers | Standard, Large |
-| 2 | C4 context (`C4Context`) | Two or more external systems, or Large |
-| 3 | C4 container (`C4Container`) | Large only |
+| 2 | Context view (`flowchart LR` with a system boundary subgraph) | Two or more external systems, or Large |
+| 3 | Container view (`flowchart LR` with a system boundary subgraph) | Large only |
 | 4 | State diagram (`stateDiagram-v2`) of domain entities | Standard, Large |
 | 5 | Component flowchart (`flowchart LR`) | Standard, Large, and Small in document mode |
 | 6 | Boundary contract table | Standard, Large |
@@ -53,14 +53,21 @@ Text diagrams only (Mermaid, Markdown tables, directory trees). No rendered SVG 
 | 12 | Findings (rule deviations) | Document mode only |
 | 13 | Class diagram | Only when Python contracts are under review |
 | 14 | Error-flow sequence diagram | Only when validation, quarantine, or retries are non-trivial |
+| 15 | Change-impact diagram (`flowchart LR`) | Design mode restructuring an existing codebase only |
 
 In a full spec (Standard, Large), when an artifact is skipped by its condition, keep its heading with one line saying why.
 
-Component flowchart: subgraphs by responsibility (ingestion, pure core, data path, assurance, storage, orchestration as they exist); each node labeled with the decision it owns; arrows labeled with the type or table crossing them; dashed arrows to Protocols.
+Component flowchart: subgraphs by responsibility (ingestion, pure core, data path, assurance, storage, orchestration as they exist); each node labeled with the decision it owns; arrows labeled with the type or table crossing them; dashed arrows to Protocols. In document mode, a `node | source` table under it cites, for every node not marked inferred, the code that makes each decision its label names.
 
-Boundary contract table columns: `boundary | input | output | invariants | owner`.
+Context and container views: plain flowcharts, not Mermaid's experimental C4 diagrams, so they take `classDef` styles. The system is one `subgraph`, its boundary; each person and each external system is its own node outside it, and arrows are labeled with what crosses. Inside the boundary, the context view has one node for the whole system and the container view one node per process or service.
 
-Dependency matrix: rows import columns. Mark each cell `Y` (imported and declared), `!` (imported but not declared), or `d` (declared but not imported). For a uv workspace, use packages as the unit; otherwise modules. Follow it with one line on cycles and direction.
+Change-impact diagram: one node per package (uv workspace) or module the restructure touches, named as in the code, each taking one of `classDef added fill:#dafbe1,stroke:#1a7f37`, `classDef changed fill:#fff8c5,stroke:#9a6700`, or `classDef removed fill:#ffebe9,stroke:#cf222e`. A `changed` or `removed` node names a package or module that exists; an `added` node names one that does not. Untouched neighbours may appear unstyled for context. The same diagram serves as the pull request's diagram.
+
+Boundary contract table columns: `boundary | input | output | grain/key | invariants | owner`; document mode adds `source`, the code that defines the output and enforces the invariants. `grain/key` says what one record crossing the boundary is and which fields identify it (one row per order, keyed by `order_id`), or that none do (one document per run; raw rows before deduplication).
+
+If the project exposes an HTTP API, its row in the contract table cites the OpenAPI file. An existing file stands in for restating the endpoints. Without one, the row states the contract as usual and also names the OpenAPI path the implementation will create (design mode) or says that none exists (document mode).
+
+Dependency matrix: rows import columns. Mark each cell `Y` (imported and declared), `!` (imported but not declared), or `d` (declared but not imported). For a uv workspace, use packages as the unit; otherwise modules. Follow it with one line on cycles and direction. In document mode, footnote it with a `cell | source` table: one row per `!` or `d` cell, citing the import (`!`) or the declaration (`d`).
 
 Import contract: whenever the dependency matrix applies, enforce its direction with [import-linter](https://import-linter.readthedocs.io/) so the code cannot drift from the diagram (rule 14). Below that size, the one-line direction statement is enough. In design mode, the spec's directory tree shows the contract, and the implementation plan adds `import-linter` as a dev dependency and `uv run lint-imports` to the project's checks (pre-commit and CI). List the layers highest first, matching the component flowchart: a layer may import the layers below it, never the ones above:
 
@@ -94,10 +101,10 @@ End the spec with open questions (at most 3). Design mode then adds "Approve or 
    - orchestration: the top-level run function's steps, and the CLI's exit codes
 4. **Inventory existing documentation and audits.** Specs, decision records, design evaluations, and backlog entries are authorities or prior findings. Map them in the spec; never restate or overrule them. If the code contradicts a spec, report it as a finding.
 5. Apply the size gate.
-6. **Derive** each artifact. Facts read from code are stated plainly; anything deduced (domain states, the decision a component owns, intent) is marked *inferred*. Unknown volumes, SLAs, or targets become open questions, never invented numbers.
+6. **Derive** each artifact. The `source` column and tables in section 3 and each new finding cite their evidence as `path:line`, relative to the repository root, one or more per entry; anything deduced (domain states, the decision a component owns, intent) is marked *inferred*, in diagrams with the marker in section 7. Unknown volumes, SLAs, or targets become open questions, never invented numbers.
 7. **Decisions**: if the project already keeps decision records, map them in a table (record, what it covers). Otherwise record existing decisions as ADRs with `Status: Accepted` and "recorded retroactively from code".
 8. **NFRs**: only those the code, CI, or tests actually verify, each citing its check.
-9. **Findings**: deviations from the rules (section 5), ranked by impact, each with rule number, file, consequence, and fix direction. Label each **new** or **known**; for known ones, cite the backlog item or audit instead of re-arguing it. Diagrams in docs that disagree with the code (layering, dependency, architecture pictures) are findings under rule 14. Mark allowed exceptions and rules that do not apply (e.g. no SQL models) separately, not as findings.
+9. **Findings**: deviations from the rules (section 5), ranked by impact, each with rule number, file (`path:line` where a line applies), consequence, and fix direction. Label each **new** or **known**; for known ones, cite the backlog item or audit instead of re-arguing it. Diagrams in docs that disagree with the code (layering, dependency, architecture pictures) are findings under rule 14. Mark allowed exceptions and rules that do not apply (e.g. no SQL models) separately, not as findings.
 10. Validate the diagrams (section 7) and run the repository's own checks on what was added.
 11. **Commit** only when asked, following the repository's rules (branch from the default branch; the repo's message style; no model identifiers if the repo forbids them). Do not push or open a pull request unless asked.
 12. **Resync** ("resync the design"): rerun this procedure and report what changed against the existing `docs/design.md` before overwriting it.
@@ -148,7 +155,7 @@ Works for any codebase; adapt the inventory commands to its language and package
 ### Finding (document mode)
 
 ```markdown
-1. **Rule N, <short name> (new | known).** <what deviates, with file>. Consequence: <what breaks or misleads>. Fix: <direction>. (Known: cite backlog item or audit.)
+1. **Rule N, <short name> (new | known).** <what deviates, with `path:line`>. Consequence: <what breaks or misleads>. Fix: <direction>. (Known: cite backlog item or audit.)
 ```
 
 ### Dependency matrix excerpt (document mode)
@@ -167,6 +174,7 @@ In that real case, `report` imported `frame` without declaring it and declared `
 - Label arrows with the table or type that crosses them.
 - Use `[[ ]]` for adapters and I/O, `{{ }}` for Protocols, `[( )]` for tables and models.
 - Dashed arrows point to the Protocols a component implements or depends on.
+- Inferred nodes (deduced, not read from code) end their label with ` ?` and take `:::inferred`, defined once per diagram as `classDef inferred stroke:#555,stroke-dasharray:5 5` (a dashed border). Dashed arrows stay reserved for Protocols; never mark inference with them. When every node in a diagram is inferred, one line above the diagram saying so replaces the marker.
 
 ```mermaid
 flowchart LR
@@ -185,6 +193,16 @@ flowchart LR
     Main --> CsvSource
     CsvSource -- raw.orders --> StgOrders
     Main -->|plan + restate raw.orders| StgOrders
+```
+
+An inferred node, in document mode:
+
+```mermaid
+flowchart LR
+    Loader[["Loader: refuse rows without an order id"]]
+    Totals["Totals: round to cents only at the end ?"]:::inferred
+    Loader -- "list[Order]" --> Totals
+    classDef inferred stroke:#555,stroke-dasharray:5 5
 ```
 
 Validate every spec before delivering it with the bundled checker, which parses each Mermaid block with Mermaid's own parser (syntax only, no rendering):

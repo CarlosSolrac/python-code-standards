@@ -18,16 +18,35 @@ Five internal packages, so the spec has a matrix (more than four), not an import
 
 No cycles. Every runtime import points at `common` or is made by the composition root, `cli`.
 
+The matrix footnote (skill §3) cites each `!` and `d` cell:
+
+| Cell | Source |
+|---|---|
+| cli → core `!` | `packages/tally-cli/src/tally_cli/__init__.py:7` |
+| io → core `d` | `packages/tally-io/pyproject.toml:8` |
+| stage → io `d` | `packages/tally-stage/pyproject.toml:8` |
+
+## Expected boundary contracts
+
+References for the contract table (skill §3), not a template: a spec may cut the boundaries differently.
+
+| Boundary | Output | Grain/key | Source |
+|---|---|---|---|
+| Reading orders | `list[Order]` | One `Order` per CSV row, in file order, with no unique key: `order_id` is the dedupe key, and its duplicates survive until totalling | `packages/tally-io/src/tally_io/__init__.py:21`, `packages/tally-io/src/tally_io/__init__.py:60` |
+| Loading stage | `list[Order]`, unchanged | As reading orders | `packages/tally-stage/src/tally_stage/__init__.py:8` |
+| Totalling | `list[dict[str, object]]` (defect 5) | One row per `day`, keyed by `day`, after the latest row per `order_id` wins | `packages/tally-core/src/tally_core/__init__.py:10` |
+| Writing the report | Report CSV with the header `day,revenue` | One line per day, keyed by `day` | `packages/tally-io/src/tally_io/__init__.py:66` |
+
 ## The six defects
 
 | # | Rule | Kind | File | Label |
 |---|---|---|---|---|
-| 1 | 6 | `!`: `tally_cli` imports `tally_core.daily_revenue`, but `tally-cli` does not declare `tally-core` | `packages/tally-cli/src/tally_cli/__init__.py:7`, `packages/tally-cli/pyproject.toml` | new |
-| 2 | 6 | `d`: `tally-io` declares `tally-core` and never imports it | `packages/tally-io/pyproject.toml` | new |
-| 3 | 6 | `d`: `tally-stage` declares `tally-io` and never imports it | `packages/tally-stage/pyproject.toml` | known (`BACKLOG.md` item 2) |
-| 4 | 2 | `tally-stage` only forwards: `load_orders(source, path)` returns `source.read(path)` and enforces nothing | `packages/tally-stage/src/tally_stage/__init__.py` | new |
-| 5 | 4 | A dict crosses a boundary: `tally_core.daily_revenue` returns `list[dict[str, object]]`, which `tally_io.write_report` consumes through `cli` | `packages/tally-core/src/tally_core/__init__.py`, `packages/tally-io/src/tally_io/__init__.py` | new |
-| 6 | 14 | The `CLAUDE.md` layering diagram disagrees with the code: it routes `tally-cli → tally-stage → tally-core`, but `tally-stage` never imports `tally-core` and `tally-cli` calls it directly, with no `Cli → Core` edge in the diagram | `CLAUDE.md` (the `flowchart LR` under *Layout*) | new |
+| 1 | 6 | `!`: `tally_cli` imports `tally_core.daily_revenue`, but `tally-cli` does not declare `tally-core` | `packages/tally-cli/src/tally_cli/__init__.py:7`, `packages/tally-cli/pyproject.toml:6` | new |
+| 2 | 6 | `d`: `tally-io` declares `tally-core` and never imports it | `packages/tally-io/pyproject.toml:8` | new |
+| 3 | 6 | `d`: `tally-stage` declares `tally-io` and never imports it | `packages/tally-stage/pyproject.toml:8` | known (`BACKLOG.md` item 2) |
+| 4 | 2 | `tally-stage` only forwards: `load_orders(source, path)` returns `source.read(path)` and enforces nothing | `packages/tally-stage/src/tally_stage/__init__.py:10` | new |
+| 5 | 4 | A dict crosses a boundary: `tally_core.daily_revenue` returns `list[dict[str, object]]`, which `tally_io.write_report` consumes through `cli` | `packages/tally-core/src/tally_core/__init__.py:10`, `packages/tally-io/src/tally_io/__init__.py:66` | new |
+| 6 | 14 | The `CLAUDE.md` layering diagram disagrees with the code: it routes `tally-cli → tally-stage → tally-core`, but `tally-stage` never imports `tally-core` and `tally-cli` calls it directly, with no `Cli → Core` edge in the diagram | `CLAUDE.md:14` (the `Stage --> Core` edge of the `flowchart LR` under *Layout*) | new |
 
 Grading notes:
 
@@ -40,6 +59,8 @@ Grading notes:
 - Defect 4: deleting `tally-stage` (the fix rule 2 names) also removes defect 3. Either fix direction counts.
 - Defect 6: the diagram's other edges (`Cli → Io`, `Cli → Common`, `Stage → Common`, `Core → Common`, `Io → Common`) match the code.
 - Defects may be ranked in any order, but each needs a rule number, a file, a consequence and a fix direction (skill §4 step 9).
+- The `path:line` citations above are references: a spec citing another line of the same statement or declaration list (say the
+  `dependencies = [` line of a `pyproject.toml`) is right. Every line a spec cites must exist in the fixture.
 
 ## Not findings
 
@@ -63,3 +84,6 @@ A finding on any of these is a false positive:
 Facts in the spec that the code does not state must be marked *inferred*, for example: the domain states of an order (read →
 validated or refused → deduplicated → totalled), the decision each component owns, and why `tally-stage` exists. Volumes, refresh
 frequency and latency are unknown and belong under open questions, not as numbers.
+
+In diagrams the marker is a label ending in ` ?` with the `inferred` classDef, a dashed border (skill §7), or one line above a
+diagram whose every node is inferred. A dashed arrow used to mark inference is wrong: dashed arrows mean Protocols.

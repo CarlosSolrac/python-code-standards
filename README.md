@@ -219,8 +219,8 @@ existing one; see [design-spec/skill/SKILL.md](design-spec/skill/SKILL.md).
   | Size | When | What is written |
   | --- | --- | --- |
   | Small | At most two layers and under ~150 lines, or (design mode only) an existing ADR already forces the answer | Design mode: no spec, code written directly. Document mode: a five-line summary and the component flowchart. |
-  | Standard | Three or more layers, or over ~150 lines, in one process | The full spec; a C4 context view only when the process touches two or more external systems. |
-  | Large | Multiple processes or services | The full spec with C4 context and container views. |
+  | Standard | Three or more layers, or over ~150 lines, in one process | The full spec; a context view (a flowchart with the system boundary as a subgraph) only when the process touches two or more external systems. |
+  | Large | Multiple processes or services | The full spec with context and container views. |
 
 - **Templates.** For a Standard data pipeline, the default pattern comes from the project
   templates listed in

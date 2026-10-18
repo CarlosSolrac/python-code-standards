@@ -6,7 +6,7 @@ spec; confirm or correct them. This file is a map. The authorities stay where `C
 
 ## 1. Size and numbers
 
-- Classification: **Standard with a C4 context view**. One process (the `pqx` CLI) and three external systems: source storage, destination
+- Classification: **Standard with a context view**. One process (the `pqx` CLI) and three external systems: source storage, destination
   storage (local, SMB, or Azure Blob through `UPath`), and the scratch volume. External systems earn the context view; a container view would
   need more than one process, so the packages are shown in the component flowchart (section 4) instead.
 - Code: 11 uv workspace packages, 11,445 lines of library source, 985 test functions, 25,587 lines in total including tests, gates, and tools.
@@ -15,20 +15,21 @@ spec; confirm or correct them. This file is a map. The authorities stay where `C
 - Consequence: the whole converted frame of a source is resident during writing. That peak, not the cell count, is the scaling limit
   (backlog item 3).
 
-## 2. C4 context
+## 2. Context
 
 ```mermaid
-C4Context
-    title ParquetToXL: system context
-    Person(operator, "Operator", "Runs pqx against an export configuration")
-    System(pqx, "ParquetToXL", "Converts Parquet sources into Excel workbooks whose contents can be proved to match the source")
-    System_Ext(sources, "Source storage", "Parquet files; local or SMB")
-    System_Ext(dest, "Destination storage", "Workbooks, sidecars, manifest, receipt, reports; local, SMB, or Azure Blob")
-    System_Ext(scratch, "Scratch volume", "Local working copies; free space checked before use")
-    Rel(operator, pqx, "pqx status, plan, preview, run, verify, report")
-    Rel(pqx, sources, "Reads and copies")
-    Rel(pqx, scratch, "Stages, writes, verifies")
-    Rel(pqx, dest, "Publishes under a lease; reconciles ownership")
+flowchart LR
+    Operator["Operator: runs pqx against an export configuration"]
+    subgraph System["ParquetToXL"]
+        Pqx["pqx: convert Parquet sources into Excel workbooks whose contents can be proved to match the source"]
+    end
+    Sources["Source storage: Parquet files; local or SMB"]
+    Dest["Destination storage: workbooks, sidecars, manifest, receipt, reports; local, SMB, or Azure Blob"]
+    Scratch["Scratch volume: local working copies; free space checked before use"]
+    Operator -- "pqx status, plan, preview, run, verify, report" --> Pqx
+    Pqx -- "reads and copies" --> Sources
+    Pqx -- "stages, writes, verifies" --> Scratch
+    Pqx -- "publishes under a lease; reconciles ownership" --> Dest
 ```
 
 ## 3. Domain states
@@ -80,7 +81,7 @@ flowchart LR
     end
     subgraph Storage
         Stage[["pqx-staging: scratch, transfer, lease"]]
-        Common["pqx-common: ZPath, portable names, logging"]
+        Common["pqx-common: ZPath, portable names, logging ?"]:::inferred
     end
     Cli -- "ExportConfig, RunInstants" --> Run
     Run -- "Observations, bucket counts" --> Plan
@@ -94,20 +95,36 @@ flowchart LR
     Run -- "keep set, run_id" --> Stage
     Excel --> Common
     Stage --> Common
+    classDef inferred stroke:#555,stroke-dasharray:5 5
 ```
+
+`pqx-common` is a toolbox of shared helpers; the single decision it owns is *inferred*.
+
+| Node | Source |
+|---|---|
+| Cli | `packages/pqx-pipeline/src/pqx_pipeline/cli.py:417` |
+| Run | `packages/pqx-pipeline/src/pqx_pipeline/run.py:563` |
+| Plan | `packages/pqx-plan/src/pqx_plan/semantics.py:226`, `packages/pqx-plan/src/pqx_plan/partition.py:274`, `packages/pqx-plan/src/pqx_plan/naming.py:203` |
+| Cal | `packages/pqx-calendar/src/pqx_calendar/decoding.py:140`, `packages/pqx-calendar/src/pqx_calendar/periods.py:95`, `packages/pqx-calendar/src/pqx_calendar/labels.py:151` |
+| Frame | `packages/pqx-frame/src/pqx_frame/conversion/to_excel.py:44`, `packages/pqx-frame/src/pqx_frame/hashing/binary_aggregate.py:41` |
+| Excel | `packages/pqx-excel/src/pqx_excel/workbook.py:126`, `packages/pqx-excel/src/pqx_excel/fast_reader.py:279` |
+| Side | `packages/pqx-sidecar/src/pqx_sidecar/store.py:110` |
+| Verify | `packages/pqx-verify/src/pqx_verify/fragments.py:241` |
+| Report | `packages/pqx-report/src/pqx_report/render.py:70`, `packages/pqx-report/src/pqx_report/render.py:119`, `packages/pqx-report/src/pqx_report/render.py:174` |
+| Stage | `packages/pqx-staging/src/pqx_staging/scratch.py:135`, `packages/pqx-staging/src/pqx_staging/transfer.py:68`, `packages/pqx-staging/src/pqx_staging/lease.py:43` |
 
 ## 5. Boundary contracts
 
-| Boundary | Input | Output | Invariants | Owner |
-|---|---|---|---|---|
-| Configuration | JSON file | `ExportConfig` (frozen Pydantic, `extra="forbid"`) | Agrees with `docs/export-config.schema.json`; asserted by the regenerated corpus | `pqx_plan.config`, `pqx_plan.semantics` |
-| Selection | Source mtimes, sidecars, receipt | `ProfileStaleness` | T1 to T4 compared with `!=` after `truncate_to_second` | `pqx_pipeline.staleness` |
-| Description | Staged Parquet | `Observation`, bucket counts, `SidecarDocument` v3 | Each source converted once; fragment digests sum mod 2^128 to the source digest | `pqx_pipeline.ingest`, `pqx-frame`, `pqx-sidecar` |
-| Planning | Observations, counts, `ProfileSettings` | `tuple[NamedWorkbook, ...]` | Partition total and disjoint; within `max_data_rows_per_worksheet` and `max_cells_per_workbook`; portable names | `pqx-plan` |
-| Writing | Named plan, frames | Workbooks in scratch | Local paths only (writers open filenames) | `pqx-excel` |
-| Verification | Scratch, `RunManifest`, schemas | `ManifestVerdict` | Runs from scratch after sources are deleted; `VerdictKind` is a closed `Literal` | `pqx-verify` |
-| Publication | Verified workbooks | Destination files, `RunManifest`, `RunReceipt` | Ownership proven by receipt; under the lease; `delete_names` takes single path segments only; receipt written last | `pqx_pipeline.run._publish`, `pqx-staging` |
-| Reporting | Outcome | `RunReport` | `Outcome` is `published`, `verification-failed`, `planning-failed`, or `write-failed` | `pqx-report` |
+| Boundary | Input | Output | Grain/key | Invariants | Owner | Source |
+|---|---|---|---|---|---|---|
+| Configuration | JSON file | `ExportConfig` (frozen Pydantic, `extra="forbid"`) | One document per run, no record key; its sources keyed by alias | Agrees with `docs/export-config.schema.json`; asserted by the regenerated corpus | `pqx_plan.config`, `pqx_plan.semantics` | `packages/pqx-plan/src/pqx_plan/config.py:261`, `packages/pqx-plan/src/pqx_plan/semantics.py:226`, `tools/build_config_corpus.py:22` |
+| Selection | Source mtimes, sidecars, receipt | `ProfileStaleness` | One per profile, keyed by `profile` | T1 to T4 compared with `!=` after `truncate_to_second` | `pqx_pipeline.staleness` | `packages/pqx-pipeline/src/pqx_pipeline/staleness.py:86`, `packages/pqx-pipeline/src/pqx_pipeline/staleness.py:153`, `packages/pqx-pipeline/src/pqx_pipeline/staleness.py:229` |
+| Description | Staged Parquet | `Observation`, bucket counts, `SidecarDocument` v3 | One of each per source, keyed by source alias | Each source converted once; fragment digests sum mod 2^128 to the source digest | `pqx_pipeline.ingest`, `pqx-frame`, `pqx-sidecar` | `packages/pqx-pipeline/src/pqx_pipeline/run.py:217`, `packages/pqx-frame/src/pqx_frame/hashing/binary_aggregate.py:174` |
+| Planning | Observations, counts, `ProfileSettings` | `tuple[NamedWorkbook, ...]` | One per workbook, keyed by `index` within the profile | Partition total and disjoint; within `max_data_rows_per_worksheet` and `max_cells_per_workbook`; portable names | `pqx-plan` | `packages/pqx-plan/src/pqx_plan/partition.py:274`, `packages/pqx-plan/src/pqx_plan/capacity.py:163`, `packages/pqx-plan/src/pqx_plan/allocate.py:99`, `packages/pqx-plan/src/pqx_plan/naming.py:203` |
+| Writing | Named plan, frames | Workbooks in scratch | One file per `NamedWorkbook`, keyed by `filename` | Local paths only (writers open filenames) | `pqx-excel` | `packages/pqx-excel/src/pqx_excel/workbook.py:126` |
+| Verification | Scratch, `RunManifest`, schemas | `ManifestVerdict` | One per run, no record key; holds one `SourceVerdict` per source, keyed by `source_alias` | Runs from scratch after sources are deleted; `VerdictKind` is a closed `Literal` | `pqx-verify` | `packages/pqx-verify/src/pqx_verify/fragments.py:241`, `packages/pqx-pipeline/src/pqx_pipeline/run.py:348`, `packages/pqx-pipeline/src/pqx_pipeline/run.py:630`, `packages/pqx-verify/src/pqx_verify/validation.py:56` |
+| Publication | Verified workbooks | Destination files, `RunManifest`, `RunReceipt` | One manifest and one receipt per profile run; the manifest keyed by `run_id`, the receipt by `config_id` and `profile` | Ownership proven by receipt; under the lease; `delete_names` takes single path segments only; receipt written last | `pqx_pipeline.run._publish`, `pqx-staging` | `packages/pqx-pipeline/src/pqx_pipeline/run.py:159`, `packages/pqx-staging/src/pqx_staging/lease.py:119`, `packages/pqx-staging/src/pqx_staging/transfer.py:147`, `packages/pqx-pipeline/src/pqx_pipeline/run.py:674` |
+| Reporting | Outcome | `RunReport` | One per profile run, keyed by `run_id` | `Outcome` is `published`, `verification-failed`, `planning-failed`, or `write-failed` | `pqx-report` | `packages/pqx-report/src/pqx_report/model.py:128`, `packages/pqx-report/src/pqx_report/model.py:38` |
 
 ## 6. Dependency matrix
 
@@ -128,6 +145,12 @@ Runtime imports between packages, from `src/` only. Rows import columns. `Y` = i
 | pipeline | Y | Y | Y | Y | Y | Y | Y | Y | Y |
 
 No package imports `pqx-pipeline`, and no cycles exist. Direction is inward: the pure core (`plan`, `calendar`) imports no I/O package.
+
+| Cell | Source |
+|---|---|
+| report → frame `!` | `packages/pqx-report/src/pqx_report/model.py:17` |
+| report → plan `d` | `packages/pqx-report/pyproject.toml:9` |
+| report → verify `d` | `packages/pqx-report/pyproject.toml:10` |
 
 ## 7. Model lineage
 
@@ -182,15 +205,16 @@ Deviations from the design rules. Items 1 to 3 are new and are written up with e
 dependency is item 1 there, confirmed by experiment; that file adds a fourth item, a check to keep declarations honest). Items 4 to 6 are already recorded and are listed for completeness, not as new work.
 No code was changed.
 
-1. **Rule 14, documentation drift (new).** The layering diagram in `CLAUDE.md` does not match the imports. It shows `pqx-common` feeding
+1. **Rule 14, documentation drift (new).** The layering diagram in `CLAUDE.md` (`CLAUDE.md:97`) does not match the imports. It shows `pqx-common` feeding
    `pqx-frame`, `pqx-calendar`, and `pqx-report`, but none of the three imports `pqx-common`; `pqx-frame` and `pqx-calendar` import no internal
    package at all. Consequence: a reader plans changes against a dependency graph that does not exist. Fix: replace the diagram with section 6,
    or regenerate it from the imports.
-2. **Rule 6, undeclared dependency (new).** `pqx-report` imports `pqx_frame.timestamps.UtcDatetime` without declaring `pqx-frame`, and declares
-   `pqx-plan` and `pqx-verify` without importing either. It installs today only because `pqx-frame` arrives transitively through the two unused
-   declarations. Consequence: removing the unused declarations breaks the package. Fix: declare `pqx-frame` and drop the other two, or confirm
+2. **Rule 6, undeclared dependency (new).** `pqx-report` imports `pqx_frame.timestamps.UtcDatetime` (`packages/pqx-report/src/pqx_report/model.py:17`)
+   without declaring `pqx-frame`, and declares `pqx-plan` and `pqx-verify` without importing either
+   (`packages/pqx-report/pyproject.toml:9`, `packages/pqx-report/pyproject.toml:10`). It installs today only because `pqx-frame` arrives
+   transitively through the two unused declarations. Consequence: removing the unused declarations breaks the package. Fix: declare `pqx-frame` and drop the other two, or confirm
    they are intended. A test that compares declared dependencies with imports would keep this true.
-3. **Rule 4, untyped boundary (new, minor).** `observe_sources` returns
+3. **Rule 4, untyped boundary (new, minor).** `observe_sources` (`packages/pqx-pipeline/src/pqx_pipeline/run.py:217`) returns
    `tuple[dict[str, Observation], dict[str, dict[Bucket, int]], dict[str, UPath]]`, a positional triple of dictionaries across the
    ingest-to-planning boundary. A frozen dataclass naming the three parts would match the rest of the codebase (`PlannedSheet`, `NamedWorkbook`).
 4. **Rule 5, error boundary (known).** Data refusals escape the per-profile catch: backlog item 9.1, both audits.

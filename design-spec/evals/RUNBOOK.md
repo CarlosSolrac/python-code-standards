@@ -28,6 +28,7 @@ bash design-spec/evals/build-fixture.sh 3 /e/ds/eval3/parquettoxl
 | 2 | an empty project set up by `python-code-standards/skill/assets/setup-standards.sh` | needs uv and network; the setup's pre-commit hooks run on its commit |
 | 3 | ParquetToXL at `8ffaa6f`, from `fixtures/parquettoxl-8ffaa6f.bundle` | `git log --oneline -1` must print `8ffaa6f Added backlog of bugs` |
 | 3b (5) | `fixtures/planted-defects/`, the `tally` uv workspace | same SHA on every build |
+| 6 | the same build as 3b, from `fixtures/planted-defects/` | same SHA as 3b; build it into its own folder |
 | 4 | `template-sqlmesh-duckdb` with `ports.py` importing `adapters` | fails while the template has no `docs/design.md`: record eval 4 as not run |
 
 The build prints the fixture's last commit; save it, since grading compares against it. No fixture keeps a remote. Never copy
@@ -40,8 +41,8 @@ The build prints the fixture's last commit; save it, since grading compares agai
 2. Type the eval's `prompt` from `evals.json`, exactly. Evals 3 and 3b share the prompt "Document the design of this repository."; it
    names no artifact or finding, so what the spec contains is the skill's doing.
 3. Answer nothing about the design itself. Your global rules may make the agent ask before it adds a dependency or edits more than
-   two files (eval 2 needs a Parquet library); approve that once and note it in the grade. In eval 1 the skill stops by itself at
-   "Approve or correct before I implement."; do not approve.
+   two files (eval 2 needs a Parquet library); approve that once and note it in the grade. In evals 1 and 6 the skill stops by itself
+   at "Approve or correct before I implement."; do not approve.
 
 ## 4. Collect
 
@@ -61,8 +62,9 @@ that words things differently passes as long as the assertion holds.
 
 | Eval | Answer key | What to compare |
 |---|---|---|
-| 3 | `expected/eval-3/design.md`, `expected/eval-3/backlog2.md` (PR #7's merge commit `f8f4a41`) | the `pqx-report` row of the matrix (§6 of `design.md`); findings 1 and 2 of `backlog2.md`; item 9.1 labelled known (§11 of `design.md`) |
+| 3 | `expected/eval-3/design.md`, `expected/eval-3/backlog2.md` (PR #7's merge commit `f8f4a41`; `design.md` brought up to the skill's current diagram rules) | the `pqx-report` row of the matrix (§6 of `design.md`); findings 1 and 2 of `backlog2.md`; item 9.1 labelled known (§11 of `design.md`) |
 | 3b (5) | `expected/eval-3b/answer-key.md` | the six findings with rule, file and label; its *Not findings* list counts false positives, which the assertions do not fail but the grade should report |
+| 6 | none | the change-impact flowchart's node names against the fixture: `git -C <fixture> ls-files packages` lists the packages and modules that exist |
 
-"No code changed" means `git diff <build commit>` (evals 3, 3b, 4) and `git status --untracked-files=all` (all) show only
+"No code changed" means `git diff <build commit>` (evals 3, 3b, 4, 6) and `git status --untracked-files=all` (all) show only
 documentation files (`docs/design.md`, ADRs, a backlog file); for eval 2 the opposite holds: code, and no spec.
