@@ -49,6 +49,7 @@ from evals.design_spec_grade import (
     inferred_marker,
     main,
     no_c4,
+    read_workspace,
     spec_and_adrs_only,
 )
 from evals.design_spec_grade import _run as run_command  # pyright: ignore[reportPrivateUsage]
@@ -861,3 +862,124 @@ def test_workspace_matrix_leaves_imports_within_a_package_out() -> None:
 def test_dependency_matrix_decides_nothing_when_the_code_cannot_be_read() -> None:
     unreadable: Verdict = Verdict(passed=None, evidence="git archive failed")
     assert dependency_matrix(FakeReader(unreadable), ("cli", "core"))(_run(spec=SHOP_MATRIX)) == unreadable
+
+
+type Tree = dict[str, tuple[list[str], dict[str, str]]]
+"""Workspace packages by name: their declared dependencies, and their files under ``src/`` with contents."""
+
+
+def _workspace_repo(root: Path, packages: Tree) -> str:
+    """Write a uv-workspace-shaped repository under ``root``, commit it, and return the commit."""
+    name: str
+    dependencies: list[str]
+    files: dict[str, str]
+    for name, (dependencies, files) in packages.items():
+        folder: Path = root / "packages" / name
+        folder.mkdir(parents=True)
+        listed: str = ", ".join(f'"{dependency}"' for dependency in dependencies)
+        (folder / "pyproject.toml").write_text(f'[project]\nname = "{name}"\nversion = "0.1.0"\ndependencies = [{listed}]\n', encoding="utf-8")
+        path: str
+        content: str
+        for path, content in files.items():
+            (folder / "src" / path).parent.mkdir(parents=True, exist_ok=True)
+            (folder / "src" / path).write_text(content, encoding="utf-8")
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "build")
+    return _git(root, "rev-parse", "HEAD")
+
+
+SHOP_TREE: Tree = {
+    "shop-common": ([], {"shop_common/__init__.py": "", "shop_common/types.py": "X = 1\n"}),
+    "shop-core": (["shop-common"], {"shop_core/__init__.py": "from shop_common.types import X\n"}),
+    "shop-io": (["shop-common", "Shop_Core>=0.1", "polars[pyarrow]>=1"], {"shop_io/__init__.py": "import shop_common\n"}),
+    "shop-cli": (["shop-common", "shop-io"], {"shop_cli/__init__.py": "from typing import TYPE_CHECKING\n\nimport shop_common\nimport shop_io\n\nif TYPE_CHECKING:\n    import shop_core\n"}),
+}
+"""SHOP as code: cli's import of core is TYPE_CHECKING only, which the matrix still counts."""
+
+
+def _shop_run(root: Path, commit: str) -> Run:
+    """Return run inputs for a workspace repository at ``commit``."""
+    return Run(fixture=root, commit=commit, spec_path=root / "docs" / "design.md", spec=None, reply=None)
+
+
+def test_read_workspace_reads_packages_declarations_and_imports_at_the_build_commit(tmp_path: Path) -> None:
+    commit: str = _workspace_repo(tmp_path, SHOP_TREE)
+    (tmp_path / "packages" / "shop-common" / "src" / "shop_common" / "__init__.py").write_text("import shop_cli\n", encoding="utf-8")
+    path: list[str] = list(sys.path)
+    assert read_workspace(_shop_run(tmp_path, commit)) == Workspace(
+        packages=(
+            Package("shop-cli", frozenset({"shop_cli"}), frozenset({"shop-common", "shop-io"})),
+            Package("shop-common", frozenset({"shop_common"}), frozenset()),
+            Package("shop-core", frozenset({"shop_core"}), frozenset({"shop-common"})),
+            Package("shop-io", frozenset({"shop_io"}), frozenset({"shop-common", "shop-core", "polars"})),
+        ),
+        imports=SHOP.imports,
+        modules=SHOP.modules,
+    )
+    assert sys.path == path
+
+
+def test_read_workspace_reads_only_package_source(tmp_path: Path) -> None:
+    tree: Tree = {
+        "app-base": ([], {"app_base/__init__.py": "", "loose.py": "import app_top\n"}),
+        "app-top": (["app-base"], {"app_top/__init__.py": "import app_base\n"}),
+        "app-empty": (["app-top"], {}),
+    }
+    _workspace_repo(tmp_path, tree)
+    (tmp_path / "packages" / "app-base" / "tests").mkdir()
+    (tmp_path / "packages" / "app-base" / "tests" / "test_base.py").write_text("import app_top\n", encoding="utf-8")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "tests")
+    workspace: Workspace | Verdict = read_workspace(_shop_run(tmp_path, _git(tmp_path, "rev-parse", "HEAD")))
+    assert isinstance(workspace, Workspace)
+    assert workspace.matrix() == {("app-top", "app-base"): "Y", ("app-empty", "app-top"): "d"}
+
+
+def test_read_workspace_needs_a_build_commit(tmp_path: Path) -> None:
+    _workspace_repo(tmp_path, SHOP_TREE)
+    verdict: Workspace | Verdict = read_workspace(_shop_run(tmp_path, "0" * 40))
+    assert isinstance(verdict, Verdict)
+    assert verdict.passed is None
+    assert verdict.evidence.startswith(f"git archive {'0' * 40} failed: ")
+
+
+def test_read_workspace_needs_workspace_packages(tmp_path: Path) -> None:
+    commit: str = _workspace_repo(tmp_path, {"app-docs": ([], {})})
+    assert read_workspace(_shop_run(tmp_path, commit)) == Verdict(passed=None, evidence=f"no workspace packages with code under packages/*/src at {commit}")
+
+
+PQX_TREE: Tree = {
+    "pqx-common": ([], {"pqx_common/__init__.py": "", "pqx_common/names.py": "from pqx_excel import workbook\n"}),
+    "pqx-excel": (["pqx-common"], {"pqx_excel/__init__.py": "", "pqx_excel/workbook.py": "from pqx_common import names\n"}),
+    "pqx-frame": ([], {"pqx_frame/__init__.py": ""}),
+    "pqx-plan": ([], {"pqx_plan/__init__.py": ""}),
+    "pqx-verify": ([], {"pqx_verify/__init__.py": ""}),
+    "pqx-report": (["pqx-plan", "pqx-verify"], {"pqx_report/__init__.py": "import pqx_frame\n"}),
+}
+"""Eval 3's report defect and eval 4's reversed import, in miniature."""
+
+
+def _pqx_matrix(common: str, report_frame: str) -> str:
+    """Return a matrix over PQX_TREE with the given common row and report → frame cell."""
+    return f"| imports ↓ / of → | common | excel | frame | plan | verify |\n|---|---|---|---|---|---|\n| common | {common} |\n| excel | Y | | | | |\n| report | | | {report_frame} | d | d |\n"
+
+
+@pytest.mark.parametrize(
+    ("number", "start", "spec", "status"),
+    [
+        (3, "The dependency matrix marks", _pqx_matrix("| !", "**!**"), "manual"),
+        (3, "The dependency matrix marks", _pqx_matrix("| !", "Y"), "fail"),
+        (3, "The dependency matrix marks", _pqx_matrix("|", "!"), "manual"),
+        (4, "The resynced dependency matrix", _pqx_matrix("| !", "!"), "manual"),
+        (4, "The resynced dependency matrix", _pqx_matrix("|", "!"), "fail"),
+        (4, "The resynced dependency matrix", _pqx_matrix("| !", "Y"), "manual"),
+        (5, "All six defects", _pqx_matrix("| !", "!"), "manual"),
+        (5, "All six defects", _pqx_matrix("|", "!"), "manual"),
+    ],
+    ids=["3", "3-report-wrong", "3-other-cell-wrong", "4", "4-reversed-import-missing", "4-other-cell-wrong", "3b-equal", "3b-differs"],
+)
+def test_rules_decide_the_matrix_assertions(tmp_path: Path, number: int, start: str, spec: str, status: Status) -> None:
+    commit: str = _workspace_repo(tmp_path, PQX_TREE)
+    run: Run = replace(_shop_run(tmp_path, commit), spec=spec)
+    assert _graded(number, start, run).status == status

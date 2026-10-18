@@ -3,7 +3,7 @@
 A design-spec eval is a real session graded by hand against the assertions in
 ``design-spec/evals/evals.json``. Some of those assertions are mechanical: every
 diagram parses, every cited ``path:line`` exists at the build commit, no code
-changed. This grader decides those and reports every other assertion ``manual``,
+changed, the dependency matrix matches the imports grimp finds in the code. This grader decides those and reports every other assertion ``manual``,
 so a ``pass`` here always comes from a tool, never from a guess.
 
 An assertion that mixes a mechanical part with judgment fails when the mechanical
@@ -23,12 +23,18 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Callable, Mapping, Sequence
+import tarfile
+import tempfile
+import tomllib
+from collections.abc import Callable, Generator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, TypedDict, cast
 
-GRADER_VERSION: str = "1.0.0"
+import grimp
+
+GRADER_VERSION: str = "1.1.0"
 """Bump on any change to what is graded, so grades from different versions are not compared."""
 
 EVALS: Path = Path(__file__).resolve().parents[2] / "design-spec" / "evals" / "evals.json"
@@ -742,6 +748,68 @@ def _compare(matrices: _Matrices, named: set[Cell], commit: str) -> Verdict:
     return Verdict(passed=None, evidence=f"the dependency matrix differs from the code at {commit}: {matrices.describe(differ)}")
 
 
+def read_workspace(run: Run) -> Workspace | Verdict:
+    """Read the fixture's workspace packages at the build commit, and the imports grimp finds between them.
+
+    The build commit is unpacked with ``git archive`` into a temporary folder, so an
+    edit made since it does not count. A package is a ``packages/*/pyproject.toml``;
+    its modules are the import packages under its ``src``, and its declarations are
+    its ``[project] dependencies``. Imports under ``TYPE_CHECKING`` count, as the
+    inventory command in design-spec SKILL.md section 4 counts them. Nothing is
+    installed or imported: the ``src`` folders are on ``sys.path`` only while grimp
+    reads them. A commit that cannot be unpacked decides nothing.
+    """
+    folder: str
+    with tempfile.TemporaryDirectory() as folder:
+        archive: Path = Path(folder) / "build.tar"
+        archived: tuple[int, str, str] = _run(["git", "archive", "--format=tar", "-o", str(archive), run.commit], run.fixture)
+        if archived[0] != 0:
+            return Verdict(passed=None, evidence=f"git archive {run.commit} failed: {archived[2].strip()}")
+        tree: Path = Path(folder) / "tree"
+        bundle: tarfile.TarFile
+        with tarfile.open(archive) as bundle:
+            bundle.extractall(tree, filter="data")
+        return _scan(tree, run.commit)
+
+
+def _scan(tree: Path, commit: str) -> Workspace | Verdict:
+    """Read the workspace packages in an unpacked tree and build their import graph."""
+    pyprojects: list[Path] = sorted(tree.glob("packages/*/pyproject.toml"))
+    packages: list[Package] = [_package(pyproject) for pyproject in pyprojects]
+    owner: dict[str, str] = {module: package.name for package in packages for module in package.modules}
+    if not owner:
+        return Verdict(passed=None, evidence=f"no workspace packages with code under packages/*/src at {commit}")
+    with _on_path([str(pyproject.parent / "src") for pyproject in pyprojects]):
+        graph: grimp.ImportGraph = grimp.build_graph(*owner, cache_dir=None)
+    imports: frozenset[Cell] = frozenset(
+        (owner[importer], owner[imported]) for importer in owner for imported in owner if owner[importer] != owner[imported] and graph.direct_import_exists(importer=importer, imported=imported, as_packages=True)
+    )
+    return Workspace(packages=tuple(packages), imports=imports, modules=frozenset(graph.modules))
+
+
+def _package(pyproject: Path) -> Package:
+    """Read a workspace package's name, import packages and declared dependencies."""
+    project: dict[str, object] = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+    requirements: list[str] = cast("list[str]", project.get("dependencies", []))
+    return Package(
+        name=_canonical(cast("str", project["name"])),
+        modules=frozenset(init.parent.name for init in (pyproject.parent / "src").glob("*/__init__.py")),
+        # A requirement's name ends where its extras, version, marker or URL begin (PEP 508).
+        declared=frozenset(_canonical(re.split(r"[\s\[<>=!~;@(]", requirement.strip(), maxsplit=1)[0]) for requirement in requirements),
+    )
+
+
+@contextmanager
+def _on_path(folders: list[str]) -> Generator[None]:
+    """Put ``folders`` first on ``sys.path`` while the block runs, then restore it."""
+    saved: list[str] = list(sys.path)
+    sys.path[:0] = folders
+    try:
+        yield
+    finally:
+        sys.path[:] = saved
+
+
 RULES: Mapping[int, Sequence[Rule]] = {
     1: (
         Rule("The first line states design mode and the Standard size class", first_line("design", "Standard")),
@@ -762,16 +830,27 @@ RULES: Mapping[int, Sequence[Rule]] = {
     2: (Rule("The first line states the Small size class", first_line(None, "Small")),),
     3: (
         Rule("The first line states document mode and a size class", first_line("document", None)),
+        Rule(
+            "The dependency matrix marks pqx-report's import of pqx-frame '!' and its unused declarations of pqx-plan and pqx-verify 'd', and a finding reports the defect",
+            dependency_matrix(read_workspace, ("pqx-report", "pqx-frame"), ("pqx-report", "pqx-plan"), ("pqx-report", "pqx-verify")),
+            complete=False,
+        ),
         Rule("Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source", contract_sources, complete=False),
         Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
         Rule("No code is changed: git status and git diff 8ffaa6f show changes to documentation files only", documentation_only),
     ),
     4: (
         Rule("The first line states document mode and a size class", first_line("document", None)),
+        Rule(
+            "The resynced dependency matrix marks pqx-common's import of pqx-excel '!' and keeps pqx-excel's import of pqx-common 'Y', and the spec reports the pqx-common/pqx-excel cycle instead of saying no cycles exist",
+            dependency_matrix(read_workspace, ("pqx-common", "pqx-excel"), ("pqx-excel", "pqx-common")),
+            complete=False,
+        ),
         Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
         Rule("No code is changed: names.py keeps the reversed import, and git status and git diff bb6b246 show changes to documentation files only", documentation_only),
     ),
     5: (
+        Rule("All six defects in expected/eval-3b/answer-key.md are reported as findings, each with its rule number and file", dependency_matrix(read_workspace), complete=False),
         Rule(
             "Items deduced rather than read from the code (domain states, the decision each component owns) are marked inferred: *inferred* in text; in diagrams, a label ending in ` ?` plus the `inferred` classDef (stroke-dasharray, a dashed border), or one line above a diagram whose every node is inferred. No dashed arrow is used to mark inference",
             inferred_marker,
