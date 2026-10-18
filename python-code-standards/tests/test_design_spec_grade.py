@@ -17,7 +17,32 @@ from typing import cast
 
 import pytest
 
-from evals.design_spec_grade import CLOSING, EMPTY_TREE, EVALS, GRADER_VERSION, RULES, Check, Result, Rule, Run, Verdict, bind, closing_line, first_line, grade, main
+from evals.design_spec_grade import (
+    CITATION,
+    CLOSING,
+    DESIGN_COLUMNS,
+    DOCUMENT_COLUMNS,
+    EMPTY_TREE,
+    EVALS,
+    GRADER_VERSION,
+    RULES,
+    Check,
+    Result,
+    Rule,
+    Run,
+    Status,
+    Verdict,
+    bind,
+    change_classdefs,
+    closing_line,
+    contract_header,
+    contract_sources,
+    first_line,
+    grade,
+    inferred_marker,
+    main,
+    no_c4,
+)
 
 
 def _run(spec: str | None = None, reply: str | None = None) -> Run:
@@ -305,3 +330,188 @@ def test_main_prints_to_a_stream_that_cannot_be_reconfigured(tmp_path: Path, mon
     monkeypatch.setattr(sys, "stdout", stdout)
     main(["3", str(_fixture(tmp_path)), "abc1234", "--evals", str(_evals(tmp_path))], rules={})
     assert "0 pass, 0 fail, 2 manual" in stdout.getvalue()
+
+
+DESIGN_HEADER: str = "| Boundary | Input | Output | Grain / key | Invariants | Owner |\n|---|---|---|---|---|---|\n"
+DOCUMENT_HEADER: str = "| Boundary | Input | Output | Grain/key | Invariants | Owner | Source |\n|---|---|---|---|---|---|---|\n"
+
+
+def _mermaid(*lines: str) -> str:
+    """Return a fenced Mermaid block."""
+    return "```mermaid\n" + "\n".join(lines) + "\n```\n"
+
+
+@pytest.mark.parametrize(
+    ("columns", "spec", "verdict"),
+    [
+        (
+            DESIGN_COLUMNS,
+            f"# Spec\n\n{DESIGN_HEADER}| CSV | rows | `Order` | one per order | typed | `io` |\n",
+            Verdict(passed=True, evidence="contract table header is boundary | input | output | grain/key | invariants | owner"),
+        ),
+        (
+            DOCUMENT_COLUMNS,
+            DESIGN_HEADER,
+            Verdict(
+                passed=False,
+                evidence="contract table header is boundary | input | output | grain/key | invariants | owner; expected boundary | input | output | grain/key | invariants | owner | source",
+            ),
+        ),
+        (DESIGN_COLUMNS, "| Node | Source |\n|---|---|\n| Cli | `cli.py:1` |\n", Verdict(passed=False, evidence="no contract table (a table whose first column is Boundary)")),
+        (DESIGN_COLUMNS, f"```markdown\n{DESIGN_HEADER}```\n", Verdict(passed=False, evidence="no contract table (a table whose first column is Boundary)")),
+        (
+            DOCUMENT_COLUMNS,
+            f"   ```markdown\n{DESIGN_HEADER}   ```\n\n{DOCUMENT_HEADER}",
+            Verdict(passed=True, evidence="contract table header is boundary | input | output | grain/key | invariants | owner | source"),
+        ),
+    ],
+    ids=["design-columns", "missing-source", "no-contract-table", "table-in-a-fence", "table-in-an-indented-fence"],
+)
+def test_contract_header(columns: tuple[str, ...], spec: str, verdict: Verdict) -> None:
+    assert contract_header(columns)(_run(spec=spec)) == verdict
+
+
+def test_contract_header_takes_the_first_contract_table() -> None:
+    spec: str = f"{DESIGN_HEADER}| a | b | c | d | e | f |\n\ntext\n\n{DOCUMENT_HEADER}"
+    assert contract_header(DESIGN_COLUMNS)(_run(spec=spec)).passed is True
+
+
+def test_contract_sources_passes_when_every_row_cites_a_line() -> None:
+    spec: str = (
+        f"{DOCUMENT_HEADER}| Config | JSON | `Config` | one per run | schema | `plan` | `src/config.py:12`, `src/semantics.py:3` |\n| Plan | `Config` | `Plan` | one per sheet | fits | `plan` | `src/plan.py:7` |\n"
+    )
+    assert contract_sources(_run(spec=spec)) == Verdict(passed=True, evidence="contract table header is boundary | input | output | grain/key | invariants | owner | source; all 2 rows cite a path:line source")
+
+
+def test_contract_sources_names_rows_without_a_line() -> None:
+    spec: str = f"{DOCUMENT_HEADER}| Config | JSON | `Config` | one per run | schema | `plan` | `src/config.py` |\n| Plan | `Config` | `Plan` | one per sheet | fits | `plan` |\n| Write | `Plan` | files | one per file | local | `excel` | `src/w.py:4` |\n"
+    assert contract_sources(_run(spec=spec)) == Verdict(passed=False, evidence="contract rows without a path:line source: Config, Plan")
+
+
+@pytest.mark.parametrize("spec", [DESIGN_HEADER, None], ids=["design-header", "no-spec"])
+def test_contract_sources_fails_without_the_document_header(spec: str | None) -> None:
+    run: Run = _run(spec=spec)
+    assert contract_sources(run) == contract_header(DOCUMENT_COLUMNS)(run)
+    assert contract_sources(run).passed is False
+
+
+def test_table_cells_keep_escaped_pipes() -> None:
+    spec: str = f"{DOCUMENT_HEADER}| a \\| b | c | d | e | f | g | `x.py:1` |\n"
+    assert contract_sources(_run(spec=spec)).passed is True
+
+
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        ("`packages/pqx-report/src/pqx_report/model.py:17`", [("packages/pqx-report/src/pqx_report/model.py", "17")]),
+        ("(`CLAUDE.md:97`) and run.py:348.", [("CLAUDE.md", "97"), ("run.py", "348")]),
+        ("lines `a/b.py:10-20` and col `c.py:3:5`", [("a/b.py", "10"), ("c.py", "3")]),
+        ("at 08:00:00, ratio 16:9, host 127.0.0.1:8080, sum mod 2^128", []),
+        ("see https://example.com/x.py:12 and node:22", []),
+        ("Common:::inferred and `docs/design.md`", []),
+    ],
+    ids=["backticked", "bare", "range-and-column", "numbers", "urls-and-schemes", "not-citations"],
+)
+def test_citation_pattern(text: str, found: list[tuple[str, str]]) -> None:
+    assert CITATION.findall(text) == found
+
+
+@pytest.mark.parametrize(
+    ("spec", "verdict"),
+    [
+        (_mermaid("flowchart LR", "    A --> B"), Verdict(passed=True, evidence="no Mermaid C4 diagram")),
+        (_mermaid("%% context", "C4Context", "  Person(a, 'A')") + _mermaid("  C4Container"), Verdict(passed=False, evidence="Mermaid C4 diagrams used: C4Context, C4Container")),
+        ("C4Context named in prose is not a diagram\n", Verdict(passed=True, evidence="no Mermaid C4 diagram")),
+    ],
+    ids=["flowchart", "c4-blocks", "prose"],
+)
+def test_no_c4(spec: str, verdict: Verdict) -> None:
+    assert no_c4(_run(spec=spec)) == verdict
+
+
+@pytest.mark.parametrize(
+    ("spec", "passed"),
+    [
+        (_mermaid("flowchart LR", "  A:::added", "  classDef added fill:#dafbe1", "  classDef changed fill:#fff8c5", "  classDef removed fill:#ffebe9"), True),
+        (_mermaid("%% impact", "graph TD", "  A --> B", "  class A,B changed", "  classDef added,changed fill:#eee", "  classDef removed fill:#fee"), True),
+        (_mermaid("flowchart LR", "  A:::removed", "  classDef added fill:#dafbe1", "  classDef changed fill:#fff8c5") + _mermaid("flowchart LR", "  classDef removed fill:#fee"), False),
+        (_mermaid("stateDiagram-v2", "  A:::added", "  classDef added fill:#a", "  classDef changed fill:#b", "  classDef removed fill:#c"), False),
+        (_mermaid("flowchart LR", "  classDef added fill:#a", "  classDef changed fill:#b", "  classDef removed fill:#c"), False),
+        (_mermaid(""), False),
+    ],
+    ids=["one-flowchart", "graph-class-statement-and-comma-list", "split-across-diagrams", "not-a-flowchart", "no-node-styled", "empty-block"],
+)
+def test_change_classdefs(spec: str, *, passed: bool) -> None:
+    assert change_classdefs(_run(spec=spec)) == Verdict(
+        passed=passed,
+        evidence="a flowchart defines classDef added, changed and removed and styles nodes with them" if passed else "no flowchart defines classDef added, changed and removed and styles a node with one",
+    )
+
+
+DASHED: str = "  classDef inferred stroke:#555,stroke-dasharray:5 5"
+
+
+@pytest.mark.parametrize(
+    ("spec", "verdict"),
+    [
+        (
+            _mermaid("flowchart LR", '  A["a ?"]:::inferred', "  B[b]", DASHED) + _mermaid("stateDiagram-v2", "  S: s ?", "  class S inferred", "  classDef inferred stroke-dasharray:3"),
+            Verdict(passed=True, evidence="diagrams applying the inferred class: 2, each defining classDef inferred dashed"),
+        ),
+        (_mermaid("flowchart LR", '  A["a ?"]', "  classDef other stroke-dasharray:5 5"), Verdict(passed=True, evidence="no diagram applies the inferred class")),
+        (_mermaid("flowchart LR", "  A:::inferred", "  classDef inferred stroke:#555"), Verdict(passed=False, evidence="diagram 1 applies the inferred class without classDef inferred stroke-dasharray")),
+        (_mermaid("flowchart LR", "  A --> B") + _mermaid("flowchart LR", "  A:::inferred"), Verdict(passed=False, evidence="diagram 2 applies the inferred class without classDef inferred stroke-dasharray")),
+    ],
+    ids=["dashed-in-both-diagrams", "class-not-applied", "not-dashed", "class-not-defined"],
+)
+def test_inferred_marker(spec: str, verdict: Verdict) -> None:
+    assert inferred_marker(_run(spec=spec)) == verdict
+
+
+@pytest.mark.parametrize("check", [contract_header(DESIGN_COLUMNS), contract_sources, no_c4, change_classdefs, inferred_marker], ids=["header", "sources", "c4", "change", "inferred"])
+def test_spec_checks_fail_without_a_spec(check: Check) -> None:
+    assert check(_run(spec=None)) == Verdict(passed=False, evidence=f"no spec at {Path('fixture/docs/design.md')}")
+
+
+def _graded(number: int, start: str, run: Run) -> Result:
+    """Grade the assertion of eval ``number`` that starts with ``start``, with its rule in RULES."""
+    rule: Rule = next(rule for rule in RULES[number] if rule.assertion.startswith(start))
+    return grade([rule.assertion], [rule], run)[0]
+
+
+DOCUMENT_SPEC: str = f"{DOCUMENT_HEADER}| Config | JSON | `Config` | one per run | schema | `plan` | `src/config.py:12` |\n"
+
+
+@pytest.mark.parametrize(
+    ("number", "start", "spec", "status"),
+    [
+        (1, "A boundary contract table", f"{DESIGN_HEADER}| CSV | rows | `Order` | one per order | typed | `io` |\n", "manual"),
+        (1, "A boundary contract table", DOCUMENT_SPEC, "fail"),
+        (1, "A context view drawn as a flowchart", _mermaid("flowchart LR", "  A --> B"), "manual"),
+        (1, "A context view drawn as a flowchart", _mermaid("C4Context"), "fail"),
+        (3, "Every boundary in the contract table", DOCUMENT_SPEC, "manual"),
+        (3, "Every boundary in the contract table", DESIGN_HEADER, "fail"),
+        (5, "Every boundary in the contract table", DOCUMENT_SPEC, "manual"),
+        (5, "Every boundary in the contract table", DESIGN_HEADER, "fail"),
+        (5, "Items deduced rather than read", _mermaid("flowchart LR", "  A:::inferred", DASHED), "manual"),
+        (5, "Items deduced rather than read", _mermaid("flowchart LR", "  A:::inferred"), "fail"),
+        (6, "A change-impact flowchart", _mermaid("flowchart LR", "  Stage:::removed", "  classDef added fill:#a", "  classDef changed fill:#b", "  classDef removed fill:#c"), "pass"),
+        (6, "A change-impact flowchart", _mermaid("flowchart LR", "  A --> B"), "fail"),
+    ],
+    ids=[
+        "1-contract-header",
+        "1-contract-header-wrong",
+        "1-context-view",
+        "1-context-view-c4",
+        "3-contract-sources",
+        "3-contract-sources-missing",
+        "3b-contract-sources",
+        "3b-contract-sources-missing",
+        "3b-inferred",
+        "3b-inferred-missing",
+        "6-change-classdefs",
+        "6-change-classdefs-missing",
+    ],
+)
+def test_rules_decide_the_spec_assertions(number: int, start: str, spec: str, status: Status) -> None:
+    assert _graded(number, start, _run(spec=spec)).status == status

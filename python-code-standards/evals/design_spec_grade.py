@@ -38,6 +38,22 @@ EMPTY_TREE: str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 CLOSING: str = "Approve or correct before I implement."
 """The line a design-mode reply ends with (design-spec SKILL.md section 3)."""
 
+DESIGN_COLUMNS: tuple[str, ...] = ("boundary", "input", "output", "grain/key", "invariants", "owner")
+"""The boundary contract table's columns in design mode (design-spec SKILL.md section 3)."""
+
+DOCUMENT_COLUMNS: tuple[str, ...] = (*DESIGN_COLUMNS, "source")
+"""Document mode adds ``source``, the code that defines the output and enforces the invariants."""
+
+CITATION: re.Pattern[str] = re.compile(r"(?<![\w./:-])((?=[\w./-]*[A-Za-z])[\w.-]*[./][\w./-]*):(\d+)\b")
+"""A ``path:line`` citation: a path holding a letter and a dot or slash, a colon, a line number."""
+
+_FENCE: re.Pattern[str] = re.compile(r"^ {0,3}```.*?^ {0,3}```[ \t]*$", re.MULTILINE | re.DOTALL)
+_MERMAID: re.Pattern[str] = re.compile(r"```mermaid[ \t]*\r?\n([\s\S]*?)```")
+_CLASSDEF: re.Pattern[str] = re.compile(r"^\s*classDef\s+(\S+)\s*(.*)$", re.MULTILINE)
+_C4: re.Pattern[str] = re.compile(r"^\s*(C4\w+)", re.MULTILINE)
+_SEPARATOR: re.Pattern[str] = re.compile(r"^[\s|:-]+$")
+_APPLIED: re.Pattern[str] = re.compile(r":::([\w-]+)|^\s*class\s+\S+\s+([\w-]+)", re.MULTILINE)
+
 _MODES: tuple[str, ...] = ("design", "document")
 _SKILL_NAME: re.Pattern[str] = re.compile(r"\bdesign[- ]spec\b", re.IGNORECASE)
 
@@ -296,20 +312,183 @@ def _reply_line(run: Run, index: int) -> str | Verdict:
     return lines[index]
 
 
+def contract_header(columns: Sequence[str]) -> Check:
+    """Return a check that the boundary contract table's header is exactly ``columns``."""
+
+    def check(run: Run) -> Verdict:
+        table: list[list[str]] | Verdict = _contract_table(run)
+        if isinstance(table, Verdict):
+            return table
+        return _header(table, columns)
+
+    return check
+
+
+def contract_sources(run: Run) -> Verdict:
+    """Check the document-mode contract table: its header, and a ``path:line`` in every row's source."""
+    table: list[list[str]] | Verdict = _contract_table(run)
+    if isinstance(table, Verdict):
+        return table
+    header: Verdict = _header(table, DOCUMENT_COLUMNS)
+    if not header.passed:
+        return header
+    uncited: list[str] = [row[0] for row in table[1:] if len(row) != len(DOCUMENT_COLUMNS) or not CITATION.search(row[-1])]
+    if uncited:
+        return Verdict(passed=False, evidence=f"contract rows without a path:line source: {', '.join(uncited)}")
+    return Verdict(passed=True, evidence=f"{header.evidence}; all {len(table) - 1} rows cite a path:line source")
+
+
+def no_c4(run: Run) -> Verdict:
+    """Check that no Mermaid block is a C4 diagram."""
+    if run.spec is None:
+        return _no_spec(run)
+    found: list[str] = [match.group(1) for block in _MERMAID.findall(run.spec) for match in [_C4.search(block)] if match]
+    if found:
+        return Verdict(passed=False, evidence=f"Mermaid C4 diagrams used: {', '.join(found)}")
+    return Verdict(passed=True, evidence="no Mermaid C4 diagram")
+
+
+def change_classdefs(run: Run) -> Verdict:
+    """Check that one flowchart defines ``classDef added``, ``changed`` and ``removed`` and styles a node with one."""
+    if run.spec is None:
+        return _no_spec(run)
+    wanted: set[str] = {"added", "changed", "removed"}
+    block: str
+    for block in _MERMAID.findall(run.spec):
+        if _diagram_type(block) in {"flowchart", "graph"} and wanted <= set(_classdefs(block)) and _applied(block) & wanted:
+            return Verdict(passed=True, evidence="a flowchart defines classDef added, changed and removed and styles nodes with them")
+    return Verdict(passed=False, evidence="no flowchart defines classDef added, changed and removed and styles a node with one")
+
+
+def inferred_marker(run: Run) -> Verdict:
+    """Check that every diagram applying the ``inferred`` class defines it with a dashed border.
+
+    That is the one part of SKILL.md section 7's marker a tool can decide. Which
+    nodes are inferred, their `` ?`` labels, and the one-line note that may replace
+    the marker above a fully inferred diagram are left to a person.
+    """
+    if run.spec is None:
+        return _no_spec(run)
+    marked: int = 0
+    number: int
+    block: str
+    for number, block in enumerate(_MERMAID.findall(run.spec), start=1):
+        if "inferred" not in _applied(block):
+            continue
+        if "stroke-dasharray" not in _classdefs(block).get("inferred", ""):
+            return Verdict(passed=False, evidence=f"diagram {number} applies the inferred class without classDef inferred stroke-dasharray")
+        marked += 1
+    if not marked:
+        return Verdict(passed=True, evidence="no diagram applies the inferred class")
+    return Verdict(passed=True, evidence=f"diagrams applying the inferred class: {marked}, each defining classDef inferred dashed")
+
+
+def _no_spec(run: Run) -> Verdict:
+    """Fail a spec check because there is no spec to read."""
+    return Verdict(passed=False, evidence=f"no spec at {run.spec_path}")
+
+
+def _header(table: list[list[str]], columns: Sequence[str]) -> Verdict:
+    """Compare a table's header with ``columns``."""
+    header: list[str] = [_normal(cell) for cell in table[0]]
+    if header != list(columns):
+        return Verdict(passed=False, evidence=f"contract table header is {' | '.join(header)}; expected {' | '.join(columns)}")
+    return Verdict(passed=True, evidence=f"contract table header is {' | '.join(header)}")
+
+
+def _contract_table(run: Run) -> list[list[str]] | Verdict:
+    """Return the spec's first table whose first column is ``boundary``, or a failing verdict."""
+    if run.spec is None:
+        return _no_spec(run)
+    table: list[list[str]]
+    for table in _tables(run.spec):
+        if _normal(table[0][0]) == "boundary":
+            return table
+    return Verdict(passed=False, evidence="no contract table (a table whose first column is Boundary)")
+
+
+def _tables(text: str) -> list[list[list[str]]]:
+    """Return the Markdown tables outside fenced blocks, each as rows of cells, separator row dropped."""
+    tables: list[list[list[str]]] = []
+    current: list[list[str]] = []
+    line: str
+    for line in [*_FENCE.sub("", text).splitlines(), ""]:
+        stripped: str = line.strip()
+        if stripped.startswith("|"):
+            if not _SEPARATOR.match(stripped):
+                current.append(_cells(stripped))
+        elif current:
+            tables.append(current)
+            current = []
+    return tables
+
+
+def _cells(row: str) -> list[str]:
+    """Split a table row on its unescaped pipes."""
+    inner: str = row.removeprefix("|").removesuffix("|")
+    return [cell.strip() for cell in re.split(r"(?<!\\)\|", inner)]
+
+
+def _normal(cell: str) -> str:
+    """Normalise a header cell: case, backticks, emphasis and spaces do not count."""
+    return re.sub(r"[\s`*_]", "", cell).lower()
+
+
+def _applied(block: str) -> set[str]:
+    """Return the classes a Mermaid block applies to nodes, with ``:::name`` or ``class ids name``."""
+    return {inline or statement for inline, statement in _APPLIED.findall(block)}
+
+
+def _classdefs(block: str) -> dict[str, str]:
+    """Return each class a Mermaid block defines, with its style."""
+    found: dict[str, str] = {}
+    names: str
+    style: str
+    for names, style in _CLASSDEF.findall(block):
+        name: str
+        for name in names.split(","):
+            found[name] = style
+    return found
+
+
+def _diagram_type(block: str) -> str:
+    """Return a Mermaid block's diagram type: the first word that is not in a comment."""
+    lines: list[str] = [line.strip() for line in block.splitlines() if line.strip() and not line.strip().startswith("%%")]
+    return lines[0].split()[0] if lines else ""
+
+
 RULES: Mapping[int, Sequence[Rule]] = {
     1: (
         Rule("The first line states design mode and the Standard size class", first_line("design", "Standard")),
+        Rule(
+            "A boundary contract table (boundary | input | output | grain/key | invariants | owner) has a row for every boundary in the flowchart, and each row states its grain and its key, or says that no field identifies a record (a single document, or rows before deduplication)",
+            contract_header(DESIGN_COLUMNS),
+            complete=False,
+        ),
+        Rule(
+            "A context view drawn as a flowchart, with the system as a boundary subgraph, shows the CSV source and the REST API as two separate external-system nodes outside that subgraph; no Mermaid C4 diagram is used",
+            no_c4,
+            complete=False,
+        ),
         Rule('The reply ends with "Approve or correct before I implement."', closing_line),
     ),
     2: (Rule("The first line states the Small size class", first_line(None, "Small")),),
-    3: (Rule("The first line states document mode and a size class", first_line("document", None)),),
+    3: (
+        Rule("The first line states document mode and a size class", first_line("document", None)),
+        Rule("Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source", contract_sources, complete=False),
+    ),
     4: (Rule("The first line states document mode and a size class", first_line("document", None)),),
-    6: (
+    5: (
         Rule(
-            "The first line states design mode and the Standard size class, and the spec treats tally as an existing codebase being restructured, not a new system",
-            first_line("design", "Standard"),
+            "Items deduced rather than read from the code (domain states, the decision each component owns) are marked inferred: *inferred* in text; in diagrams, a label ending in ` ?` plus the `inferred` classDef (stroke-dasharray, a dashed border), or one line above a diagram whose every node is inferred. No dashed arrow is used to mark inference",
+            inferred_marker,
             complete=False,
         ),
+        Rule("Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source", contract_sources, complete=False),
+    ),
+    6: (
+        Rule("The first line states design mode and the Standard size class, and the spec treats tally as an existing codebase being restructured, not a new system", first_line("design", "Standard"), complete=False),
+        Rule("A change-impact flowchart defines classDef added, classDef changed and classDef removed", change_classdefs),
         Rule('The reply ends with "Approve or correct before I implement."', closing_line),
     ),
 }
