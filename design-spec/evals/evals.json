@@ -5,7 +5,7 @@
       "id": 1,
       "name": "eval-1-design-standard",
       "prompt": "Pull orders from a CSV and a REST API into DuckDB, dedupe, and produce a daily revenue table.",
-      "expected_output": "Design mode, sized Standard. A spec in docs/design.md (plus ADRs in docs/adr/) built from the domain outward: derived numbers or open questions, a state diagram before the component flowchart, components labelled with the decisions they own, a boundary contract table, a C4 context view with the CSV and the API as two external systems, the default pattern taken from a template indexed in template-0-summaries (or an ADR saying why not). Every diagram parses. The reply ends with 'Approve or correct before I implement.' and no code is written.",
+      "expected_output": "Design mode, sized Standard. A spec in docs/design.md (plus ADRs in docs/adr/) built from the domain outward: derived numbers or open questions, a state diagram before the component flowchart, components labelled with the decisions they own, a boundary contract table, a context view (a flowchart, the system as a boundary subgraph) with the CSV and the API as two external-system nodes outside it, the default pattern taken from a template indexed in template-0-summaries (or an ADR saying why not). Every diagram parses. The reply ends with 'Approve or correct before I implement.' and no code is written.",
       "files": [],
       "assertions": [
         "The first line states design mode and the Standard size class",
@@ -13,7 +13,7 @@
         "The state diagram (stateDiagram-v2) of the domain entities comes before the component flowchart",
         "Every component in the flowchart is labelled with the decision it owns",
         "A boundary contract table (boundary | input | output | invariants | owner) has a row for every boundary in the flowchart",
-        "A C4 context view (C4Context) shows the CSV source and the REST API as two separate external systems",
+        "A context view drawn as a flowchart, with the system as a boundary subgraph, shows the CSV source and the REST API as two separate external-system nodes outside that subgraph; no Mermaid C4 diagram is used",
         "The default pattern comes from a template found through template-0-summaries, or an ADR records why no template is followed",
         "Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)",
         "The reply ends with \"Approve or correct before I implement.\"",
@@ -37,7 +37,7 @@
       "id": 3,
       "name": "eval-3-document-parquettoxl",
       "prompt": "Document the design of this repository.",
-      "expected_output": "Document mode on ParquetToXL at 8ffaa6f. The spec matches the answer key in expected/eval-3/ (design.md and backlog2.md from PR #7's merge commit f8f4a41): a dependency matrix whose pqx-report row marks pqx-frame '!' and pqx-plan and pqx-verify 'd', with a finding for it; a rule 14 finding for the CLAUDE.md layering diagram; backlog item 9.1 labelled known and cited. No code changes.",
+      "expected_output": "Document mode on ParquetToXL at 8ffaa6f. The spec matches the answer key in expected/eval-3/ (backlog2.md from PR #7's merge commit f8f4a41, and design.md from that commit brought up to the skill's current diagram rules): a dependency matrix whose pqx-report row marks pqx-frame '!' and pqx-plan and pqx-verify 'd', with a finding for it; a rule 14 finding for the CLAUDE.md layering diagram; backlog item 9.1 labelled known and cited. No code changes.",
       "files": [
         "fixtures/parquettoxl-8ffaa6f.bundle"
       ],

@@ -6,7 +6,7 @@ spec; confirm or correct them. This file is a map. The authorities stay where `C
 
 ## 1. Size and numbers
 
-- Classification: **Standard with a C4 context view**. One process (the `pqx` CLI) and three external systems: source storage, destination
+- Classification: **Standard with a context view**. One process (the `pqx` CLI) and three external systems: source storage, destination
   storage (local, SMB, or Azure Blob through `UPath`), and the scratch volume. External systems earn the context view; a container view would
   need more than one process, so the packages are shown in the component flowchart (section 4) instead.
 - Code: 11 uv workspace packages, 11,445 lines of library source, 985 test functions, 25,587 lines in total including tests, gates, and tools.
@@ -15,20 +15,21 @@ spec; confirm or correct them. This file is a map. The authorities stay where `C
 - Consequence: the whole converted frame of a source is resident during writing. That peak, not the cell count, is the scaling limit
   (backlog item 3).
 
-## 2. C4 context
+## 2. Context
 
 ```mermaid
-C4Context
-    title ParquetToXL: system context
-    Person(operator, "Operator", "Runs pqx against an export configuration")
-    System(pqx, "ParquetToXL", "Converts Parquet sources into Excel workbooks whose contents can be proved to match the source")
-    System_Ext(sources, "Source storage", "Parquet files; local or SMB")
-    System_Ext(dest, "Destination storage", "Workbooks, sidecars, manifest, receipt, reports; local, SMB, or Azure Blob")
-    System_Ext(scratch, "Scratch volume", "Local working copies; free space checked before use")
-    Rel(operator, pqx, "pqx status, plan, preview, run, verify, report")
-    Rel(pqx, sources, "Reads and copies")
-    Rel(pqx, scratch, "Stages, writes, verifies")
-    Rel(pqx, dest, "Publishes under a lease; reconciles ownership")
+flowchart LR
+    Operator["Operator: runs pqx against an export configuration"]
+    subgraph System["ParquetToXL"]
+        Pqx["pqx: convert Parquet sources into Excel workbooks whose contents can be proved to match the source"]
+    end
+    Sources["Source storage: Parquet files; local or SMB"]
+    Dest["Destination storage: workbooks, sidecars, manifest, receipt, reports; local, SMB, or Azure Blob"]
+    Scratch["Scratch volume: local working copies; free space checked before use"]
+    Operator -- "pqx status, plan, preview, run, verify, report" --> Pqx
+    Pqx -- "reads and copies" --> Sources
+    Pqx -- "stages, writes, verifies" --> Scratch
+    Pqx -- "publishes under a lease; reconciles ownership" --> Dest
 ```
 
 ## 3. Domain states

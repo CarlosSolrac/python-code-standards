@@ -22,8 +22,8 @@ Pick the mode from the request. "Design", "build", "architect", or given inputs 
 ## 1. Size gate (both modes)
 
 - **Small**: at most two layers and under ~150 lines, or, in design mode only, an existing ADR already forces the answer. Design mode: skip the spec and skip SQLMesh; plain `duckdb` in one typed module is fine. Document mode: a five-line summary plus the component flowchart only.
-- **Standard**: three or more layers, or over ~150 lines, in one process. Full spec (section 3). Add a C4 context view only when the process touches two or more external systems (storage, APIs, services).
-- **Large**: multiple processes or services. Full spec plus C4 context and container views.
+- **Standard**: three or more layers, or over ~150 lines, in one process. Full spec (section 3). Add a context view only when the process touches two or more external systems (storage, APIs, services).
+- **Large**: multiple processes or services. Full spec plus context and container views.
 
 A single process with external storage is Standard, not Large: external systems earn the context view, separate processes earn the container view.
 
@@ -40,8 +40,8 @@ Text diagrams only (Mermaid, Markdown tables, directory trees). No rendered SVG 
 | # | Artifact | When |
 |---|----------|------|
 | 1 | Size and numbers | Standard, Large |
-| 2 | C4 context (`C4Context`) | Two or more external systems, or Large |
-| 3 | C4 container (`C4Container`) | Large only |
+| 2 | Context view (`flowchart LR` with a system boundary subgraph) | Two or more external systems, or Large |
+| 3 | Container view (`flowchart LR` with a system boundary subgraph) | Large only |
 | 4 | State diagram (`stateDiagram-v2`) of domain entities | Standard, Large |
 | 5 | Component flowchart (`flowchart LR`) | Standard, Large, and Small in document mode |
 | 6 | Boundary contract table | Standard, Large |
@@ -57,6 +57,8 @@ Text diagrams only (Mermaid, Markdown tables, directory trees). No rendered SVG 
 In a full spec (Standard, Large), when an artifact is skipped by its condition, keep its heading with one line saying why.
 
 Component flowchart: subgraphs by responsibility (ingestion, pure core, data path, assurance, storage, orchestration as they exist); each node labeled with the decision it owns; arrows labeled with the type or table crossing them; dashed arrows to Protocols.
+
+Context and container views: plain flowcharts, not Mermaid's experimental C4 diagrams, so they take `classDef` styles. The system is one `subgraph`, its boundary; each person and each external system is its own node outside it, and arrows are labeled with what crosses. Inside the boundary, the context view has one node for the whole system and the container view one node per process or service.
 
 Boundary contract table columns: `boundary | input | output | invariants | owner`.
 

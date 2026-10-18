@@ -61,7 +61,7 @@ that words things differently passes as long as the assertion holds.
 
 | Eval | Answer key | What to compare |
 |---|---|---|
-| 3 | `expected/eval-3/design.md`, `expected/eval-3/backlog2.md` (PR #7's merge commit `f8f4a41`) | the `pqx-report` row of the matrix (§6 of `design.md`); findings 1 and 2 of `backlog2.md`; item 9.1 labelled known (§11 of `design.md`) |
+| 3 | `expected/eval-3/design.md`, `expected/eval-3/backlog2.md` (PR #7's merge commit `f8f4a41`; `design.md` brought up to the skill's current diagram rules) | the `pqx-report` row of the matrix (§6 of `design.md`); findings 1 and 2 of `backlog2.md`; item 9.1 labelled known (§11 of `design.md`) |
 | 3b (5) | `expected/eval-3b/answer-key.md` | the six findings with rule, file and label; its *Not findings* list counts false positives, which the assertions do not fail but the grade should report |
 
 "No code changed" means `git diff <build commit>` (evals 3, 3b, 4) and `git status --untracked-files=all` (all) show only
