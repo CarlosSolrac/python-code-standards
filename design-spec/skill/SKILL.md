@@ -65,7 +65,7 @@ Change-impact diagram: one node per package (uv workspace) or module the restruc
 
 Boundary contract table columns: `boundary | input | output | grain/key | invariants | owner`; document mode adds `source`, the code that defines the output and enforces the invariants. `grain/key` says what one record crossing the boundary is and which fields identify it (one row per order, keyed by `order_id`), or that none do (one document per run; raw rows before deduplication).
 
-If the project exposes an HTTP API with an OpenAPI file, its row in the contract table cites that file instead of restating the endpoints; without one, the row is derived like any other.
+If the project exposes an HTTP API, its row in the contract table cites the OpenAPI file. An existing file stands in for restating the endpoints. Without one, the row states the contract as usual and also names the OpenAPI path the implementation will create (design mode) or says that none exists (document mode).
 
 Dependency matrix: rows import columns. Mark each cell `Y` (imported and declared), `!` (imported but not declared), or `d` (declared but not imported). For a uv workspace, use packages as the unit; otherwise modules. Follow it with one line on cycles and direction. In document mode, footnote it with a `cell | source` table: one row per `!` or `d` cell, citing the import (`!`) or the declaration (`d`).
 
