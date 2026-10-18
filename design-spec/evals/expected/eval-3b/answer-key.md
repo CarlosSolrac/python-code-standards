@@ -63,3 +63,6 @@ A finding on any of these is a false positive:
 Facts in the spec that the code does not state must be marked *inferred*, for example: the domain states of an order (read →
 validated or refused → deduplicated → totalled), the decision each component owns, and why `tally-stage` exists. Volumes, refresh
 frequency and latency are unknown and belong under open questions, not as numbers.
+
+In diagrams the marker is a label ending in ` ?` with the `inferred` classDef, a dashed border (skill §7), or one line above a
+diagram whose every node is inferred. A dashed arrow used to mark inference is wrong: dashed arrows mean Protocols.

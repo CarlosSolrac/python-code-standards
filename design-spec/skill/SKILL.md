@@ -96,7 +96,7 @@ End the spec with open questions (at most 3). Design mode then adds "Approve or 
    - orchestration: the top-level run function's steps, and the CLI's exit codes
 4. **Inventory existing documentation and audits.** Specs, decision records, design evaluations, and backlog entries are authorities or prior findings. Map them in the spec; never restate or overrule them. If the code contradicts a spec, report it as a finding.
 5. Apply the size gate.
-6. **Derive** each artifact. Facts read from code are stated plainly; anything deduced (domain states, the decision a component owns, intent) is marked *inferred*. Unknown volumes, SLAs, or targets become open questions, never invented numbers.
+6. **Derive** each artifact. Facts read from code are stated plainly; anything deduced (domain states, the decision a component owns, intent) is marked *inferred*, in diagrams with the marker in section 7. Unknown volumes, SLAs, or targets become open questions, never invented numbers.
 7. **Decisions**: if the project already keeps decision records, map them in a table (record, what it covers). Otherwise record existing decisions as ADRs with `Status: Accepted` and "recorded retroactively from code".
 8. **NFRs**: only those the code, CI, or tests actually verify, each citing its check.
 9. **Findings**: deviations from the rules (section 5), ranked by impact, each with rule number, file, consequence, and fix direction. Label each **new** or **known**; for known ones, cite the backlog item or audit instead of re-arguing it. Diagrams in docs that disagree with the code (layering, dependency, architecture pictures) are findings under rule 14. Mark allowed exceptions and rules that do not apply (e.g. no SQL models) separately, not as findings.
@@ -169,6 +169,7 @@ In that real case, `report` imported `frame` without declaring it and declared `
 - Label arrows with the table or type that crosses them.
 - Use `[[ ]]` for adapters and I/O, `{{ }}` for Protocols, `[( )]` for tables and models.
 - Dashed arrows point to the Protocols a component implements or depends on.
+- Inferred nodes (deduced, not read from code) end their label with ` ?` and take `:::inferred`, defined once per diagram as `classDef inferred stroke:#555,stroke-dasharray:5 5` (a dashed border). Dashed arrows stay reserved for Protocols; never mark inference with them. When every node in a diagram is inferred, one line above the diagram saying so replaces the marker.
 
 ```mermaid
 flowchart LR
@@ -187,6 +188,16 @@ flowchart LR
     Main --> CsvSource
     CsvSource -- raw.orders --> StgOrders
     Main -->|plan + restate raw.orders| StgOrders
+```
+
+An inferred node, in document mode:
+
+```mermaid
+flowchart LR
+    Loader[["Loader: refuse rows without an order id"]]
+    Totals["Totals: round to cents only at the end ?"]:::inferred
+    Loader -- "list[Order]" --> Totals
+    classDef inferred stroke:#555,stroke-dasharray:5 5
 ```
 
 Validate every spec before delivering it with the bundled checker, which parses each Mermaid block with Mermaid's own parser (syntax only, no rendering):
