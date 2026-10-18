@@ -52,6 +52,8 @@
         "Backlog item 9.1 (data refusals escape the per-profile catch) is labelled known and cited, not re-argued",
         "Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source",
         "Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines",
+        "Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)",
+        "No Mermaid C4 diagram (C4Context, C4Container) is used",
         "No code is changed: git status and git diff 8ffaa6f show changes to documentation files only"
       ]
     },
@@ -69,6 +71,8 @@
         "The resynced dependency matrix marks pqx-common's import of pqx-excel '!' and keeps pqx-excel's import of pqx-common 'Y', and the spec reports the pqx-common/pqx-excel cycle instead of saying no cycles exist",
         "A new rule 6 finding reports pqx-common's undeclared, cycle-forming import of pqx-excel and cites packages/pqx-common/src/pqx_common/names.py:338",
         "Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines",
+        "Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)",
+        "No Mermaid C4 diagram (C4Context, C4Container) is used",
         "No code is changed: names.py keeps the reversed import, and git status and git diff bb6b246 show changes to documentation files only"
       ]
     },
@@ -89,6 +93,8 @@
         "Items deduced rather than read from the code (domain states, the decision each component owns) are marked inferred: *inferred* in text; in diagrams, a label ending in ` ?` plus the `inferred` classDef (stroke-dasharray, a dashed border), or one line above a diagram whose every node is inferred. No dashed arrow is used to mark inference",
         "Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source",
         "Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines",
+        "Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)",
+        "No Mermaid C4 diagram (C4Context, C4Container) is used",
         "No code is changed: git status shows changes to documentation files only"
       ]
     },
@@ -107,6 +113,7 @@
         "tally-core, tally-io and tally-cli are each marked changed",
         "Every changed or removed node names a workspace package (such as tally-stage) or module (such as tally_stage) that exists in the fixture, and every added node, if any, names one that does not",
         "Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)",
+        "No Mermaid C4 diagram (C4Context, C4Container) is used",
         "The reply ends with \"Approve or correct before I implement.\"",
         "No code is written: git status and git diff <build commit> show changes to documentation files only"
       ]

@@ -69,9 +69,8 @@ It prints one line per assertion: `pass` or `fail` with the evidence for what a 
 contract-table columns present, cited `path:line` exist at the build commit, only documentation changed, the reply's first and last
 lines, the dependency-matrix cells an assertion names and the change-impact nodes' names, both against the import graph grimp builds
 from the build commit), and `manual` for the rest, with any mechanical part's evidence (for 3b, the whole computed matrix compared
-with the spec's). A check runs only where the eval asserts it: evals 3, 4 and
-3b assert neither that diagrams parse nor that no C4 diagram is used, so for them the grader runs neither check and the §4 checker
-result is the only parse check; their other diagram assertions are graded as usual. Without `--reply`, the reply checks are `manual`. Keep its
+with the spec's). A check runs only where the eval asserts it; every eval that writes a spec asserts that its diagrams parse and
+that no C4 diagram is used. Without `--reply`, the reply checks are `manual`. Keep its
 `pass` and `fail` grades unless the evidence shows the grader misread the spec, and say so in the grade if you overrule one.
 
 Then mark each remaining assertion in `evals.json` pass or fail by hand, quoting the evidence. The answer keys are references, not

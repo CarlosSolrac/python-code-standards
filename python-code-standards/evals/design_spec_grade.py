@@ -35,7 +35,7 @@ from typing import Literal, TypedDict, cast
 
 import grimp
 
-GRADER_VERSION: str = "1.1.0"
+GRADER_VERSION: str = "1.2.0"
 """Bump on any change to what is graded, so grades from different versions are not compared."""
 
 
@@ -974,6 +974,8 @@ RULES: Mapping[int, Sequence[Rule]] = {
         ),
         Rule("Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source", contract_sources, complete=False),
         Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
+        Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
+        Rule("No Mermaid C4 diagram (C4Context, C4Container) is used", no_c4),
         Rule("No code is changed: git status and git diff 8ffaa6f show changes to documentation files only", documentation_only),
     ),
     4: (
@@ -984,6 +986,8 @@ RULES: Mapping[int, Sequence[Rule]] = {
             complete=False,
         ),
         Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
+        Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
+        Rule("No Mermaid C4 diagram (C4Context, C4Container) is used", no_c4),
         Rule("No code is changed: names.py keeps the reversed import, and git status and git diff bb6b246 show changes to documentation files only", documentation_only),
     ),
     5: (
@@ -995,6 +999,8 @@ RULES: Mapping[int, Sequence[Rule]] = {
         ),
         Rule("Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source", contract_sources, complete=False),
         Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
+        Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
+        Rule("No Mermaid C4 diagram (C4Context, C4Container) is used", no_c4),
         Rule("No code is changed: git status shows changes to documentation files only", documentation_only),
     ),
     6: (
@@ -1005,6 +1011,7 @@ RULES: Mapping[int, Sequence[Rule]] = {
             impact_nodes(read_workspace),
         ),
         Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
+        Rule("No Mermaid C4 diagram (C4Context, C4Container) is used", no_c4),
         Rule('The reply ends with "Approve or correct before I implement."', closing_line),
         Rule("No code is written: git status and git diff <build commit> show changes to documentation files only", documentation_only),
     ),

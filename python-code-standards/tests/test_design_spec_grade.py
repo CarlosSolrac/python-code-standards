@@ -250,6 +250,13 @@ def test_rules_match_the_assertions_in_evals_json() -> None:
         bind(cast("list[str]", entry["assertions"]), RULES.get(cast("int", entry["id"]), ()))
 
 
+@pytest.mark.parametrize("eval_id", [1, 3, 4, 5, 6])
+def test_every_eval_that_writes_a_spec_grades_its_diagrams(eval_id: int) -> None:
+    checks: list[Check] = [rule.check for rule in RULES[eval_id]]
+    assert diagrams_parse in checks
+    assert no_c4 in checks
+
+
 def test_main_grades_against_the_repository_evals_by_default(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     main(["2", str(_fixture(tmp_path)), "abc1234"], rules={})
     assert "eval 2 (eval-2-small)" in capsys.readouterr().out
