@@ -33,8 +33,8 @@ the code runs were repeated with 0.9.74 (2026-10-02); the differences are noted 
 
 **What runs without a model.** Code extraction is local: tree-sitter parses each file, and the graph
 gets symbols, `calls`, `imports`/`imports_from` edges between files (with the line), and
-`depends_on` edges between packages, read from each `pyproject.toml`. No key and no network are
-needed after the first `uvx` download. Two commands build a code graph:
+`depends_on` edges between packages, read from each `pyproject.toml`. No key is needed. Two commands
+build a code graph:
 
 | Run | Command (from `$S/graphify/runs`, on a fresh copy of the fixture) | planted-defects | ParquetToXL |
 |-----|------|------|------|
@@ -108,10 +108,10 @@ contract files: 9,148 and 935,652 bytes, so 2.5% and 0.13%. Reading `GRAPH_REPOR
 more than the matrix saves: 3,748 bytes net on planted-defects and 27,055 on ParquetToXL.
 
 Graphify's own benchmark reports much larger savings (`graphify benchmark graphify-out/graph.json`
-on the `update` graphs: 3.8x on planted-defects, 136.5x on ParquetToXL). Its baseline is every file graphify
-detected (for ParquetToXL 167,250 words, which it counts as ~223,000 tokens, tests and docs included),
-set against the cost of one 2,000-token query. Document mode never reads the whole corpus, and a query is not a spec, so that ratio does not
-apply here.
+inside each `update` copy: 3.8x on planted-defects, 136.5x on ParquetToXL). Its baseline is every
+file graphify detected (for ParquetToXL 167,250 words, which it counts as ~223,000 tokens, tests and
+docs included), set against the cost of one 2,000-token query. Document mode never reads the whole
+corpus, and a query is not a spec, so that ratio does not apply here.
 
 **Verdict on code.** The graph is accurate for the dependency matrix, the one structural fact it
 captures that design-spec needs, and it updates incrementally in seconds. Design-spec already gets
@@ -170,8 +170,7 @@ is under, without the answer. **M**: neither.
 | 5 | Where does the design-spec mechanical grader live? | `python-code-standards/evals/design_spec_grade.py` (`plans/design-spec-review.md:21`) | `grader`: **A**, 10 lines, 1,718 bytes | **P**, 7,031 bytes: the plan's title node only |
 
 Without a model, graphify answered none of the five and pointed at the right place for three. A
-single `grep` answered four and pointed at the fifth, with 18% to 42% of the
-output's bytes. The
+single `grep` answered four and pointed at the fifth, with 18% to 42% of the output's bytes. The
 semantic graph might do better, since it extracts concepts and cross-document links, but that needs
 the model pass above.
 
@@ -190,8 +189,8 @@ give the agent a spec format and workflow. Three were chosen to run beside graph
   full-text search, vector search, and LLM reranking, all on this machine with GGUF models.
 - **OpenSpec** (`@fission-ai/openspec`), a spec layer for existing codebases: specs as requirements
   with scenarios, and changes as proposal, spec deltas, design and tasks.
-- **GitHub Spec Kit** (`specify`), the most-starred spec-driven workflow (141,707 stars): a constitution, then a
-  spec, plan and tasks per feature.
+- **GitHub Spec Kit** (`specify`), the most-starred spec-driven workflow (141,707 stars): a
+  constitution, then a spec, plan and tasks per feature.
 
 Found and not run: Context7 indexes third-party library documentation, not a project's own specs;
 DeepWiki and deepwiki-open write a wiki with a hosted service or a model key; Repomix packs a
@@ -199,8 +198,8 @@ repository into one file rather than indexing it; Kiro is an IDE, not a CLI.
 
 **Versions.** QMD 2.8.3 (2026-08-16) is the newest release and older than two weeks. OpenSpec 1.14.3
 (2026-10-17) and Spec Kit 1.2.1 (2026-10-16) are the newest and younger than two weeks; they only
-initialised a project and validated files, which does not depend on the patch level. The two-week
-rule matters at adoption, which no tool reaches here.
+initialised a project and validated files. The two-week rule matters at adoption, which no tool
+reaches here; a later look at either should rerun these steps on a release at least two weeks old.
 
 **QMD on the docs corpus.** Same 27 Markdown files and the same five questions as section 2, from
 `$S/qmd/run` with its own scratch `HOME`. Output sizes leave out npx's `npm notice` lines.
@@ -291,10 +290,11 @@ The reasons, in order of weight:
    does the job in-process, and rule 14's import-linter contract keeps the code from drifting.
 2. **Docs are where a knowledge tool could help, and graphify needs a model there.** A semantic index
    costs about 125,000 input tokens for this corpus, needs a hosted key, a local model server, or
-   the Claude Code session's own usage, and the skill route installs a skill, a CLAUDE.md section
-   and a hook. That is a dependency and a standing cost for an unmeasured gain.
+   the Claude Code session's own usage, and the skill route installs a skill into `~/.claude` (with
+   an optional CLAUDE.md section and hook). That is a dependency and a standing cost for an unmeasured gain.
 3. **At this size, search beats indexing.** Over 27 files and 500 KB, one `grep` per question answered
-   four of five. QMD's hybrid query answered one and pointed to the rest; graphify's outline answered none.
+   four of five. QMD's hybrid query answered one and pointed to the rest; graphify's outline answered
+   none.
 4. **Spec managers compete with design-spec rather than feed it.** Adopting OpenSpec or Spec Kit
    means either rewriting design-spec's spec format into theirs or running two spec systems side by
    side.
