@@ -428,8 +428,9 @@ def test_citation_pattern(text: str, found: list[tuple[str, str]]) -> None:
         (_mermaid("flowchart LR", "    A --> B"), Verdict(passed=True, evidence="no Mermaid C4 diagram")),
         (_mermaid("%% context", "C4Component", "  Person(a, 'A')") + _mermaid("  C4Deployment"), Verdict(passed=False, evidence="Mermaid C4 diagrams used: C4Component, C4Deployment")),
         ("C4Component named in prose is not a diagram\n", Verdict(passed=True, evidence="no Mermaid C4 diagram")),
+        (_mermaid("flowchart LR", "  C4Gateway --> B"), Verdict(passed=True, evidence="no Mermaid C4 diagram")),
     ],
-    ids=["flowchart", "c4-blocks", "prose"],
+    ids=["flowchart", "c4-blocks", "prose", "node-named-c4"],
 )
 def test_no_c4(spec: str, verdict: Verdict) -> None:
     assert no_c4(_run(spec=spec)) == verdict

@@ -54,7 +54,6 @@ CITATION: re.Pattern[str] = re.compile(r"(?<![\w./:-])((?=[\w./-]*[A-Za-z])[\w.-
 _FENCE: re.Pattern[str] = re.compile(r"^ {0,3}```.*?^ {0,3}```[ \t]*$", re.MULTILINE | re.DOTALL)
 _MERMAID: re.Pattern[str] = re.compile(r"```mermaid[ \t]*\r?\n([\s\S]*?)```")
 _CLASSDEF: re.Pattern[str] = re.compile(r"^\s*classDef\s+(\S+)\s*(.*)$", re.MULTILINE)
-_C4: re.Pattern[str] = re.compile(r"^\s*(C4\w+)", re.MULTILINE)
 _SEPARATOR: re.Pattern[str] = re.compile(r"^[\s|:-]+$")
 _APPLIED: re.Pattern[str] = re.compile(r":::([\w-]+)|^\s*class\s+\S+\s+([\w-]+)", re.MULTILINE)
 
@@ -343,10 +342,10 @@ def contract_sources(run: Run) -> Verdict:
 
 
 def no_c4(run: Run) -> Verdict:
-    """Check that no Mermaid block is a C4 diagram."""
+    """Check that no Mermaid block is a C4 diagram: its type, not a node name, starts with ``C4``."""
     if run.spec is None:
         return _no_spec(run)
-    found: list[str] = [match.group(1) for block in _MERMAID.findall(run.spec) for match in [_C4.search(block)] if match]
+    found: list[str] = [kind for kind in map(_diagram_type, _MERMAID.findall(run.spec)) if kind.startswith("C4")]
     if found:
         return Verdict(passed=False, evidence=f"Mermaid C4 diagrams used: {', '.join(found)}")
     return Verdict(passed=True, evidence="no Mermaid C4 diagram")
