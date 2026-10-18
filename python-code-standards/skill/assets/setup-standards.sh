@@ -1756,8 +1756,9 @@ write_file tools/mutation.sh <<'MUTEOF'
 # Run it through bash: setup writes it without the executable bit, and commits
 # made on Windows never record one.
 #   bash tools/mutation.sh
-# mutmut needs os.fork, so it runs on Linux and macOS. On Windows, run it in WSL:
-#   wsl -e bash tools/mutation.sh
+# mutmut needs os.fork, so it runs on Linux and macOS. On Windows, run it in WSL,
+# through a login shell, which puts uv's ~/.local/bin on PATH:
+#   wsl -e bash -lc "bash tools/mutation.sh"
 # Pass a mutant name pattern to narrow a local run:
 #   bash tools/mutation.sh 'mypackage.module*'
 #
@@ -2775,6 +2776,7 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "f8c6728c028cc00802d402bece1c85226e3d1cf0ddd3acfe07d1a5d67e53b2de"
   ],
   "tools/mutation.sh": [
+   "22a8457a0dff9d678e1a02c6c51de8918344f906538525ee067e185199f5d260",
    "ff0235affdaf6540d4ec96e914a78425bbca81459d9d524f218f16c72d8e6272"
   ],
   "tools/review_brief.py": [
