@@ -101,11 +101,19 @@ still come from reading the source.
 
 The graph replaces only the two matrix commands: their 451 bytes become 222 on planted-defects,
 and 1,799 become 609 on ParquetToXL, a saving of 229 and 1,190 bytes (about 60 and 300 tokens).
-Against the whole read set that is small whichever bound is taken. The lower bound reads step 1, the
-command output, the contract files only and the docs: 3,236 bytes for planted-defects and 734,360
-for ParquetToXL, so the saving is 7.1% and 0.16%. The upper bound reads all source instead of the
-contract files: 9,148 and 935,652 bytes, so 2.5% and 0.13%. Reading `GRAPH_REPORT.md` as well costs
-more than the matrix saves: 3,748 bytes net on planted-defects and 27,055 on ParquetToXL.
+That absolute saving is the measured result. How large it is relative to a whole run depends on how
+much of the source and docs the agent opens, which only a recorded session can show (decision D16).
+Three static scenarios bracket it:
+
+| Scenario | planted-defects | ParquetToXL |
+|----------|-----------------|-------------|
+| Floor: step 1 files and command output only, no source or docs opened | 2,253 bytes; saving 10.2% | 48,143 bytes; saving 2.5% |
+| Contract files and all docs read in full, plus the floor | 3,236 bytes; saving 7.1% | 734,360 bytes; saving 0.16% |
+| All source and all docs read in full, plus the floor | 9,148 bytes; saving 2.5% | 935,652 bytes; saving 0.13% |
+
+The floor is below any real run, since no spec can be written without opening a contract, and the
+full-read rows are above most runs. Reading `GRAPH_REPORT.md` as well costs more than the matrix
+saves in every scenario: 3,748 bytes net on planted-defects and 27,055 on ParquetToXL.
 
 Graphify's own benchmark reports much larger savings (`graphify benchmark graphify-out/graph.json`
 inside each `update` copy: 3.8x on planted-defects, 136.5x on ParquetToXL). Its baseline is every
@@ -174,6 +182,19 @@ single `grep` answered four and pointed at the fifth, with 18% to 42% of the out
 semantic graph might do better, since it extracts concepts and cross-document links, but that needs
 the model pass above.
 
+Because the grep phrases were chosen knowing the answers, a blind grep was run too (decision D17):
+each question's longest word, picked mechanically
+(`echo "<question>" | tr -d '?' | tr ' ' '\n' | awk '{ if (length($0) > length(best)) best=$0 } END {print best}'`),
+with the same `grep` command. It found the answer text for 2 of 5 and the file for the other 3, with larger output:
+
+| # | Word | Result | Output |
+|---|------|--------|--------|
+| 1 | `century-window` | **A** (`phase-b.md:63`) | 8 lines, 1,024 bytes |
+| 2 | `boundary` | **A** (`SKILL.md:61`) | 39 lines, 7,393 bytes |
+| 3 | `design-spec` | **P** (`SKILL.md`, not line 48) | 52 lines, 9,371 bytes |
+| 4 | `evaluation` | **P** (the evaluation file, not line 8) | 12 lines, 1,988 bytes |
+| 5 | `design-spec` | **P** (the plan, not line 21) | 52 lines, 9,371 bytes |
+
 **Verdict on docs.** On docs, graphify's value depends on a model pass that costs about the size of
 the corpus in input tokens per full index. Without that pass it is a heading outline that loses to
 `grep`. Design-spec's step 4 maps existing docs as a table of each record and what it covers, which
@@ -220,12 +241,16 @@ reaches here; a later look at either should rerun these steps on a release at le
 | 3 | **A** | **P** | **M**: the two design-spec plans; 1,069 bytes | **P**: `SKILL.md:65`, the import-contract paragraph in the rule's section; 3,042 bytes | **P**: `SKILL.md` (its front matter) ranked second; 2,897 bytes |
 | 4 | **P** | **P** | **P**: the evaluation's title; 867 bytes | **P**: the evaluation's title; 2,664 bytes | **P**: the evaluation's title; 2,938 bytes |
 | 5 | **A** | **P** | **M**: "No results found."; 18 bytes | **P**: the plan's title; 1,124 bytes | **P**: the plan's title; 2,455 bytes |
-| | 4 A, 1 P | 0 A, 3 P, 2 M | 0 A, 2 P, 3 M | 1 A, 3 P, 1 M | 1 A, 4 P, 0 M |
+| Answer text | 4 of 5 (blind grep: 2) | 0 | 0 | 1 | 1 |
+| Located (A or P) | 5 of 5 (blind grep: 5) | 3 | 2 | 4 | 5 |
 
 Each QMD cell comes from `npx -y @tobilu/qmd@2.8.3 <search|vsearch|query> "<question>" -c docs`, with
-the question asked as written. QMD's models turn a natural-language question into the right place
-more often than graphify's outline or BM25 alone, but on a corpus this size a keyword `grep` chosen by
-someone who knows the vocabulary still answers more.
+the question asked as written. Counting where each method leads the agent, QMD's hybrid query
+located all five, as `grep` did, with 2,270 to 2,938 bytes of output per question against the blind
+grep's 1,024 to 9,371; graphify's outline located three and BM25 alone two. Counting answer text
+shown, the hand-picked grep leads (4), the blind grep follows (2), and QMD shows it for one. On a
+27-file corpus, then, QMD matches `grep` at finding the place, at the price of 2.1 GiB of models and
+29 to 65 s per query.
 
 **OpenSpec on design-spec's files.** In a scratch copy of planted-defects,
 `npx -y @fission-ai/openspec@1.14.3 init tally --tools claude --no-animation` created
@@ -276,7 +301,7 @@ candidate to revisit when a project's docs outgrow `grep`.**
 | Tool | Verdict | One-line reason |
 |------|---------|-----------------|
 | graphify | Do not adopt | Its matrix is right, but the skill already gets it from two commands with smaller output (section 1); on docs it needs a model pass costing about the corpus size in tokens, and without one it answered none of five questions (section 2) |
-| QMD | Revisit later; the best fit of the four | Local, MIT, reads design-spec's files as they are, and finds sections by meaning; on this corpus a `grep` still answered more, and its semantic search needs 2.1 GiB of models (section 3) |
+| QMD | Revisit later; the best fit of the four | Local, MIT, reads design-spec's files as they are, and located all five answers by meaning; but `grep` located them too on this corpus, and QMD's semantic search needs 2.1 GiB of models and 29 to 65 s per query (section 3) |
 | OpenSpec | Do not adopt | A spec format of its own: design-spec's `design.md` fails its spec validation and fits only as a change's free-form design (section 3) |
 | Spec Kit | Do not adopt | A workflow of its own, with 10 per-project skills whose plan, contracts and approval steps overlap design mode's (section 3) |
 
@@ -292,9 +317,11 @@ The reasons, in order of weight:
    costs about 125,000 input tokens for this corpus, needs a hosted key, a local model server, or
    the Claude Code session's own usage, and the skill route installs a skill into `~/.claude` (with
    an optional CLAUDE.md section and hook). That is a dependency and a standing cost for an unmeasured gain.
-3. **At this size, search beats indexing.** Over 27 files and 500 KB, one `grep` per question answered
-   four of five. QMD's hybrid query answered one and pointed to the rest; graphify's outline answered
-   none.
+3. **At this size, an index adds little over search.** Over 27 files and 500 KB, `grep` located the
+   answer for all five questions, even with a mechanically chosen word, and QMD's hybrid query did
+   the same at the cost of 2.1 GiB of models and half a minute or more per query; graphify's outline
+   located three. The gain an index could bring here is fewer bytes per answer, not answers grep
+   misses.
 4. **Spec managers compete with design-spec rather than feed it.** Adopting OpenSpec or Spec Kit
    means either rewriting design-spec's spec format into theirs or running two spec systems side by
    side.
