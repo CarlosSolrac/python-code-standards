@@ -50,6 +50,8 @@
         "The dependency matrix marks pqx-report's import of pqx-frame '!' and its unused declarations of pqx-plan and pqx-verify 'd', and a finding reports the defect",
         "A finding reports that the layering diagram in CLAUDE.md disagrees with the imports (rule 14)",
         "Backlog item 9.1 (data refusals escape the per-profile catch) is labelled known and cited, not re-argued",
+        "Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source",
+        "Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines",
         "No code is changed: git status and git diff 8ffaa6f show changes to documentation files only"
       ]
     },
@@ -81,6 +83,8 @@
         "All six defects in expected/eval-3b/answer-key.md are reported as findings, each with its rule number and file",
         "Each finding is labelled new or known as the answer key says: only the unused tally-io declaration in tally-stage is known, citing BACKLOG.md item 2",
         "Items deduced rather than read from the code (domain states, the decision each component owns) are marked inferred: *inferred* in text; in diagrams, a label ending in ` ?` plus the `inferred` classDef (stroke-dasharray, a dashed border), or one line above a diagram whose every node is inferred. No dashed arrow is used to mark inference",
+        "Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source",
+        "Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines",
         "No code is changed: git status shows changes to documentation files only"
       ]
     },
