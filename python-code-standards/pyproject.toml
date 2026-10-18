@@ -159,6 +159,8 @@ max-complexity-allowed = 15
 [tool.deptry]
 # Example and fixture code imports duckdb on purpose; it is not this repo's dependency.
 extend_exclude = ["evals/fixtures", "skill/assets"]
+# The design-spec eval grader imports grimp, a dev dependency: it is eval tooling, not shipped code.
+per_rule_ignores = { DEP004 = ["grimp"] }
 
 [tool.coverage.run]
 branch = true

@@ -11,7 +11,7 @@ import io
 import json
 import runpy
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import cast
 
@@ -28,24 +28,29 @@ from evals.design_spec_grade import (
     RULES,
     VALIDATOR,
     Check,
+    Package,
     Result,
     Rule,
     Run,
     Status,
     Verdict,
+    Workspace,
     bind,
     change_classdefs,
     citations_exist,
     closing_line,
     contract_header,
     contract_sources,
+    dependency_matrix,
     diagrams_parse,
     documentation_only,
     first_line,
     grade,
+    impact_nodes,
     inferred_marker,
     main,
     no_c4,
+    read_workspace,
     spec_and_adrs_only,
 )
 from evals.design_spec_grade import _run as run_command  # pyright: ignore[reportPrivateUsage]
@@ -747,3 +752,373 @@ def test_run_reports_a_missing_program_as_exit_127(tmp_path: Path) -> None:
 def test_rules_run_the_diagram_checker(monkeypatch: pytest.MonkeyPatch, number: int, status: Status) -> None:
     monkeypatch.setattr("evals.design_spec_grade._run", FakeValidator(0, "d.md: block 1 (line 2): OK flowchart-v2\n"))
     assert _graded(number, "Every Mermaid diagram in the spec passes", _run(spec="# Spec\n")).status == status
+
+
+SHOP: Workspace = Workspace(
+    packages=(
+        Package("shop-common", frozenset({"shop_common"}), frozenset()),
+        Package("shop-core", frozenset({"shop_core"}), frozenset({"shop-common"})),
+        Package("shop-io", frozenset({"shop_io"}), frozenset({"shop-common", "shop-core"})),
+        Package("shop-cli", frozenset({"shop_cli"}), frozenset({"shop-common", "shop-io"})),
+    ),
+    imports=frozenset({("shop-core", "shop-common"), ("shop-io", "shop-common"), ("shop-cli", "shop-common"), ("shop-cli", "shop-io"), ("shop-cli", "shop-core")}),
+    modules=frozenset({"shop_common", "shop_common.types", "shop_core", "shop_io", "shop_cli"}),
+)
+"""A workspace whose CLI imports core undeclared and whose io declares core unused."""
+
+
+def _matrix(*rows: str) -> str:
+    """Return a dependency matrix over SHOP's packages, one ``| label | cells |`` row per argument."""
+    return "| imports ↓ / of → | common | core | io | cli |\n|---|---|---|---|---|\n" + "".join(f"{row}\n" for row in rows)
+
+
+SHOP_MATRIX: str = _matrix("| common | | | | |", "| core | Y | | | |", "| io | Y | **d** | | |", "| cli | Y | **!** | Y | |")
+
+
+@dataclass
+class FakeReader:
+    """Stand-in for ``read_workspace`` that returns a canned workspace and records each run."""
+
+    answer: Workspace | Verdict
+    runs: list[Run] = field(default_factory=list[Run])
+
+    def __call__(self, run: Run) -> Workspace | Verdict:
+        """Record the run and return the canned answer."""
+        self.runs.append(run)
+        return self.answer
+
+
+@pytest.mark.parametrize(
+    ("cells", "spec", "verdict"),
+    [
+        ((("cli", "core"),), SHOP_MATRIX, Verdict(passed=True, evidence="the dependency matrix equals the code's at abc1234 (4 packages, 4 Y cells): cli → core !, io → core d")),
+        ((), SHOP_MATRIX, Verdict(passed=True, evidence="the dependency matrix equals the code's at abc1234 (4 packages, 4 Y cells): cli → core !, io → core d")),
+        (
+            (("shop-cli", "shop-core"),),
+            _matrix("| core | Y | | | |", "| io | Y | d | | |", "| cli | Y | Y | Y | |"),
+            Verdict(passed=False, evidence="the dependency matrix differs from the code at abc1234 where the assertion looks: cli → core is Y in the spec, ! in the code"),
+        ),
+        (
+            (("cli", "core"),),
+            _matrix("| core | Y | | | |", "| io | Y | | | |", "| cli | Y | Y | Y | |"),
+            Verdict(
+                passed=False,
+                evidence="the dependency matrix differs from the code at abc1234 where the assertion looks: cli → core is Y in the spec, ! in the code; and elsewhere: io → core is blank in the spec, d in the code",
+            ),
+        ),
+        (
+            (("cli", "core"), ("io", "core")),
+            _matrix("| core | Y | | | |", "| io | | d | | |", "| cli | Y | ! | Y | |"),
+            Verdict(passed=True, evidence="the named cells agree with the code at abc1234 (cli → core !, io → core d); the rest of the matrix differs: io → common is blank in the spec, Y in the code"),
+        ),
+        (
+            (),
+            _matrix("| core | Y | | | |", "| io | Y | | | |", "| cli | Y | ! | Y | |"),
+            Verdict(passed=None, evidence="the dependency matrix differs from the code at abc1234: io → core is blank in the spec, d in the code"),
+        ),
+    ],
+    ids=["equal", "equal-no-cells", "named-cell-differs", "named-and-other-cells-differ", "other-cell-differs", "differs-no-cells"],
+)
+def test_dependency_matrix_compares_the_spec_with_the_code(cells: tuple[tuple[str, str], ...], spec: str, verdict: Verdict) -> None:
+    reader: FakeReader = FakeReader(SHOP)
+    run: Run = _run(spec=spec)
+    assert dependency_matrix(reader, *cells)(run) == verdict
+    assert reader.runs == [run]
+
+
+def test_dependency_matrix_reads_labels_as_package_or_module_names() -> None:
+    spec: str = "| Imports | `shop-common` | shop_core | **io** | cli |\n|---|---|---|---|---|\n| Shop-Core | `Y` | — | | |\n| shop_io | Y | *d* | — | |\n| `cli` | Y | ! | Y | — |\n| shop-web | Y | | | |\n"
+    assert dependency_matrix(FakeReader(SHOP), ("cli", "core"))(_run(spec=spec)) == Verdict(
+        passed=True, evidence="the named cells agree with the code at abc1234 (cli → core !); the rest of the matrix differs: shop-web → common is Y in the spec, blank in the code"
+    )
+
+
+def test_dependency_matrix_reads_the_first_matrix_and_ignores_short_rows() -> None:
+    spec: str = f"| Cell | Source |\n|---|---|\n| cli → core | `x.py:1` |\n\n{_matrix('| core | Y |', '| io | Y | d |', '| cli | Y | ! | Y |')}\n{_matrix('| cli | | | | |')}"
+    assert dependency_matrix(FakeReader(SHOP))(_run(spec=spec)).passed is True
+
+
+@pytest.mark.parametrize(("cells", "passed"), [((("cli", "core"),), False), ((), None)], ids=["named-cells-fail", "no-cells-manual"])
+def test_dependency_matrix_without_a_matrix(cells: tuple[tuple[str, str], ...], *, passed: bool | None) -> None:
+    no_table: Verdict = dependency_matrix(FakeReader(SHOP), *cells)(_run(spec="# Spec\n\nNo matrix.\n"))
+    assert no_table == Verdict(passed=passed, evidence="no dependency matrix (a table whose first header cell starts with 'imports')")
+    no_spec: Verdict = dependency_matrix(FakeReader(SHOP), *cells)(_run(spec=None))
+    assert no_spec == Verdict(passed=passed, evidence=f"no spec at {Path('fixture/docs/design.md')}")
+
+
+def test_dependency_matrix_names_packages_in_neither_a_row_nor_a_column() -> None:
+    docs: Package = Package("shop-docs", frozenset({"shop_docs"}), frozenset())
+    workspace: Workspace = replace(SHOP, packages=(*SHOP.packages, docs))
+    spec: str = "| imports | common | core | io |\n|---|---|---|---|\n| core | Y | | |\n| io | Y | d | |\n| cli | Y | ! | Y |\n"
+    assert dependency_matrix(FakeReader(workspace))(_run(spec=spec)) == Verdict(
+        passed=True, evidence="the dependency matrix equals the code's at abc1234 (5 packages, 4 Y cells): cli → core !, io → core d; not in the matrix: docs"
+    )
+
+
+def test_workspace_matrix_leaves_imports_within_a_package_out() -> None:
+    workspace: Workspace = replace(SHOP, imports=SHOP.imports | {("shop-io", "shop-io")})
+    assert workspace.matrix() == SHOP.matrix()
+
+
+def test_dependency_matrix_decides_nothing_when_the_code_cannot_be_read() -> None:
+    unreadable: Verdict = Verdict(passed=None, evidence="git archive failed")
+    assert dependency_matrix(FakeReader(unreadable), ("cli", "core"))(_run(spec=SHOP_MATRIX)) == unreadable
+
+
+type Tree = dict[str, tuple[list[str], dict[str, str]]]
+"""Workspace packages by name: their declared dependencies, and their files under ``src/`` with contents."""
+
+
+def _workspace_repo(root: Path, packages: Tree) -> str:
+    """Write a uv-workspace-shaped repository under ``root``, commit it, and return the commit."""
+    name: str
+    dependencies: list[str]
+    files: dict[str, str]
+    for name, (dependencies, files) in packages.items():
+        folder: Path = root / "packages" / name
+        folder.mkdir(parents=True)
+        listed: str = ", ".join(f'"{dependency}"' for dependency in dependencies)
+        (folder / "pyproject.toml").write_text(f'[project]\nname = "{name}"\nversion = "0.1.0"\ndependencies = [{listed}]\n', encoding="utf-8")
+        path: str
+        content: str
+        for path, content in files.items():
+            (folder / "src" / path).parent.mkdir(parents=True, exist_ok=True)
+            (folder / "src" / path).write_text(content, encoding="utf-8")
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "build")
+    return _git(root, "rev-parse", "HEAD")
+
+
+SHOP_TREE: Tree = {
+    "shop-common": ([], {"shop_common/__init__.py": "", "shop_common/types.py": "X = 1\n"}),
+    "shop-core": (["shop-common"], {"shop_core/__init__.py": "from shop_common.types import X\n"}),
+    "shop-io": (["shop-common", "Shop_Core>=0.1", "polars[pyarrow]>=1"], {"shop_io/__init__.py": "import shop_common\n"}),
+    "shop-cli": (["shop-common", "shop-io"], {"shop_cli/__init__.py": "from typing import TYPE_CHECKING\n\nimport shop_common\nimport shop_io\n\nif TYPE_CHECKING:\n    import shop_core\n"}),
+}
+"""SHOP as code: cli's import of core is TYPE_CHECKING only, which the matrix still counts."""
+
+
+def _shop_run(root: Path, commit: str) -> Run:
+    """Return run inputs for a workspace repository at ``commit``."""
+    return Run(fixture=root, commit=commit, spec_path=root / "docs" / "design.md", spec=None, reply=None)
+
+
+def test_read_workspace_reads_packages_declarations_and_imports_at_the_build_commit(tmp_path: Path) -> None:
+    commit: str = _workspace_repo(tmp_path, SHOP_TREE)
+    (tmp_path / "packages" / "shop-common" / "src" / "shop_common" / "__init__.py").write_text("import shop_cli\n", encoding="utf-8")
+    path: list[str] = list(sys.path)
+    assert read_workspace(_shop_run(tmp_path, commit)) == Workspace(
+        packages=(
+            Package("shop-cli", frozenset({"shop_cli"}), frozenset({"shop-common", "shop-io"})),
+            Package("shop-common", frozenset({"shop_common"}), frozenset()),
+            Package("shop-core", frozenset({"shop_core"}), frozenset({"shop-common"})),
+            Package("shop-io", frozenset({"shop_io"}), frozenset({"shop-common", "shop-core", "polars"})),
+        ),
+        imports=SHOP.imports,
+        modules=SHOP.modules,
+    )
+    assert sys.path == path
+
+
+def test_read_workspace_reads_only_package_source(tmp_path: Path) -> None:
+    tree: Tree = {
+        "app-base": ([], {"app_base/__init__.py": "", "loose.py": "import app_top\n"}),
+        "app-top": (["app-base"], {"app_top/__init__.py": "import app_base\n"}),
+        "app-empty": (["app-top"], {}),
+    }
+    _workspace_repo(tmp_path, tree)
+    (tmp_path / "packages" / "app-base" / "tests").mkdir()
+    (tmp_path / "packages" / "app-base" / "tests" / "test_base.py").write_text("import app_top\n", encoding="utf-8")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "tests")
+    workspace: Workspace | Verdict = read_workspace(_shop_run(tmp_path, _git(tmp_path, "rev-parse", "HEAD")))
+    assert isinstance(workspace, Workspace)
+    assert workspace.matrix() == {("app-top", "app-base"): "Y", ("app-empty", "app-top"): "d"}
+
+
+def test_read_workspace_needs_a_build_commit(tmp_path: Path) -> None:
+    _workspace_repo(tmp_path, SHOP_TREE)
+    verdict: Workspace | Verdict = read_workspace(_shop_run(tmp_path, "0" * 40))
+    assert isinstance(verdict, Verdict)
+    assert verdict.passed is None
+    assert verdict.evidence.startswith(f"git archive {'0' * 40} failed: ")
+
+
+def test_read_workspace_needs_workspace_packages(tmp_path: Path) -> None:
+    commit: str = _workspace_repo(tmp_path, {"app-docs": ([], {})})
+    assert read_workspace(_shop_run(tmp_path, commit)) == Verdict(passed=None, evidence=f"no workspace packages with code under packages/*/src at {commit}")
+
+
+PQX_TREE: Tree = {
+    "pqx-common": ([], {"pqx_common/__init__.py": "", "pqx_common/names.py": "from pqx_excel import workbook\n"}),
+    "pqx-excel": (["pqx-common"], {"pqx_excel/__init__.py": "", "pqx_excel/workbook.py": "from pqx_common import names\n"}),
+    "pqx-frame": ([], {"pqx_frame/__init__.py": ""}),
+    "pqx-plan": ([], {"pqx_plan/__init__.py": ""}),
+    "pqx-verify": ([], {"pqx_verify/__init__.py": ""}),
+    "pqx-report": (["pqx-plan", "pqx-verify"], {"pqx_report/__init__.py": "import pqx_frame\n"}),
+}
+"""Eval 3's report defect and eval 4's reversed import, in miniature."""
+
+
+def _pqx_matrix(common: str, report_frame: str) -> str:
+    """Return a matrix over PQX_TREE with the given common row and report → frame cell."""
+    return f"| imports ↓ / of → | common | excel | frame | plan | verify |\n|---|---|---|---|---|---|\n| common | {common} |\n| excel | Y | | | | |\n| report | | | {report_frame} | d | d |\n"
+
+
+@pytest.mark.parametrize(
+    ("number", "start", "spec", "status"),
+    [
+        (3, "The dependency matrix marks", _pqx_matrix("| !", "**!**"), "manual"),
+        (3, "The dependency matrix marks", _pqx_matrix("| !", "Y"), "fail"),
+        (3, "The dependency matrix marks", _pqx_matrix("|", "!"), "manual"),
+        (4, "The resynced dependency matrix", _pqx_matrix("| !", "!"), "manual"),
+        (4, "The resynced dependency matrix", _pqx_matrix("|", "!"), "fail"),
+        (4, "The resynced dependency matrix", _pqx_matrix("| !", "Y"), "manual"),
+        (5, "All six defects", _pqx_matrix("| !", "!"), "manual"),
+        (5, "All six defects", _pqx_matrix("|", "!"), "manual"),
+    ],
+    ids=["3", "3-report-wrong", "3-other-cell-wrong", "4", "4-reversed-import-missing", "4-other-cell-wrong", "3b-equal", "3b-differs"],
+)
+def test_rules_decide_the_matrix_assertions(tmp_path: Path, number: int, start: str, spec: str, status: Status) -> None:
+    commit: str = _workspace_repo(tmp_path, PQX_TREE)
+    run: Run = replace(_shop_run(tmp_path, commit), spec=spec)
+    assert _graded(number, start, run).status == status
+
+
+IMPACT_CLASSES: tuple[str, ...] = ("  classDef added fill:#dafbe1", "  classDef changed fill:#fff8c5", "  classDef removed fill:#ffebe9")
+
+
+def test_impact_nodes_pass_when_each_names_what_the_code_has_or_lacks() -> None:
+    spec: str = _mermaid(
+        "flowchart LR",
+        '  Cli["shop-cli: calls the typed record"]:::changed --> Core["`**shop_core**`"]',
+        '  Types["shop_common.types"] --> Rec["shop_core.records ?"]:::added',
+        "  Io --> Web",
+        "  class Core,Types changed",
+        "  Io[shop-io.]:::removed",
+        *IMPACT_CLASSES,
+    )
+    reader: FakeReader = FakeReader(SHOP)
+    run: Run = _run(spec=spec)
+    assert impact_nodes(reader)(run) == Verdict(
+        passed=True,
+        evidence="at abc1234, changed and removed nodes name existing packages or modules, and added nodes new ones: shop-cli changed, shop_core changed, shop_common.types changed, shop_core.records added, shop-io removed",
+    )
+    assert reader.runs == [run]
+
+
+def test_impact_nodes_name_each_node_that_does_not() -> None:
+    spec: str = _mermaid(
+        "graph TD",
+        '  Ui["web ui"]:::changed',
+        "  ShopIo:::removed",
+        '  New(["shop_common"]):::added',
+        '  Rec["Typed record"]:::added',
+        "  shop_cli:::changed",
+        '  Num["42"]:::changed',
+        *IMPACT_CLASSES,
+    )
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(
+        passed=False,
+        evidence=(
+            "at abc1234: Ui (changed) names 'web', which is not a package or module; ShopIo (removed) names 'ShopIo', which is not a package or module; "
+            "New (added) names 'shop_common', which already exists; Rec (added) names 'Typed', which is not written as a package or module; "
+            "Num (changed) names '\"42\"', which is not a package or module"
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        _mermaid("flowchart LR", "  A --> B", *IMPACT_CLASSES) + _mermaid("stateDiagram-v2", "  S:::added", *IMPACT_CLASSES),
+        _mermaid("flowchart LR", "  A:::inferred", "  class B other"),
+    ],
+    ids=["no-flowchart-node-styled", "other-classes"],
+)
+def test_impact_nodes_fail_without_a_styled_node(spec: str) -> None:
+    reader: FakeReader = FakeReader(SHOP)
+    assert impact_nodes(reader)(_run(spec=spec)) == Verdict(passed=False, evidence="no flowchart node is styled added, changed or removed")
+    assert reader.runs == []
+
+
+def test_impact_nodes_ignore_commented_out_nodes() -> None:
+    spec: str = _mermaid("flowchart LR", '  %% Ghost["shop-web"]:::removed', "  A[shop-io]:::changed", "  %%A:::removed", *IMPACT_CLASSES)
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(passed=True, evidence="at abc1234, changed and removed nodes name existing packages or modules, and added nodes new ones: shop-io changed")
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=_mermaid("flowchart LR", '  %% Ghost["shop-web"]:::removed', *IMPACT_CLASSES))) == Verdict(
+        passed=False, evidence="no flowchart node is styled added, changed or removed"
+    )
+
+
+def test_impact_nodes_read_labels_from_shape_objects() -> None:
+    spec: str = _mermaid(
+        "flowchart LR",
+        '  Real@{ shape: rect, label: "shop-io" }',
+        "  Other@{ label: 'shop_core.records', shape: rect }",
+        "  Bare@{ label: shop_core }",
+        "  Real --> Other",
+        "  class Real,Bare changed",
+        "  class Other added",
+        *IMPACT_CLASSES,
+    )
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(
+        passed=True, evidence="at abc1234, changed and removed nodes name existing packages or modules, and added nodes new ones: shop-io changed, shop_core.records added, shop_core changed"
+    )
+
+
+def test_impact_nodes_read_nodes_as_mermaid_does() -> None:
+    """Mermaid keeps a dotted ID whole, shows a node's last label, and reads statements after a semicolon."""
+    spec: str = _mermaid(
+        "flowchart LR",
+        "  shop_common.types:::changed",
+        "  A[shop-io]; class A changed;",
+        "  A[shop-web]",
+        "  B[shop-web]:::removed",
+        "  B[shop-io]",
+        *IMPACT_CLASSES,
+    )
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(passed=False, evidence="at abc1234: A (changed) names 'shop-web', which is not a package or module")
+
+
+def test_impact_nodes_accept_a_code_named_id_for_changed_and_removed_nodes() -> None:
+    spec: str = _mermaid(
+        "flowchart LR",
+        '  shop_core["Core (shop_core): returns a typed record"]:::changed',
+        '  shop_io["shop_io.records"]:::added',
+        '  Cli["Cli (shop-cli)"]:::removed',
+        '  shop_cli["shop-web: handles requests"]:::changed',
+        '  shop_common["Shop-Web: UI"]:::changed',
+        *IMPACT_CLASSES,
+    )
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(
+        passed=False,
+        evidence=(
+            "at abc1234: Cli (removed) names 'Cli', which is not a package or module; shop_cli (changed) names 'shop-web', which is not a package or module; "
+            "shop_common (changed) names 'Shop-Web', which is not a package or module"
+        ),
+    )
+    passing: str = spec.split('  Cli["Cli (shop-cli)"]', maxsplit=1)[0] + "\n".join(IMPACT_CLASSES) + "\n```\n"
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=passing)) == Verdict(
+        passed=True, evidence="at abc1234, changed and removed nodes name existing packages or modules, and added nodes new ones: shop_core changed, shop_io.records added"
+    )
+
+
+def test_impact_nodes_fail_without_a_spec() -> None:
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=None)) == Verdict(passed=False, evidence=f"no spec at {Path('fixture/docs/design.md')}")
+
+
+def test_impact_nodes_decide_nothing_when_the_code_cannot_be_read() -> None:
+    unreadable: Verdict = Verdict(passed=None, evidence="git archive failed")
+    assert impact_nodes(FakeReader(unreadable))(_run(spec=_mermaid("flowchart LR", "  A[shop-io]:::changed"))) == unreadable
+
+
+@pytest.mark.parametrize(
+    ("node", "status"),
+    [('  New["pqx_common.records"]:::added', "pass"), ('  Gone["pqx-gone"]:::removed', "fail")],
+    ids=["existing-and-new", "removed-missing"],
+)
+def test_rules_decide_the_impact_nodes_assertion(tmp_path: Path, node: str, status: Status) -> None:
+    commit: str = _workspace_repo(tmp_path, PQX_TREE)
+    spec: str = _mermaid("flowchart LR", '  Common["pqx-common"]:::changed', node, *IMPACT_CLASSES)
+    assert _graded(6, "Every changed or removed node names", replace(_shop_run(tmp_path, commit), spec=spec)).status == status

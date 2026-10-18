@@ -3,7 +3,8 @@
 A design-spec eval is a real session graded by hand against the assertions in
 ``design-spec/evals/evals.json``. Some of those assertions are mechanical: every
 diagram parses, every cited ``path:line`` exists at the build commit, no code
-changed. This grader decides those and reports every other assertion ``manual``,
+changed, the dependency matrix matches the imports grimp finds in the code,
+and change-impact nodes name modules that exist. This grader decides those and reports every other assertion ``manual``,
 so a ``pass`` here always comes from a tool, never from a guess.
 
 An assertion that mixes a mechanical part with judgment fails when the mechanical
@@ -19,15 +20,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
-from collections.abc import Callable, Mapping, Sequence
+import tarfile
+import tempfile
+import tomllib
+from collections.abc import Callable, Generator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, TypedDict, cast
 
-GRADER_VERSION: str = "1.0.0"
+import grimp
+
+GRADER_VERSION: str = "1.1.0"
 """Bump on any change to what is graded, so grades from different versions are not compared."""
 
 EVALS: Path = Path(__file__).resolve().parents[2] / "design-spec" / "evals" / "evals.json"
@@ -575,6 +583,352 @@ def _run(command: list[str], cwd: Path) -> tuple[int, str, str]:
     return completed.returncode, completed.stdout, completed.stderr
 
 
+type Cell = tuple[str, str]
+"""A dependency-matrix cell: the importing package's name, then the imported one's."""
+
+_MARKS: Mapping[tuple[bool, bool], str] = {(True, True): "Y", (True, False): "!", (False, True): "d", (False, False): ""}
+"""A matrix mark by (imported, declared), as design-spec SKILL.md section 3 defines them."""
+
+
+@dataclass(frozen=True)
+class Package:
+    """A workspace package at the build commit; names are normalised distribution names (PEP 503)."""
+
+    name: str
+    modules: frozenset[str]
+    declared: frozenset[str]
+
+
+@dataclass(frozen=True)
+class Workspace:
+    """A fixture's workspace packages at the build commit, and the imports grimp found between them.
+
+    ``imports`` holds each (importer, imported) pair of package names where code
+    under the importer's ``src`` imports the other's modules; ``modules`` is every
+    module grimp found.
+    """
+
+    packages: tuple[Package, ...]
+    imports: frozenset[Cell]
+    modules: frozenset[str]
+
+    def matrix(self) -> dict[Cell, str]:
+        """Return the non-blank cells of the dependency matrix the code implies, ``!`` and ``d`` included."""
+        return {
+            (importer.name, imported.name): mark
+            for importer in self.packages
+            for imported in self.packages
+            if importer is not imported and (mark := _MARKS[(importer.name, imported.name) in self.imports, imported.name in importer.declared])
+        }
+
+    def key(self, label: str) -> str:
+        """Return the package a matrix label names, by distribution name, import name, or name without the shared prefix.
+
+        A label naming no package comes back normalised, so it still compares, and differs.
+        """
+        name: str = _canonical(label)
+        aliases: dict[str, str] = {}
+        package: Package
+        for package in self.packages:
+            aliases.update({_canonical(module): package.name for module in package.modules})
+            aliases[package.name.removeprefix(self._prefix())] = package.name
+            aliases[package.name] = package.name
+        return aliases.get(name, name)
+
+    def has(self, name: str) -> bool:
+        """Return whether ``name`` is a module grimp found or, normalised, a package's name."""
+        return name in self.modules or any(package.name == _canonical(name) for package in self.packages)
+
+    def label(self, name: str) -> str:
+        """Return a package's name as a matrix labels it, without the prefix every package shares."""
+        known: bool = any(package.name == name for package in self.packages)
+        return name.removeprefix(self._prefix()) if known else name
+
+    def _prefix(self) -> str:
+        """Return the hyphen-ended prefix every package name shares (``pqx-``), or an empty string."""
+        shared: str = os.path.commonprefix([package.name for package in self.packages])
+        return shared[: shared.rfind("-") + 1]
+
+
+def _canonical(label: str) -> str:
+    """Normalise a package or module name as PEP 503 does, after dropping Markdown backticks, emphasis and spaces."""
+    return re.sub(r"[-_.]+", "-", re.sub(r"[\s`*]", "", label).lower())
+
+
+def dependency_matrix(read: Callable[[Run], Workspace | Verdict], *cells: Cell) -> Check:
+    """Return a check that the spec's dependency matrix equals the one the code at the build commit implies.
+
+    The code's matrix comes from ``read``: ``Y`` imported and declared, ``!`` imported
+    only, ``d`` declared only. Cells compare; a package the spec leaves out of both
+    rows and columns is named in the evidence. ``cells`` are the cells the assertion
+    is about, named as a matrix labels them: one of them differing fails the
+    assertion, while a difference elsewhere is reported without deciding it. With no
+    ``cells`` the comparison is evidence only and never fails.
+    """
+
+    def check(run: Run) -> Verdict:
+        table: list[list[str]] | Verdict = _matrix_table(run)
+        if isinstance(table, Verdict):
+            return table if cells else Verdict(passed=None, evidence=table.evidence)
+        workspace: Workspace | Verdict = read(run)
+        if isinstance(workspace, Verdict):
+            return workspace
+        named: set[Cell] = {(workspace.key(importer), workspace.key(imported)) for importer, imported in cells}
+        return _compare(_Matrices.read(table, workspace), named, run.commit)
+
+    return check
+
+
+def _matrix_table(run: Run) -> list[list[str]] | Verdict:
+    """Return the spec's first table whose first header cell starts with ``imports``, or a failing verdict."""
+    if run.spec is None:
+        return _no_spec(run)
+    table: list[list[str]]
+    for table in _tables(run.spec):
+        if _normal(table[0][0]).startswith("imports"):
+            return table
+    return Verdict(passed=False, evidence="no dependency matrix (a table whose first header cell starts with 'imports')")
+
+
+@dataclass(frozen=True)
+class _Matrices:
+    """The spec's dependency matrix beside the code's, over one workspace."""
+
+    workspace: Workspace
+    written: dict[Cell, str]
+    labelled: frozenset[str]
+    code: dict[Cell, str]
+
+    @classmethod
+    def read(cls, table: list[list[str]], workspace: Workspace) -> _Matrices:
+        """Read a matrix table's non-blank, off-diagonal cells, keyed by the packages its labels name."""
+        columns: list[str] = [workspace.key(label) for label in table[0][1:]]
+        rows: list[str] = [workspace.key(row[0]) for row in table[1:]]
+        written: dict[Cell, str] = {}
+        importer: str
+        row: list[str]
+        for importer, row in zip(rows, table[1:], strict=True):
+            imported: str
+            cell: str
+            for imported, cell in zip(columns, row[1:], strict=False):
+                mark: str = re.sub(r"[\s`*_]", "", cell)
+                if mark and importer != imported:
+                    written[importer, imported] = mark
+        return cls(workspace=workspace, written=written, labelled=frozenset(columns + rows), code=workspace.matrix())
+
+    def differ(self) -> list[Cell]:
+        """Return the cells whose marks differ, blank counting as a mark."""
+        return sorted(cell for cell in self.written.keys() | self.code.keys() if self.written.get(cell, "") != self.code.get(cell, ""))
+
+    def name(self, cell: Cell) -> str:
+        """Return a cell as ``importer → imported``, in the matrix's labels."""
+        return f"{self.workspace.label(cell[0])} → {self.workspace.label(cell[1])}"
+
+    def describe(self, cells: Sequence[Cell]) -> str:
+        """Describe each differing cell by its mark in the spec and in the code."""
+        return ", ".join(f"{self.name(cell)} is {self.written.get(cell) or 'blank'} in the spec, {self.code.get(cell) or 'blank'} in the code" for cell in cells)
+
+    def equal(self, commit: str) -> str:
+        """Describe a matrix equal to the code's: its size, its ``!`` and ``d`` cells, and packages it leaves out."""
+        marks: str = ", ".join(f"{self.name(cell)} {self.code[cell]}" for cell in sorted(self.code) if self.code[cell] != "Y") or "no ! or d cells"
+        found: int = sum(mark == "Y" for mark in self.code.values())
+        absent: list[str] = [self.workspace.label(package.name) for package in self.workspace.packages if package.name not in self.labelled]
+        missing: str = f"; not in the matrix: {', '.join(absent)}" if absent else ""
+        return f"the dependency matrix equals the code's at {commit} ({len(self.workspace.packages)} packages, {found} Y cells): {marks}{missing}"
+
+
+def _compare(matrices: _Matrices, named: set[Cell], commit: str) -> Verdict:
+    """Compare the spec's matrix with the code's; only a differing named cell fails."""
+    differ: list[Cell] = matrices.differ()
+    wrong: list[Cell] = [cell for cell in differ if cell in named]
+    others: list[Cell] = [cell for cell in differ if cell not in named]
+    if wrong:
+        elsewhere: str = f"; and elsewhere: {matrices.describe(others)}" if others else ""
+        return Verdict(passed=False, evidence=f"the dependency matrix differs from the code at {commit} where the assertion looks: {matrices.describe(wrong)}{elsewhere}")
+    if not differ:
+        return Verdict(passed=True, evidence=matrices.equal(commit))
+    if named:
+        agreed: str = ", ".join(f"{matrices.name(cell)} {matrices.code.get(cell) or 'blank'}" for cell in sorted(named))
+        return Verdict(passed=True, evidence=f"the named cells agree with the code at {commit} ({agreed}); the rest of the matrix differs: {matrices.describe(others)}")
+    return Verdict(passed=None, evidence=f"the dependency matrix differs from the code at {commit}: {matrices.describe(differ)}")
+
+
+_NODE: re.Pattern[str] = re.compile(
+    r"(?<![\w.-])([A-Za-z_](?:[\w.-]*\w)?)"  # node ID, dots included (``tally_core.models``)
+    r"(?:\s*(?:\[\[|\[\(|\(\[|\(\(|\{\{|[\[\(\{>])\s*"  # shape opener
+    r"(\"[^\"]*\"|[^\]\)\}\n]*?)\s*"  # label
+    r"(?:\]\]|\)\]|\]\)|\)\)|\}\}|[\]\)\}]))?"  # shape closer
+    r"(?::::([\w-]+))?"  # inline class
+)
+"""A Mermaid flowchart node: its ID, its label if the shape has one here, and a ``:::class``."""
+
+_SHAPE_LABEL: re.Pattern[str] = re.compile(r"(?<![\w.-])([A-Za-z_](?:[\w.-]*\w)?)@\{[^}]*?\blabel:\s*(\"[^\"]*\"|'[^']*'|[^,}]*)")
+"""A node written as a Mermaid shape object (``Id@{ shape: rect, label: "..." }``): its ID and label."""
+
+_COMMENT: re.Pattern[str] = re.compile(r"^\s*%%.*$", re.MULTILINE)
+_CLASS_STATEMENT: re.Pattern[str] = re.compile(r"(?:^|;)\s*class\s+([\w.,-]+)\s+([\w-]+)", re.MULTILINE)
+_NAME: re.Pattern[str] = re.compile(r"[A-Za-z_][\w.-]*")
+_WRITTEN_AS_NAME: re.Pattern[str] = re.compile(r"[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*|[a-z0-9]+(?:-[a-z0-9]+)+")
+_IMPACT: tuple[str, ...] = ("added", "changed", "removed")
+
+
+def impact_nodes(read: Callable[[Run], Workspace | Verdict]) -> Check:
+    """Return a check that each change-impact node names what the code at the build commit has, or lacks.
+
+    A ``changed`` or ``removed`` node names a workspace package or a module grimp
+    found (``tally-stage``, ``tally_stage``, ``tally_core.models``); an ``added`` node
+    names one written like a package or module that does not exist yet. A node's
+    name is the first word of its label, or its ID when it has none (design-spec
+    SKILL.md section 3: nodes are named as in the code). A ``changed`` or ``removed``
+    node whose label starts with a description, a capitalised word without ``-``,
+    ``_`` or ``.``, is named by its ID when that is a package or module
+    (``tally_core["Core (tally_core)"]``).
+    """
+
+    def check(run: Run) -> Verdict:
+        if run.spec is None:
+            return _no_spec(run)
+        nodes: list[tuple[str, str, str]] = [node for block in _MERMAID.findall(run.spec) if _diagram_type(block) in {"flowchart", "graph"} for node in _styled_nodes(block)]
+        if not nodes:
+            return Verdict(passed=False, evidence="no flowchart node is styled added, changed or removed")
+        workspace: Workspace | Verdict = read(run)
+        if isinstance(workspace, Verdict):
+            return workspace
+        return _judge_nodes(nodes, workspace, run.commit)
+
+    return check
+
+
+def _judge_nodes(nodes: list[tuple[str, str, str]], workspace: Workspace, commit: str) -> Verdict:
+    """Judge every styled node's name against the workspace; any problem fails them all."""
+    problems: list[str] = [problem for node in nodes if (problem := _impact_problem(node, workspace))]
+    if problems:
+        return Verdict(passed=False, evidence=f"at {commit}: {'; '.join(problems)}")
+    named: str = ", ".join(f"{_judged_name(node, workspace)} {node[2]}" for node in nodes)
+    return Verdict(passed=True, evidence=f"at {commit}, changed and removed nodes name existing packages or modules, and added nodes new ones: {named}")
+
+
+def _styled_nodes(block: str) -> list[tuple[str, str, str]]:
+    """Return (ID, label, class) for each node a flowchart styles added, changed or removed, in order of first appearance.
+
+    ``%%`` comment lines are not part of the diagram, so a node written in one does not count.
+    As in Mermaid, a node defined twice shows its last label.
+    """
+    text: str = _COMMENT.sub("", block)
+    labels: dict[str, str] = {}
+    styles: dict[str, list[str]] = {}
+    node: str
+    label: str
+    style: str
+    for node, label, style in _NODE.findall(text):
+        if label or node not in labels:
+            labels[node] = label
+        if style:
+            styles.setdefault(node, []).append(style)
+    labels.update(_SHAPE_LABEL.findall(text))
+    nodes: str
+    for nodes, style in _CLASS_STATEMENT.findall(text):
+        for node in nodes.split(","):
+            styles.setdefault(node, []).append(style)
+    return [(node, label or node, style) for node, label in labels.items() for style in dict.fromkeys(styles.get(node, [])) if style in _IMPACT]
+
+
+def _node_name(label: str) -> str:
+    """Return the name a node's label starts with: its first word, quotes, backticks and emphasis aside."""
+    found: re.Match[str] | None = _NAME.search(label)
+    return found.group(0).rstrip(".-") if found else label
+
+
+def _judged_name(node: tuple[str, str, str], workspace: Workspace) -> str:
+    """Return the name a styled node is judged by: its label's first word, or for a changed or removed node whose label starts with a description, a code-named ID."""
+    identifier: str
+    label: str
+    style: str
+    identifier, label, style = node
+    name: str = _node_name(label)
+    described: bool = not name.islower() and not re.search(r"[-_.]", name)
+    if style != "added" and described and workspace.has(identifier):
+        return identifier
+    return name
+
+
+def _impact_problem(node: tuple[str, str, str], workspace: Workspace) -> str:
+    """Return what is wrong with one styled node's name, or an empty string."""
+    identifier: str = node[0]
+    style: str = node[2]
+    name: str = _judged_name(node, workspace)
+    exists: bool = workspace.has(name)
+    if style != "added":
+        return "" if exists else f"{identifier} ({style}) names {name!r}, which is not a package or module"
+    if exists:
+        return f"{identifier} (added) names {name!r}, which already exists"
+    if not _WRITTEN_AS_NAME.fullmatch(name):
+        return f"{identifier} (added) names {name!r}, which is not written as a package or module"
+    return ""
+
+
+def read_workspace(run: Run) -> Workspace | Verdict:
+    """Read the fixture's workspace packages at the build commit, and the imports grimp finds between them.
+
+    The build commit is unpacked with ``git archive`` into a temporary folder, so an
+    edit made since it does not count. A package is a ``packages/*/pyproject.toml``;
+    its modules are the import packages under its ``src``, and its declarations are
+    its ``[project] dependencies``. Imports under ``TYPE_CHECKING`` count, as the
+    inventory command in design-spec SKILL.md section 4 counts them. Nothing is
+    installed or imported: the ``src`` folders are on ``sys.path`` only while grimp
+    reads them. A commit that cannot be unpacked decides nothing.
+    """
+    folder: str
+    with tempfile.TemporaryDirectory() as folder:
+        archive: Path = Path(folder) / "build.tar"
+        archived: tuple[int, str, str] = _run(["git", "archive", "--format=tar", "-o", str(archive), run.commit], run.fixture)
+        if archived[0] != 0:
+            return Verdict(passed=None, evidence=f"git archive {run.commit} failed: {archived[2].strip()}")
+        tree: Path = Path(folder) / "tree"
+        bundle: tarfile.TarFile
+        with tarfile.open(archive) as bundle:
+            bundle.extractall(tree, filter="data")
+        return _scan(tree, run.commit)
+
+
+def _scan(tree: Path, commit: str) -> Workspace | Verdict:
+    """Read the workspace packages in an unpacked tree and build their import graph."""
+    pyprojects: list[Path] = sorted(tree.glob("packages/*/pyproject.toml"))
+    packages: list[Package] = [_package(pyproject) for pyproject in pyprojects]
+    owner: dict[str, str] = {module: package.name for package in packages for module in package.modules}
+    if not owner:
+        return Verdict(passed=None, evidence=f"no workspace packages with code under packages/*/src at {commit}")
+    with _on_path([str(pyproject.parent / "src") for pyproject in pyprojects]):
+        graph: grimp.ImportGraph = grimp.build_graph(*owner, cache_dir=None)
+    imports: frozenset[Cell] = frozenset(
+        (owner[importer], owner[imported]) for importer in owner for imported in owner if owner[importer] != owner[imported] and graph.direct_import_exists(importer=importer, imported=imported, as_packages=True)
+    )
+    return Workspace(packages=tuple(packages), imports=imports, modules=frozenset(graph.modules))
+
+
+def _package(pyproject: Path) -> Package:
+    """Read a workspace package's name, import packages and declared dependencies."""
+    project: dict[str, object] = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+    requirements: list[str] = cast("list[str]", project.get("dependencies", []))
+    return Package(
+        name=_canonical(cast("str", project["name"])),
+        modules=frozenset(init.parent.name for init in (pyproject.parent / "src").glob("*/__init__.py")),
+        # A requirement's name ends where its extras, version, marker or URL begin (PEP 508).
+        declared=frozenset(_canonical(re.split(r"[\s\[<>=!~;@(]", requirement.strip(), maxsplit=1)[0]) for requirement in requirements),
+    )
+
+
+@contextmanager
+def _on_path(folders: list[str]) -> Generator[None]:
+    """Put ``folders`` first on ``sys.path`` while the block runs, then restore it."""
+    saved: list[str] = list(sys.path)
+    sys.path[:0] = folders
+    try:
+        yield
+    finally:
+        sys.path[:] = saved
+
+
 RULES: Mapping[int, Sequence[Rule]] = {
     1: (
         Rule("The first line states design mode and the Standard size class", first_line("design", "Standard")),
@@ -595,16 +949,27 @@ RULES: Mapping[int, Sequence[Rule]] = {
     2: (Rule("The first line states the Small size class", first_line(None, "Small")),),
     3: (
         Rule("The first line states document mode and a size class", first_line("document", None)),
+        Rule(
+            "The dependency matrix marks pqx-report's import of pqx-frame '!' and its unused declarations of pqx-plan and pqx-verify 'd', and a finding reports the defect",
+            dependency_matrix(read_workspace, ("pqx-report", "pqx-frame"), ("pqx-report", "pqx-plan"), ("pqx-report", "pqx-verify")),
+            complete=False,
+        ),
         Rule("Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source", contract_sources, complete=False),
         Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
         Rule("No code is changed: git status and git diff 8ffaa6f show changes to documentation files only", documentation_only),
     ),
     4: (
         Rule("The first line states document mode and a size class", first_line("document", None)),
+        Rule(
+            "The resynced dependency matrix marks pqx-common's import of pqx-excel '!' and keeps pqx-excel's import of pqx-common 'Y', and the spec reports the pqx-common/pqx-excel cycle instead of saying no cycles exist",
+            dependency_matrix(read_workspace, ("pqx-common", "pqx-excel"), ("pqx-excel", "pqx-common")),
+            complete=False,
+        ),
         Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
         Rule("No code is changed: names.py keeps the reversed import, and git status and git diff bb6b246 show changes to documentation files only", documentation_only),
     ),
     5: (
+        Rule("All six defects in expected/eval-3b/answer-key.md are reported as findings, each with its rule number and file", dependency_matrix(read_workspace), complete=False),
         Rule(
             "Items deduced rather than read from the code (domain states, the decision each component owns) are marked inferred: *inferred* in text; in diagrams, a label ending in ` ?` plus the `inferred` classDef (stroke-dasharray, a dashed border), or one line above a diagram whose every node is inferred. No dashed arrow is used to mark inference",
             inferred_marker,
@@ -617,6 +982,10 @@ RULES: Mapping[int, Sequence[Rule]] = {
     6: (
         Rule("The first line states design mode and the Standard size class, and the spec treats tally as an existing codebase being restructured, not a new system", first_line("design", "Standard"), complete=False),
         Rule("A change-impact flowchart defines classDef added, classDef changed and classDef removed", change_classdefs),
+        Rule(
+            "Every changed or removed node names a workspace package (such as tally-stage) or module (such as tally_stage) that exists in the fixture, and every added node, if any, names one that does not",
+            impact_nodes(read_workspace),
+        ),
         Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
         Rule('The reply ends with "Approve or correct before I implement."', closing_line),
         Rule("No code is written: git status and git diff <build commit> show changes to documentation files only", documentation_only),
