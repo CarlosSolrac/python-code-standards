@@ -3,8 +3,11 @@
 Date: 2026-10-18. Task: `docs/plans/design-spec-review.md`, task 4. Every tool ran ephemerally through
 `uvx` or `npx`, on copies of the fixtures in a scratch folder outside the repository. No tool was added
 as a dependency, no skill was installed into `~/.claude`, and no API key was set. Each tool ran with
-`HOME` and `USERPROFILE` pointed at its own scratch folder, so nothing was written to the real home
-folder.
+`HOME` and `USERPROFILE` pointed at its own scratch folder, so its own state (indexes, models,
+configuration) stayed there; only uv's and npm's package caches were the real ones.
+
+**Recommendation: adopt none of the four tools now** (graphify, QMD, OpenSpec, Spec Kit); QMD is the
+one to revisit when a project's docs outgrow `grep`. Reasons in section 4.
 
 Machine: Windows 11, Git Bash, uv 0.11.29 (graphify ran under uv's Python 3.13.14), Node 24.19.0.
 
@@ -265,6 +268,58 @@ days to the evaluation. Open issues include open pull requests, as GitHub counts
 
 The fast release pace that makes graphify capable also moves its results: section 1 found a false
 dependency in a release two weeks older than the newest.
+
+## 4. Recommendation
+
+**Adopt none of the four now. Keep design-spec's inventory commands and `grep`; keep QMD as the
+candidate to revisit when a project's docs outgrow `grep`.**
+
+| Tool | Verdict | One-line reason |
+|------|---------|-----------------|
+| graphify | Do not adopt | Its matrix is right, but the skill already gets it from two commands with smaller output (section 1); on docs it needs a model pass costing about the corpus size in tokens, and without one it answered none of five questions (section 2) |
+| QMD | Revisit later; the best fit of the four | Local, MIT, reads design-spec's files as they are, and finds sections by meaning; on this corpus a `grep` still answered more, and its semantic search needs 2.1 GiB of models (section 3) |
+| OpenSpec | Do not adopt | A spec format of its own: design-spec's `design.md` fails its spec validation and fits only as a change's free-form design (section 3) |
+| Spec Kit | Do not adopt | A workflow of its own, with 10 per-project skills whose plan, contracts and approval steps overlap design mode's (section 3) |
+
+The reasons, in order of weight:
+
+1. **The graph replaces the cheapest part of document mode.** The only fact design-spec needs that
+   graphify captures is the import and declaration graph, and §4 step 3 already gets it from two
+   commands: 451 bytes of output on planted-defects and 1,799 on ParquetToXL. The rest of what the
+   procedure reads (rules, backlog, contracts, invariants, existing docs) is prose or types the graph
+   does not hold. For checking a spec's matrix mechanically, grimp in the grader (PR #21) already
+   does the job in-process, and rule 14's import-linter contract keeps the code from drifting.
+2. **Docs are where a knowledge tool could help, and graphify needs a model there.** A semantic index
+   costs about 125,000 input tokens for this corpus, needs a hosted key, a local model server, or
+   the Claude Code session's own usage, and the skill route installs a skill, a CLAUDE.md section
+   and a hook. That is a dependency and a standing cost for an unmeasured gain.
+3. **At this size, search beats indexing.** Over 27 files and 500 KB, one `grep` per question answered
+   four of five. QMD's hybrid query answered one and pointed to the rest; graphify's outline answered none.
+4. **Spec managers compete with design-spec rather than feed it.** Adopting OpenSpec or Spec Kit
+   means either rewriting design-spec's spec format into theirs or running two spec systems side by
+   side.
+
+**Where QMD would plug in, if adopted later.** Document mode §4 step 4 (*inventory existing
+documentation and audits*): when a project's `docs/` is too large to map by listing and reading
+titles, index it once (`qmd collection add docs --name docs`, plus `qmd embed` for semantic search)
+and use `qmd query` to find the records each spec section must map or must not contradict. It reads
+the files as they are, so design-spec's format would not change; it would be an optional aid named
+in step 4, never a required tool.
+
+**What would change these verdicts.**
+
+- graphify: a polyglot or non-Python project, where design-spec's Python-specific `grep` loop needs
+  adapting and tree-sitter's import graph would replace it across languages; or a built-in export of
+  package-level imports and declarations, so the matrix needs no helper script. For docs: a semantic
+  run, in a daytime session with `GEMINI_API_KEY` set
+  (`uvx --from graphifyy==0.9.92 graphify extract <corpus>`), that answers the five questions of
+  section 2 better than `grep`.
+- QMD: a project whose docs are large enough that `grep` output floods the context or misses
+  paraphrased answers, measured with the same five-question method.
+- OpenSpec or Spec Kit: a decision to replace design-spec's spec format, which this evaluation does
+  not recommend.
+
+Adopting any of them is a dependency decision for a daytime session, as the plan says.
 
 ## Appendix: helper scripts
 
