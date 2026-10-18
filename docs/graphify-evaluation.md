@@ -177,6 +177,95 @@ the corpus in input tokens per full index. Without that pass it is a heading out
 `grep`. Design-spec's step 4 maps existing docs as a table of each record and what it covers, which
 listing the files and reading their titles already gives; a heading outline adds little to that.
 
+## 3. Other tools
+
+**Search.** Web searches on 2026-10-18 for tools that index or manage docs and specs for coding
+agents found two kinds: indexers, which let an agent search existing docs, and spec managers, which
+give the agent a spec format and workflow. Three were chosen to run beside graphify (decision D15):
+
+- **QMD** (`@tobilu/qmd`), a local Markdown search engine with a CLI and an MCP server: BM25
+  full-text search, vector search, and LLM reranking, all on this machine with GGUF models.
+- **OpenSpec** (`@fission-ai/openspec`), a spec layer for existing codebases: specs as requirements
+  with scenarios, and changes as proposal, spec deltas, design and tasks.
+- **GitHub Spec Kit** (`specify`), the most-starred spec-driven workflow (141,707 stars): a constitution, then a
+  spec, plan and tasks per feature.
+
+Found and not run: Context7 indexes third-party library documentation, not a project's own specs;
+DeepWiki and deepwiki-open write a wiki with a hosted service or a model key; Repomix packs a
+repository into one file rather than indexing it; Kiro is an IDE, not a CLI.
+
+**Versions.** QMD 2.8.3 (2026-08-16) is the newest release and older than two weeks. OpenSpec 1.14.3
+(2026-10-17) and Spec Kit 1.2.1 (2026-10-16) are the newest and younger than two weeks; they only
+initialised a project and validated files, which does not depend on the patch level. The two-week
+rule matters at adoption, which no tool reaches here.
+
+**QMD on the docs corpus.** Same 27 Markdown files and the same five questions as section 2, from
+`$S/qmd/run` with its own scratch `HOME`. Output sizes leave out npx's `npm notice` lines.
+
+- Index: `npx -y @tobilu/qmd@2.8.3 collection add ./docs --name docs` indexed 27 files in 2.0 s, with
+  no model (BM25 in SQLite).
+- Embeddings: `npx -y @tobilu/qmd@2.8.3 embed -c docs` downloaded `embeddinggemma-300M-Q8_0.gguf`
+  (333,590,944 bytes) and embedded 260 chunks from 27 documents in 56 s, download included.
+- `qmd vsearch` also downloaded the 1.7B query-expansion model (1,282,438,912 bytes) on first use, and
+  `qmd query` the 0.6B reranker (639,153,184 bytes): 2,255,183,040 bytes (2.1 GiB) of models in all
+  (`find $S/qmd/home -name '*.gguf' -printf '%s %f\n'`). A hybrid `qmd query` took 29 to 65 s per
+  question on this machine.
+
+| # | grep (section 2) | graphify, no model (section 2) | `qmd search` (BM25, no model) | `qmd vsearch` (embeddings + expansion) | `qmd query` (hybrid + rerank) |
+|---|------|------|------|------|------|
+| 1 | **A** | **M** | **P**: `phase-b.md` ranked first, snippet not the rule; 1,978 bytes | **M**: other decision records; 1,114 bytes | **P**: `phase-b.md` ranked third; 2,270 bytes |
+| 2 | **A** | **M** | **M**: two ParquetToXL specs; 819 bytes | **A**: `SKILL.md:61` ranked first; 1,162 bytes | **A**: `SKILL.md:61` ranked third; 2,802 bytes |
+| 3 | **A** | **P** | **M**: the two design-spec plans; 1,069 bytes | **P**: `SKILL.md:65`, the import-contract paragraph in the rule's section; 3,042 bytes | **P**: `SKILL.md` (its front matter) ranked second; 2,897 bytes |
+| 4 | **P** | **P** | **P**: the evaluation's title; 867 bytes | **P**: the evaluation's title; 2,664 bytes | **P**: the evaluation's title; 2,938 bytes |
+| 5 | **A** | **P** | **M**: "No results found."; 18 bytes | **P**: the plan's title; 1,124 bytes | **P**: the plan's title; 2,455 bytes |
+| | 4 A, 1 P | 0 A, 3 P, 2 M | 0 A, 2 P, 3 M | 1 A, 3 P, 1 M | 1 A, 4 P, 0 M |
+
+Each QMD cell comes from `npx -y @tobilu/qmd@2.8.3 <search|vsearch|query> "<question>" -c docs`, with
+the question asked as written. QMD's models turn a natural-language question into the right place
+more often than graphify's outline or BM25 alone, but on a corpus this size a keyword `grep` chosen by
+someone who knows the vocabulary still answers more.
+
+**OpenSpec on design-spec's files.** In a scratch copy of planted-defects,
+`npx -y @fission-ai/openspec@1.14.3 init tally --tools claude --no-animation` created
+`openspec/config.yaml`, `openspec/specs/`, `openspec/changes/archive/`, and 6 skills and 6 commands in
+the project's `.claude/`. With eval 3's `design.md` saved as `openspec/specs/architecture/spec.md`,
+`openspec validate --specs` fails: "Spec must have a Purpose section. Missing required sections.
+Expected headers: "## Purpose" and "## Requirements"", with requirements written as
+`### Requirement:` and `#### Scenario:` blocks. As a change's design (`openspec new change
+remove-stage`, then the file copied to `openspec/changes/remove-stage/design.md`), `openspec status
+--change remove-stage` marks `design` done, since that artifact is free-form, but
+`openspec validate remove-stage --type change` fails until the change also has spec deltas
+(`## ADDED/MODIFIED/REMOVED/RENAMED Requirements`) or is marked `skip_specs: true`. The CLI needs no
+key or model, and indexes nothing; the writing is done by the agent through its skills. Its README
+shows how to switch off its telemetry (`openspec config set telemetry.enabled false`).
+
+**Spec Kit on design-spec's files.** In another scratch copy,
+`uvx --from git+https://github.com/github/spec-kit.git@v1.2.1 specify init --here --force --integration claude --script sh --non-interactive --ignore-agent-tools`
+created `.specify/` (templates for constitution, spec, plan, tasks and checklists, bash scripts, a
+workflow; 105,881 bytes) and 10 skills in `.claude/skills/` (139,576 bytes), from
+`speckit-constitution` to `speckit-implement`. Its plan template writes, per feature,
+`research.md`, `data-model.md`, `quickstart.md` and `contracts/`, which overlap design-spec's
+contract table and class diagram. No indexing; no key; the model work is the agent's. It is not on
+PyPI; `uvx` installs it from the git tag.
+
+**Comparison.** Facts from the runs above and from `gh api repos/<repo>` on 2026-10-18; activity
+counts commits (`gh api "repos/<repo>/commits?since=2026-07-18T00:00:00Z&per_page=100" --paginate`)
+and releases (`gh api "repos/<repo>/releases?per_page=100"`, published after 2026-07-18) in the 90
+days to the evaluation. Open issues include open pull requests, as GitHub counts them.
+
+| | graphify | QMD | OpenSpec | Spec Kit |
+|---|---|---|---|---|
+| Kind | Knowledge graph of code and docs | Search index for Markdown | Spec format and change workflow | Spec-driven feature workflow |
+| Indexing | Code: local (tree-sitter). Docs: a model (hosted key, local server, or the Claude Code session) | Local: BM25 with no model; vectors and reranking with local GGUF models | None | None |
+| Cost | Code free. Docs ~corpus size in input tokens per full index (~125,000 here), then per changed file | Free; 2.1 GiB of models and 29 to 65 s per hybrid query here; a BM25 search took 1.5 to 2.6 s through `npx` (`date` around `qmd search "century-window rule" -c docs`, run twice) | Free CLI; the agent's own tokens | Free CLI; the agent's own tokens |
+| Licence | Apache-2.0 | MIT | MIT | MIT |
+| Maintenance (90 days) | 74 releases, 1,266 commits; repository created 2026-04-03; 1,537 open issues and PRs | 1 release, 201 commits; created 2025-12-08; 227 open | 13 releases, 346 commits; created 2025-08-05; 191 open | 38 releases, 758 commits; created 2025-08-21; 187 open |
+| Install footprint | `graphify install` copies a skill into `~/.claude/skills`; `graphify claude install` adds a CLAUDE.md section and a PreToolUse hook (`graphify --help`) | An npm CLI, used through its MCP server (`qmd mcp`) or its skill (`qmd skill install`) | 6 skills and 6 commands per project | 10 skills and `.specify/` per project |
+| Fit with design-spec's `docs/design.md` and `docs/adr/` | Reads them as-is, but adds only the dependency matrix on code and a heading outline on docs | Reads them as-is; finds sections by meaning | Its own format; `design.md` fits only as a change's free-form design, beside required requirement deltas | Its own per-feature folders; overlaps design mode's spec, contracts and approval gate |
+
+The fast release pace that makes graphify capable also moves its results: section 1 found a false
+dependency in a release two weeks older than the newest.
+
 ## Appendix: helper scripts
 
 All three live in `$S/graphify/scripts/` and only read the fixture or graph they are given.
