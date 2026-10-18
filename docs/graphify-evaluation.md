@@ -115,6 +115,68 @@ captures that design-spec needs, and it updates incrementally in seconds. Design
 that fact from two commands whose output is smaller than the graph's, and the grader in PR #21
 (task 5) gets it from grimp. Everything else document mode reads is not in the graph.
 
+## 2. Graphify on docs and specs
+
+**Corpus.** This repository's `docs/` at `main` (`eca6ff5`: the four plans and the type-checker
+evaluation), the two skills' `SKILL.md` files, and ParquetToXL's `docs/` at `f8f4a41` (20 Markdown
+files and 4 JSON files), copied into `$S/graphify/runs/docs`. That is 27 Markdown files, 500,347
+bytes (~125,000 tokens): `find docs -name '*.md' -print0 | xargs -0 cat | wc -c`.
+
+**What indexing needs.** Graphify sends Markdown to a language model; locally it extracts only the
+headings (below). Without a key, the headless command refuses:
+`uvx --from graphifyy==0.9.92 graphify extract docs` prints "error: no LLM API key found (27
+doc/paper/image file(s) need semantic extraction). Set GEMINI_API_KEY or GOOGLE_API_KEY (gemini),
+MOONSHOT_API_KEY (kimi), ANTHROPIC_API_KEY (claude), OPENAI_API_KEY (openai), DEEPSEEK_API_KEY
+(deepseek), or pass --backend." The options are:
+
+- a hosted key; the default Gemini model is `gemini-3-flash-preview` (`graphify/llm.py` in the
+  0.9.92 wheel);
+- a local server: `--backend ollama`, or any OpenAI-compatible server through `OPENAI_BASE_URL`
+  (llama.cpp, vLLM, LM Studio), per `graphify --help`;
+- inside Claude Code, the `/graphify` skill (installed by `graphify install` into `~/.claude/skills`),
+  which makes the session itself the model: it splits the docs into chunks of 20 to 25 files and
+  dispatches one general-purpose subagent per chunk, each given the 7,960-byte (~2,000-token)
+  `references/extraction-spec.md` prompt. The tokens come out of the Claude plan's usage.
+
+None of these was set up (decision D14): the approval excludes keys and installing the skill, and
+this machine has no Ollama. What a full index of this corpus costs is therefore measured as volume,
+not money: about 125,000 input tokens of documents, plus ~2,000 tokens of prompt for each of the two
+chunks the skill would make (27 files, at its `ceil(files / 22)` estimate), plus the output graph,
+which could not be measured. Graphify caches per file by SHA-256, so later runs pay only for the
+documents that changed. The price is that volume times the chosen backend's rate.
+
+**What runs without a model.** `uvx --from graphifyy==0.9.92 graphify update docs` (3.0 s) builds a
+410-node, 382-edge graph. Every edge is `contains`; 370 nodes are Markdown headings and the other 40
+are keys of the four JSON files (counted from `graph.json`). Without a model the doc graph is
+an outline of headings, with no links between documents and no concepts.
+
+**Questions.** Five questions whose answers are in the corpus, each asked as written with
+`uvx --from graphifyy==0.9.92 graphify query "<question>"` (from `$S/graphify/runs/docs`, on the
+no-model graph). The baseline is the search an agent does anyway: one `grep` for the question's main
+noun phrase, `grep -rni --include=*.md --exclude-dir=graphify-out "<phrase>" .` from the same folder.
+The phrases were picked by this evaluation, which knew the answers, so the grep column is a
+best case. **A**: the output contains the answer. **P**: it names the file or the heading the answer
+is under, without the answer. **M**: neither.
+
+| # | Question | Answer (where) | grep phrase: result, output size | graphify query: result, output size |
+|---|----------|----------------|-----------------------------------|-------------------------------------|
+| 1 | Which decision record covers the century-window rule? | ParquetToXL `docs/decisions/2026-09-15-phase-b.md` (its `design.md:158` maps it) | `century`: **A**, 15 lines, 2,695 bytes | **M**, 7,043 bytes: lists phase A, phase 0 and phase H records, not phase B; still absent with `--budget 4000` (22,422 bytes) |
+| 2 | What columns does the boundary contract table have? | `boundary \| input \| output \| invariants \| owner` (design-spec `SKILL.md:61`) | `contract table`: **A**, 9 lines, 1,818 bytes | **M**, 10,264 bytes: starts from ParquetToXL's "5. Boundary contracts" heading, an instance of the table, not the rule |
+| 3 | When does design-spec require a dependency matrix? | More than 4 internal modules or workspace packages (`SKILL.md:48`) | `dependency matrix`: **A**, 12 lines, 2,853 bytes | **P**, 6,862 bytes: includes the "3. Spec artifacts" heading (`SKILL.md:36`) the rule sits under, among 50 shown nodes |
+| 4 | Which type checkers does the type checker evaluation recommend? | Keep Pyright and MyPy, add none (`type-checker-evaluation.md:8`) | `type checker`: **P**, 7 lines, 1,491 bytes (the file's title line) | **P**, 5,051 bytes: the "Recommendation" heading at line 6 |
+| 5 | Where does the design-spec mechanical grader live? | `python-code-standards/evals/design_spec_grade.py` (`plans/design-spec-review.md:21`) | `grader`: **A**, 10 lines, 1,718 bytes | **P**, 7,031 bytes: the plan's title node only |
+
+Without a model, graphify answered none of the five and pointed at the right place for three. A
+single `grep` answered four and pointed at the fifth, with 18% to 42% of the
+output's bytes. The
+semantic graph might do better, since it extracts concepts and cross-document links, but that needs
+the model pass above.
+
+**Verdict on docs.** On docs, graphify's value depends on a model pass that costs about the size of
+the corpus in input tokens per full index. Without that pass it is a heading outline that loses to
+`grep`. Design-spec's step 4 maps existing docs as a table of each record and what it covers, which
+listing the files and reading their titles already gives; a heading outline adds little to that.
+
 ## Appendix: helper scripts
 
 All three live in `$S/graphify/scripts/` and only read the fixture or graph they are given.
