@@ -1081,6 +1081,29 @@ def test_impact_nodes_read_nodes_as_mermaid_does() -> None:
     assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(passed=False, evidence="at abc1234: A (changed) names 'shop-web', which is not a package or module")
 
 
+def test_impact_nodes_accept_a_code_named_id_for_changed_and_removed_nodes() -> None:
+    spec: str = _mermaid(
+        "flowchart LR",
+        '  shop_core["Core (shop_core): returns a typed record"]:::changed',
+        '  shop_io["shop_io.records"]:::added',
+        '  Cli["Cli (shop-cli)"]:::removed',
+        '  shop_cli["shop-web: handles requests"]:::changed',
+        '  shop_common["Shop-Web: UI"]:::changed',
+        *IMPACT_CLASSES,
+    )
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(
+        passed=False,
+        evidence=(
+            "at abc1234: Cli (removed) names 'Cli', which is not a package or module; shop_cli (changed) names 'shop-web', which is not a package or module; "
+            "shop_common (changed) names 'Shop-Web', which is not a package or module"
+        ),
+    )
+    passing: str = spec.split('  Cli["Cli (shop-cli)"]', maxsplit=1)[0] + "\n".join(IMPACT_CLASSES) + "\n```\n"
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=passing)) == Verdict(
+        passed=True, evidence="at abc1234, changed and removed nodes name existing packages or modules, and added nodes new ones: shop_core changed, shop_io.records added"
+    )
+
+
 def test_impact_nodes_fail_without_a_spec() -> None:
     assert impact_nodes(FakeReader(SHOP))(_run(spec=None)) == Verdict(passed=False, evidence=f"no spec at {Path('fixture/docs/design.md')}")
 

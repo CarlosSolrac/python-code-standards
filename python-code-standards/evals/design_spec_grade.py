@@ -635,6 +635,10 @@ class Workspace:
             aliases[package.name] = package.name
         return aliases.get(name, name)
 
+    def has(self, name: str) -> bool:
+        """Return whether ``name`` is a module grimp found or, normalised, a package's name."""
+        return name in self.modules or any(package.name == _canonical(name) for package in self.packages)
+
     def label(self, name: str) -> str:
         """Return a package's name as a matrix labels it, without the prefix every package shares."""
         known: bool = any(package.name == name for package in self.packages)
@@ -775,7 +779,10 @@ def impact_nodes(read: Callable[[Run], Workspace | Verdict]) -> Check:
     found (``tally-stage``, ``tally_stage``, ``tally_core.models``); an ``added`` node
     names one written like a package or module that does not exist yet. A node's
     name is the first word of its label, or its ID when it has none (design-spec
-    SKILL.md section 3: nodes are named as in the code).
+    SKILL.md section 3: nodes are named as in the code). A ``changed`` or ``removed``
+    node whose label starts with a description, a capitalised word without ``-``,
+    ``_`` or ``.``, is named by its ID when that is a package or module
+    (``tally_core["Core (tally_core)"]``).
     """
 
     def check(run: Run) -> Verdict:
@@ -797,7 +804,7 @@ def _judge_nodes(nodes: list[tuple[str, str, str]], workspace: Workspace, commit
     problems: list[str] = [problem for node in nodes if (problem := _impact_problem(node, workspace))]
     if problems:
         return Verdict(passed=False, evidence=f"at {commit}: {'; '.join(problems)}")
-    named: str = ", ".join(f"{_node_name(label)} {style}" for _, label, style in nodes)
+    named: str = ", ".join(f"{_judged_name(node, workspace)} {node[2]}" for node in nodes)
     return Verdict(passed=True, evidence=f"at {commit}, changed and removed nodes name existing packages or modules, and added nodes new ones: {named}")
 
 
@@ -832,14 +839,25 @@ def _node_name(label: str) -> str:
     return found.group(0).rstrip(".-") if found else label
 
 
-def _impact_problem(node: tuple[str, str, str], workspace: Workspace) -> str:
-    """Return what is wrong with one styled node's name, or an empty string."""
+def _judged_name(node: tuple[str, str, str], workspace: Workspace) -> str:
+    """Return the name a styled node is judged by: its label's first word, or for a changed or removed node whose label starts with a description, a code-named ID."""
     identifier: str
     label: str
     style: str
     identifier, label, style = node
     name: str = _node_name(label)
-    exists: bool = name in workspace.modules or any(package.name == _canonical(name) for package in workspace.packages)
+    described: bool = not name.islower() and not re.search(r"[-_.]", name)
+    if style != "added" and described and workspace.has(identifier):
+        return identifier
+    return name
+
+
+def _impact_problem(node: tuple[str, str, str], workspace: Workspace) -> str:
+    """Return what is wrong with one styled node's name, or an empty string."""
+    identifier: str = node[0]
+    style: str = node[2]
+    name: str = _judged_name(node, workspace)
+    exists: bool = workspace.has(name)
     if style != "added":
         return "" if exists else f"{identifier} ({style}) names {name!r}, which is not a package or module"
     if exists:
