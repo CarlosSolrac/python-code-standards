@@ -26,6 +26,17 @@ The matrix footnote (skill §3) cites each `!` and `d` cell:
 | io → core `d` | `packages/tally-io/pyproject.toml:8` |
 | stage → io `d` | `packages/tally-stage/pyproject.toml:8` |
 
+## Expected boundary contracts
+
+References for the contract table (skill §3), not a template: a spec may cut the boundaries differently.
+
+| Boundary | Output | Grain/key | Source |
+|---|---|---|---|
+| Reading orders | `list[Order]` | One `Order` per CSV row, in file order, with no unique key: `order_id` is the dedupe key, and its duplicates survive until totalling | `packages/tally-io/src/tally_io/__init__.py:21`, `packages/tally-io/src/tally_io/__init__.py:60` |
+| Loading stage | `list[Order]`, unchanged | As reading orders | `packages/tally-stage/src/tally_stage/__init__.py:8` |
+| Totalling | `list[dict[str, object]]` (defect 5) | One row per `day`, keyed by `day`, after the latest row per `order_id` wins | `packages/tally-core/src/tally_core/__init__.py:10` |
+| Writing the report | Report CSV with the header `day,revenue` | One line per day, keyed by `day` | `packages/tally-io/src/tally_io/__init__.py:66` |
+
 ## The six defects
 
 | # | Rule | Kind | File | Label |

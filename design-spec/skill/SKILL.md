@@ -63,7 +63,7 @@ Context and container views: plain flowcharts, not Mermaid's experimental C4 dia
 
 Change-impact diagram: one node per package (uv workspace) or module the restructure touches, named as in the code, each taking one of `classDef added fill:#dafbe1,stroke:#1a7f37`, `classDef changed fill:#fff8c5,stroke:#9a6700`, or `classDef removed fill:#ffebe9,stroke:#cf222e`. A `changed` or `removed` node names a package or module that exists; an `added` node names one that does not. Untouched neighbours may appear unstyled for context. The same diagram serves as the pull request's diagram.
 
-Boundary contract table columns: `boundary | input | output | invariants | owner`; document mode adds `source`, the code that defines the output and enforces the invariants.
+Boundary contract table columns: `boundary | input | output | grain/key | invariants | owner`; document mode adds `source`, the code that defines the output and enforces the invariants. `grain/key` says what one record crossing the boundary is and which fields identify it (one row per order, keyed by `order_id`), or that none do (one document per run; raw rows before deduplication).
 
 Dependency matrix: rows import columns. Mark each cell `Y` (imported and declared), `!` (imported but not declared), or `d` (declared but not imported). For a uv workspace, use packages as the unit; otherwise modules. Follow it with one line on cycles and direction. In document mode, footnote it with a `cell | source` table: one row per `!` or `d` cell, citing the import (`!`) or the declaration (`d`).
 
