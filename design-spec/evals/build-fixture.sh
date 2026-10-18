@@ -17,16 +17,16 @@
 #       fixtures/parquettoxl-8ffaa6f.bundle
 #   3b  (id 5) fixtures/planted-defects/ committed on main
 #   6   the same build as 3b: eval 6 designs a change to that workspace
-#   4   template-sqlmesh-duckdb cloned from GitHub, with ports.py made to import
-#       from adapters and committed. Fails while the template has no
-#       docs/design.md, since there is then no design to resync.
-#       DESIGN_SPEC_TEMPLATE_URL overrides the clone URL (to test this case
-#       against a local copy).
+#   4   ParquetToXL at f8f4a41 (PR #7's merge, which added docs/design.md),
+#       cloned from fixtures/parquettoxl-f8f4a41.bundle, with
+#       pqx_common/names.py made to import pqx_excel.workbook and committed:
+#       the reverse of the excel -> common edge in that design's dependency
+#       matrix, so a resync must find a new '!' and a cycle
 #
-# Commits use a fixed author, committer and date, so evals 3 and 3b give the
-# same SHAs on every build. No fixture keeps a remote: the agent cannot fetch
-# the answer or push. On failure <dest> is removed, so the same path can be
-# retried.
+# Commits use a fixed author, committer and date and are never signed, so
+# evals 3, 3b and 4 give the same SHAs on every build. No fixture keeps a
+# remote: the agent cannot fetch the answer or push. On failure <dest> is
+# removed, so the same path can be retried.
 
 set -euo pipefail
 
@@ -41,8 +41,8 @@ dest="$2"
 
 [[ ! -e "$dest" ]] || { echo "$dest already exists; pick a new path" >&2; exit 2; }
 
-TEMPLATE_URL="${DESIGN_SPEC_TEMPLATE_URL:-https://github.com/CarlosSolrac/template-sqlmesh-duckdb}"
 PARQUETTOXL_BASE="8ffaa6fb173364321977bf8326ccf95982e26bcf"
+PARQUETTOXL_DESIGNED="f8f4a41f5e4aae3659f92cf88108bca5c716fa04"
 
 export GIT_AUTHOR_NAME="Fixture" GIT_AUTHOR_EMAIL="fixture@example.invalid"
 export GIT_COMMITTER_NAME="Fixture" GIT_COMMITTER_EMAIL="fixture@example.invalid"
@@ -62,7 +62,7 @@ die() {
 }
 
 commit() {  # commit <message>
-    GIT_AUTHOR_DATE="2026-10-16T08:00:00+00:00" GIT_COMMITTER_DATE="2026-10-16T08:00:00+00:00" git commit -q -m "$1"
+    GIT_AUTHOR_DATE="2026-10-16T08:00:00+00:00" GIT_COMMITTER_DATE="2026-10-16T08:00:00+00:00" git -c commit.gpgsign=false commit -q -m "$1"
 }
 
 build_empty() {
@@ -77,10 +77,10 @@ build_small_project() {
     (cd "$dest" && bash "$setup" -y --update && commit "Set up the python-code-standards toolchain")
 }
 
-build_parquettoxl() {
-    git clone -q -b main "$here/fixtures/parquettoxl-8ffaa6f.bundle" "$dest"
+build_parquettoxl() {  # build_parquettoxl <bundle in fixtures/> <commit its main must be at>
+    git clone -q -b main "$here/fixtures/$1" "$dest"
     git -C "$dest" remote remove origin
-    [[ "$(git -C "$dest" rev-parse HEAD)" == "$PARQUETTOXL_BASE" ]] || die "the bundle's main is not at $PARQUETTOXL_BASE"
+    [[ "$(git -C "$dest" rev-parse HEAD)" == "$2" ]] || die "the bundle's main is not at $2"
 }
 
 build_planted_defects() {
@@ -91,31 +91,28 @@ build_planted_defects() {
 }
 
 build_resync() {
-    git -c core.safecrlf=false clone -q "$TEMPLATE_URL" "$dest" || die "could not clone $TEMPLATE_URL"
-    [[ -f "$dest/docs/design.md" ]] || die "eval 4 cannot run yet: $TEMPLATE_URL has no docs/design.md (the template is still being filled), so there is no design to resync"
-    git -C "$dest" remote remove origin
+    build_parquettoxl parquettoxl-f8f4a41.bundle "$PARQUETTOXL_DESIGNED"
     reverse_import
-    (cd "$dest" && git -c core.safecrlf=false add -A && commit "Eval 4: ports.py imports from adapters")
+    (cd "$dest" && git -c core.safecrlf=false add -A && commit "pqx-common: import pqx_excel.workbook from names")
 }
 
-reverse_import() {  # make the template's ports.py import its sibling adapters module
-    local ports dir package
-    mapfile -t ports < <(git -C "$dest" ls-files -- ':(glob)**/ports.py')
-    [[ ${#ports[@]} -eq 1 ]] || die "eval 4 expects exactly one ports.py in the template, found ${#ports[@]}; update reverse_import in $0"
-    dir="$(dirname "${ports[0]}")"
-    [[ -f "$dest/$dir/adapters.py" || -d "$dest/$dir/adapters" ]] || die "eval 4 expects adapters.py or adapters/ beside ${ports[0]}; update reverse_import in $0"
-    [[ "$dir" != . ]] || die "eval 4 expects ports.py inside a package, found it at the template root; update reverse_import in $0"
-    package="${dir##*src/}"
-    # Appended at the end, not among the imports: adapters imports ports, and a
+reverse_import() {  # make pqx_common/names.py import pqx_excel.workbook, which imports names
+    local names="packages/pqx-common/src/pqx_common/names.py"
+    local workbook="packages/pqx-excel/src/pqx_excel/workbook.py"
+    grep -q '^from pqx_common\.names import' "$dest/$workbook" || die "eval 4 expects $workbook to import pqx_common.names; update reverse_import in $0"
+    # Appended at the end, not among the imports: workbook imports names, and a
     # top-of-file import would fail at run time in one import order (a partially
-    # initialised ports). At the end both orders work, so only the design changes.
-    printf '\nfrom %s import adapters  # eval 4: the port now depends on an adapter\n' "${package//\//.}" >> "$dest/${ports[0]}"
+    # initialised names). At the end both orders work, so only the design changes.
+    # No comment names the eval, so the fixture does not announce the answer. The
+    # two blank lines and the suppressions keep the fixture's own gates (Ruff
+    # check and format, strict Pyright) as clean as they were at f8f4a41.
+    printf '\n\nfrom pqx_excel import workbook  # noqa: E402, F401  # pyright: ignore[reportUnusedImport]\n' >> "$dest/$names"
 }
 
 case "$eval_id" in
     1) build_empty ;;
     2) build_small_project ;;
-    3) build_parquettoxl ;;
+    3) build_parquettoxl parquettoxl-8ffaa6f.bundle "$PARQUETTOXL_BASE" ;;
     3b | 5 | 6) build_planted_defects ;;
     4) build_resync ;;
     *) echo "no eval '$eval_id'; expected 1, 2, 3, 4, 5 (also written 3b), or 6" >&2; exit 2 ;;
