@@ -122,7 +122,7 @@ uv run complexipy skill\tools tests evals\grade.py evals\design_spec_grade.py
 uv run deptry .
 ```
 
-Mutation testing needs `os.fork`, so on Windows it runs in WSL: `wsl -e bash skill/tools/mutation.sh`
+Mutation testing needs `os.fork`, so on Windows it runs in WSL, through a login shell so `uv` is on PATH: `wsl -e bash -lc "bash skill/tools/mutation.sh"`
 (see [docs/quality-gates.md](docs/quality-gates.md#mutation-testing)).
 
 `conformance.py` is the drift check: it is the executable form of these standards, so when a

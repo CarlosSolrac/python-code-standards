@@ -123,8 +123,8 @@ nudged) and reruns the tests. A **surviving mutant** is a change no test noticed
 
 - **Run:** `bash tools/mutation.sh`, optionally with a mutant name pattern. Always
   through `bash`: the script is not marked executable, and Windows commits cannot
-  mark it. mutmut needs `os.fork`, so on Windows it runs in WSL:
-  `wsl -e bash tools/mutation.sh`. The
+  mark it. mutmut needs `os.fork`, so on Windows it runs in WSL, through a login
+  shell, which puts uv's `~/.local/bin` on PATH: `wsl -e bash -lc "bash tools/mutation.sh"`. The
   script keeps the Linux environment outside the checkout, under
   `~/.venvs/<project>`, so it never replaces the Windows `.venv` in a shared
   folder. CI runs it nightly and on demand (`mutation.yml`).
