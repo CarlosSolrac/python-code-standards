@@ -46,6 +46,7 @@ from evals.design_spec_grade import (
     documentation_only,
     first_line,
     grade,
+    impact_nodes,
     inferred_marker,
     main,
     no_c4,
@@ -983,3 +984,118 @@ def test_rules_decide_the_matrix_assertions(tmp_path: Path, number: int, start: 
     commit: str = _workspace_repo(tmp_path, PQX_TREE)
     run: Run = replace(_shop_run(tmp_path, commit), spec=spec)
     assert _graded(number, start, run).status == status
+
+
+IMPACT_CLASSES: tuple[str, ...] = ("  classDef added fill:#dafbe1", "  classDef changed fill:#fff8c5", "  classDef removed fill:#ffebe9")
+
+
+def test_impact_nodes_pass_when_each_names_what_the_code_has_or_lacks() -> None:
+    spec: str = _mermaid(
+        "flowchart LR",
+        '  Cli["shop-cli: calls the typed record"]:::changed --> Core["`**shop_core**`"]',
+        '  Types["shop_common.types"] --> Rec["shop_core.records ?"]:::added',
+        "  Io --> Web",
+        "  class Core,Types changed",
+        "  Io[shop-io.]:::removed",
+        *IMPACT_CLASSES,
+    )
+    reader: FakeReader = FakeReader(SHOP)
+    run: Run = _run(spec=spec)
+    assert impact_nodes(reader)(run) == Verdict(
+        passed=True,
+        evidence="at abc1234, changed and removed nodes name existing packages or modules, and added nodes new ones: shop-cli changed, shop_core changed, shop_common.types changed, shop_core.records added, shop-io removed",
+    )
+    assert reader.runs == [run]
+
+
+def test_impact_nodes_name_each_node_that_does_not() -> None:
+    spec: str = _mermaid(
+        "graph TD",
+        '  Ui["web ui"]:::changed',
+        "  ShopIo:::removed",
+        '  New(["shop_common"]):::added',
+        '  Rec["Typed record"]:::added',
+        "  shop_cli:::changed",
+        '  Num["42"]:::changed',
+        *IMPACT_CLASSES,
+    )
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(
+        passed=False,
+        evidence=(
+            "at abc1234: Ui (changed) names 'web', which is not a package or module; ShopIo (removed) names 'ShopIo', which is not a package or module; "
+            "New (added) names 'shop_common', which already exists; Rec (added) names 'Typed', which is not written as a package or module; "
+            "Num (changed) names '\"42\"', which is not a package or module"
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        _mermaid("flowchart LR", "  A --> B", *IMPACT_CLASSES) + _mermaid("stateDiagram-v2", "  S:::added", *IMPACT_CLASSES),
+        _mermaid("flowchart LR", "  A:::inferred", "  class B other"),
+    ],
+    ids=["no-flowchart-node-styled", "other-classes"],
+)
+def test_impact_nodes_fail_without_a_styled_node(spec: str) -> None:
+    reader: FakeReader = FakeReader(SHOP)
+    assert impact_nodes(reader)(_run(spec=spec)) == Verdict(passed=False, evidence="no flowchart node is styled added, changed or removed")
+    assert reader.runs == []
+
+
+def test_impact_nodes_ignore_commented_out_nodes() -> None:
+    spec: str = _mermaid("flowchart LR", '  %% Ghost["shop-web"]:::removed', "  A[shop-io]:::changed", "  %%A:::removed", *IMPACT_CLASSES)
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(passed=True, evidence="at abc1234, changed and removed nodes name existing packages or modules, and added nodes new ones: shop-io changed")
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=_mermaid("flowchart LR", '  %% Ghost["shop-web"]:::removed', *IMPACT_CLASSES))) == Verdict(
+        passed=False, evidence="no flowchart node is styled added, changed or removed"
+    )
+
+
+def test_impact_nodes_read_labels_from_shape_objects() -> None:
+    spec: str = _mermaid(
+        "flowchart LR",
+        '  Real@{ shape: rect, label: "shop-io" }',
+        "  Other@{ label: 'shop_core.records', shape: rect }",
+        "  Bare@{ label: shop_core }",
+        "  Real --> Other",
+        "  class Real,Bare changed",
+        "  class Other added",
+        *IMPACT_CLASSES,
+    )
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(
+        passed=True, evidence="at abc1234, changed and removed nodes name existing packages or modules, and added nodes new ones: shop-io changed, shop_core.records added, shop_core changed"
+    )
+
+
+def test_impact_nodes_read_nodes_as_mermaid_does() -> None:
+    """Mermaid keeps a dotted ID whole, shows a node's last label, and reads statements after a semicolon."""
+    spec: str = _mermaid(
+        "flowchart LR",
+        "  shop_common.types:::changed",
+        "  A[shop-io]; class A changed;",
+        "  A[shop-web]",
+        "  B[shop-web]:::removed",
+        "  B[shop-io]",
+        *IMPACT_CLASSES,
+    )
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(passed=False, evidence="at abc1234: A (changed) names 'shop-web', which is not a package or module")
+
+
+def test_impact_nodes_fail_without_a_spec() -> None:
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=None)) == Verdict(passed=False, evidence=f"no spec at {Path('fixture/docs/design.md')}")
+
+
+def test_impact_nodes_decide_nothing_when_the_code_cannot_be_read() -> None:
+    unreadable: Verdict = Verdict(passed=None, evidence="git archive failed")
+    assert impact_nodes(FakeReader(unreadable))(_run(spec=_mermaid("flowchart LR", "  A[shop-io]:::changed"))) == unreadable
+
+
+@pytest.mark.parametrize(
+    ("node", "status"),
+    [('  New["pqx_common.records"]:::added', "pass"), ('  Gone["pqx-gone"]:::removed', "fail")],
+    ids=["existing-and-new", "removed-missing"],
+)
+def test_rules_decide_the_impact_nodes_assertion(tmp_path: Path, node: str, status: Status) -> None:
+    commit: str = _workspace_repo(tmp_path, PQX_TREE)
+    spec: str = _mermaid("flowchart LR", '  Common["pqx-common"]:::changed', node, *IMPACT_CLASSES)
+    assert _graded(6, "Every changed or removed node names", replace(_shop_run(tmp_path, commit), spec=spec)).status == status

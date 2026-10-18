@@ -3,7 +3,8 @@
 A design-spec eval is a real session graded by hand against the assertions in
 ``design-spec/evals/evals.json``. Some of those assertions are mechanical: every
 diagram parses, every cited ``path:line`` exists at the build commit, no code
-changed, the dependency matrix matches the imports grimp finds in the code. This grader decides those and reports every other assertion ``manual``,
+changed, the dependency matrix matches the imports grimp finds in the code,
+and change-impact nodes name modules that exist. This grader decides those and reports every other assertion ``manual``,
 so a ``pass`` here always comes from a tool, never from a guess.
 
 An assertion that mixes a mechanical part with judgment fails when the mechanical
@@ -748,6 +749,106 @@ def _compare(matrices: _Matrices, named: set[Cell], commit: str) -> Verdict:
     return Verdict(passed=None, evidence=f"the dependency matrix differs from the code at {commit}: {matrices.describe(differ)}")
 
 
+_NODE: re.Pattern[str] = re.compile(
+    r"(?<![\w.-])([A-Za-z_](?:[\w.-]*\w)?)"  # node ID, dots included (``tally_core.models``)
+    r"(?:\s*(?:\[\[|\[\(|\(\[|\(\(|\{\{|[\[\(\{>])\s*"  # shape opener
+    r"(\"[^\"]*\"|[^\]\)\}\n]*?)\s*"  # label
+    r"(?:\]\]|\)\]|\]\)|\)\)|\}\}|[\]\)\}]))?"  # shape closer
+    r"(?::::([\w-]+))?"  # inline class
+)
+"""A Mermaid flowchart node: its ID, its label if the shape has one here, and a ``:::class``."""
+
+_SHAPE_LABEL: re.Pattern[str] = re.compile(r"(?<![\w.-])([A-Za-z_](?:[\w.-]*\w)?)@\{[^}]*?\blabel:\s*(\"[^\"]*\"|'[^']*'|[^,}]*)")
+"""A node written as a Mermaid shape object (``Id@{ shape: rect, label: "..." }``): its ID and label."""
+
+_COMMENT: re.Pattern[str] = re.compile(r"^\s*%%.*$", re.MULTILINE)
+_CLASS_STATEMENT: re.Pattern[str] = re.compile(r"(?:^|;)\s*class\s+([\w.,-]+)\s+([\w-]+)", re.MULTILINE)
+_NAME: re.Pattern[str] = re.compile(r"[A-Za-z_][\w.-]*")
+_WRITTEN_AS_NAME: re.Pattern[str] = re.compile(r"[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*|[a-z0-9]+(?:-[a-z0-9]+)+")
+_IMPACT: tuple[str, ...] = ("added", "changed", "removed")
+
+
+def impact_nodes(read: Callable[[Run], Workspace | Verdict]) -> Check:
+    """Return a check that each change-impact node names what the code at the build commit has, or lacks.
+
+    A ``changed`` or ``removed`` node names a workspace package or a module grimp
+    found (``tally-stage``, ``tally_stage``, ``tally_core.models``); an ``added`` node
+    names one written like a package or module that does not exist yet. A node's
+    name is the first word of its label, or its ID when it has none (design-spec
+    SKILL.md section 3: nodes are named as in the code).
+    """
+
+    def check(run: Run) -> Verdict:
+        if run.spec is None:
+            return _no_spec(run)
+        nodes: list[tuple[str, str, str]] = [node for block in _MERMAID.findall(run.spec) if _diagram_type(block) in {"flowchart", "graph"} for node in _styled_nodes(block)]
+        if not nodes:
+            return Verdict(passed=False, evidence="no flowchart node is styled added, changed or removed")
+        workspace: Workspace | Verdict = read(run)
+        if isinstance(workspace, Verdict):
+            return workspace
+        return _judge_nodes(nodes, workspace, run.commit)
+
+    return check
+
+
+def _judge_nodes(nodes: list[tuple[str, str, str]], workspace: Workspace, commit: str) -> Verdict:
+    """Judge every styled node's name against the workspace; any problem fails them all."""
+    problems: list[str] = [problem for node in nodes if (problem := _impact_problem(node, workspace))]
+    if problems:
+        return Verdict(passed=False, evidence=f"at {commit}: {'; '.join(problems)}")
+    named: str = ", ".join(f"{_node_name(label)} {style}" for _, label, style in nodes)
+    return Verdict(passed=True, evidence=f"at {commit}, changed and removed nodes name existing packages or modules, and added nodes new ones: {named}")
+
+
+def _styled_nodes(block: str) -> list[tuple[str, str, str]]:
+    """Return (ID, label, class) for each node a flowchart styles added, changed or removed, in order of first appearance.
+
+    ``%%`` comment lines are not part of the diagram, so a node written in one does not count.
+    As in Mermaid, a node defined twice shows its last label.
+    """
+    text: str = _COMMENT.sub("", block)
+    labels: dict[str, str] = {}
+    styles: dict[str, list[str]] = {}
+    node: str
+    label: str
+    style: str
+    for node, label, style in _NODE.findall(text):
+        if label or node not in labels:
+            labels[node] = label
+        if style:
+            styles.setdefault(node, []).append(style)
+    labels.update(_SHAPE_LABEL.findall(text))
+    nodes: str
+    for nodes, style in _CLASS_STATEMENT.findall(text):
+        for node in nodes.split(","):
+            styles.setdefault(node, []).append(style)
+    return [(node, label or node, style) for node, label in labels.items() for style in dict.fromkeys(styles.get(node, [])) if style in _IMPACT]
+
+
+def _node_name(label: str) -> str:
+    """Return the name a node's label starts with: its first word, quotes, backticks and emphasis aside."""
+    found: re.Match[str] | None = _NAME.search(label)
+    return found.group(0).rstrip(".-") if found else label
+
+
+def _impact_problem(node: tuple[str, str, str], workspace: Workspace) -> str:
+    """Return what is wrong with one styled node's name, or an empty string."""
+    identifier: str
+    label: str
+    style: str
+    identifier, label, style = node
+    name: str = _node_name(label)
+    exists: bool = name in workspace.modules or any(package.name == _canonical(name) for package in workspace.packages)
+    if style != "added":
+        return "" if exists else f"{identifier} ({style}) names {name!r}, which is not a package or module"
+    if exists:
+        return f"{identifier} (added) names {name!r}, which already exists"
+    if not _WRITTEN_AS_NAME.fullmatch(name):
+        return f"{identifier} (added) names {name!r}, which is not written as a package or module"
+    return ""
+
+
 def read_workspace(run: Run) -> Workspace | Verdict:
     """Read the fixture's workspace packages at the build commit, and the imports grimp finds between them.
 
@@ -863,6 +964,10 @@ RULES: Mapping[int, Sequence[Rule]] = {
     6: (
         Rule("The first line states design mode and the Standard size class, and the spec treats tally as an existing codebase being restructured, not a new system", first_line("design", "Standard"), complete=False),
         Rule("A change-impact flowchart defines classDef added, classDef changed and classDef removed", change_classdefs),
+        Rule(
+            "Every changed or removed node names a workspace package (such as tally-stage) or module (such as tally_stage) that exists in the fixture, and every added node, if any, names one that does not",
+            impact_nodes(read_workspace),
+        ),
         Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
         Rule('The reply ends with "Approve or correct before I implement."', closing_line),
         Rule("No code is written: git status and git diff <build commit> show changes to documentation files only", documentation_only),
