@@ -59,13 +59,17 @@
       "id": 4,
       "name": "eval-4-resync",
       "prompt": "Resync the design.",
-      "expected_output": "Document mode, resync. Before overwriting docs/design.md, the reply reports that the import direction changed (ports.py now imports adapters). The template has fewer than five modules, so the spec keeps an import-direction line rather than a matrix; a rule 6 finding is added. No code changes. Cannot run until template-sqlmesh-duckdb has a docs/design.md; build-fixture.sh 4 says so and stops.",
-      "files": [],
+      "expected_output": "Document mode, resync, on ParquetToXL at f8f4a41 (PR #7's merge, whose docs/design.md is the spec to resync) plus the build commit bb6b246, where packages/pqx-common/src/pqx_common/names.py:338 imports pqx_excel.workbook. Before overwriting docs/design.md, the reply reports what changed against it, including that pqx-common now imports pqx-excel: the reverse of the existing excel to common edge, so the two packages form a cycle. The resynced dependency matrix marks pqx-common's import of pqx-excel '!' (packages/pqx-common/pyproject.toml does not declare pqx-excel) and no longer says that no cycles exist. A new rule 6 finding cites packages/pqx-common/src/pqx_common/names.py:338. No code changes.",
+      "files": [
+        "fixtures/parquettoxl-f8f4a41.bundle"
+      ],
       "assertions": [
-        "Before docs/design.md is overwritten, the reply reports that the import direction changed: ports.py now imports from adapters",
-        "The resynced spec states import direction in one line, not a dependency matrix",
-        "A rule 6 finding reports ports.py importing from adapters",
-        "No code is changed: ports.py keeps the reversed import, and only documentation files differ from the build's commit"
+        "The first line states document mode and a size class",
+        "Before docs/design.md is overwritten, the reply reports that pqx-common now imports pqx-excel (pqx_common/names.py imports pqx_excel.workbook), which the existing spec's dependency matrix does not show",
+        "The resynced dependency matrix marks pqx-common's import of pqx-excel '!' and keeps pqx-excel's import of pqx-common 'Y', and the spec reports the pqx-common/pqx-excel cycle instead of saying no cycles exist",
+        "A new rule 6 finding reports pqx-common's undeclared, cycle-forming import of pqx-excel and cites packages/pqx-common/src/pqx_common/names.py:338",
+        "Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines",
+        "No code is changed: names.py keeps the reversed import, and git status and git diff bb6b246 show changes to documentation files only"
       ]
     },
     {
