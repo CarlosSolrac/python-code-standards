@@ -269,7 +269,9 @@ ending in one draft PR per task. See [nightshift/SKILL.md](nightshift/SKILL.md).
   the exact change listed for you.
 - **Reviews.** Codex reviews every unit and every finished task, then challenges each task's
   approach in an adversarial review. This needs the Codex plugin for Claude Code; while
-  Codex is unavailable the work goes on and the reviews wait, listed as pending.
+  Codex is unavailable the work goes on and the reviews wait, listed as pending; meanwhile
+  Claude's built-in `/code-review` checks each unit, without replacing the missed Codex
+  review.
 - **Needs.** A git repository; `gh` logged in to push and open PRs, or the branches stay
   local.
 - **In the morning.** Open `.nightshift/LOG-<date>.md` in the repository root and read

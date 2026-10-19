@@ -52,7 +52,12 @@ per check, pass or fail:
   uses. Auto mode passes; an allowlist must cover git, gh, `node "$CX"`, the project's
   checks, and edits in the task worktrees (`<repo-parent>/<repo-name>.nightshift/`), in
   `.nightshift/` at the repository root (the log) and in `.git/info/exclude`.
-  Name what is missing; change settings only if the user asks.
+  Name what is missing; change settings only if the user asks. For missing read-only
+  commands, ask the user to type `/fewer-permission-prompts` themselves; do not run it for
+  them. It scans this account's past sessions for read-only calls that prompted and adds an
+  allowlist to `.claude/settings.json`. It covers read-only calls only, so commits, pushes
+  and edits still need auto mode or rules of their own. If they run it, show its diff in
+  step 7 with the prepared files.
 - **Machine and session.** Remind the user to stop the machine sleeping and to keep this
   session open: nightshift's watchdog lives in the session and dies with it.
 

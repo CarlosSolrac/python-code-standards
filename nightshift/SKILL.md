@@ -249,13 +249,23 @@ on Codex, but a failed review is postponed, not skipped: the user wants every on
 
 1. **Log the failure** under `## Reviews pending`: the task, which review point it was, the
    job id, the error text, and the retry time if Codex gave one. Note it in the timeline.
-2. **Keep working.** Commit the unit anyway and record the last commit Codex did review.
+2. **Review with Claude meanwhile.** When a unit or fix review fails, run `/code-review high`
+   on the same uncommitted delta through Claude Code's built-in `code-review` skill (not
+   the marketplace plugin of that name, which reviews only pull requests), so a wrong turn
+   is still caught before the next unit builds on it. Name the level: without one it reuses
+   whatever the user last typed. Pass neither `--fix` nor `--comment`, and handle its
+   findings as *Codex reviews* handles Codex's. The whole-branch and adversarial points
+   have no stand-in.
+   This review replaces none of Codex's: the missed one stays under *Reviews pending* and
+   still runs. Count these apart in the plan table (for example `2 + 3 Claude`).
+3. **Keep working.** Commit the unit anyway and record the last commit Codex did review.
    Finish the task as usual — push it and open its draft PR — with `Codex review pending` at
-   the top of the PR body, and mark it `done — reviews pending`. Keep its worktree, because
+   the top of the PR body, followed by the Claude reviews run meanwhile, and mark it
+   `done — reviews pending`. Keep its worktree, because
    any review fixes will land there.
-3. **Retry** before starting each task and on every wake-up, but not before a retry time
+4. **Retry** before starting each task and on every wake-up, but not before a retry time
    Codex reported.
-4. **When Codex answers again**, run what was missed, oldest task first, before new work.
+5. **When Codex answers again**, run what was missed, oldest task first, before new work.
    Commits that missed their unit review get one review with
    `--scope branch --base <last reviewed commit>`; then the task's whole-branch review and
    adversarial review. Handle the findings as above, push the fixes to the same PR, replace
