@@ -1,7 +1,9 @@
 # python-code-standards
 
 A global `CLAUDE.md` and four skills for [Claude Code](https://claude.com/claude-code),
-installed once into `~/.claude` and active in every project.
+installed once into `~/.claude` and active in every project. The skill guidance is reusable
+where supported, but the shipped hook setup targets Claude Code; see
+[Agent Skills and Hooks Across Hosts](docs/agent-hooks.md) before adapting it elsewhere.
 
 - `CLAUDE.md` — language-agnostic working rules: think first, minimal diffs, verify by
   running, stop-and-ask gates. Loaded in every session.

@@ -15,7 +15,7 @@ from typing import cast
 
 import pytest
 
-from skill.tools.hooks.guard_protected import main
+from skill.tools.hooks.guard_protected import has_invalid_path, main, target_paths
 
 GUARD: Path = Path(__file__).resolve().parent.parent / "skill" / "tools" / "hooks" / "guard_protected.py"
 
@@ -115,15 +115,25 @@ def test_shell_reason_is_exact(command: str, reason: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "event",
-    [{"tool_name": "Read"}, {"tool_name": "Edit", "tool_input": {}}, {"tool_name": "Bash", "tool_input": {}}, {"tool_input": {"file_path": "pyproject.toml"}}],
+    ("event", "expected"),
+    [
+        ({"tool_name": "Read"}, "silent"),
+        ({"tool_name": "Edit", "tool_input": {}}, "ask"),
+        ({"tool_name": "Bash", "tool_input": {}}, "ask"),
+        ({"tool_input": {"file_path": "pyproject.toml"}}, "silent"),
+    ],
     ids=["no-tool-input", "no-file-path", "no-command", "no-tool-name"],
 )
-def test_incomplete_event_is_silent(event: dict[str, object]) -> None:
-    """A field missing from the event is never a crash; the hook stays silent."""
+def test_incomplete_event_fails_safe(event: dict[str, object], expected: str) -> None:
+    """Incomplete events ask for approval only when a recognized tool is uninspectable."""
     stdout: io.StringIO = io.StringIO()
     assert main(io.StringIO(json.dumps(event)), stdout) == 0
-    assert stdout.getvalue() == ""
+    if expected == "ask":
+        decision: dict[str, object] = json.loads(stdout.getvalue())
+        specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+        assert specific["permissionDecision"] == "ask"
+    else:
+        assert stdout.getvalue() == ""
 
 
 @pytest.mark.parametrize(
@@ -187,6 +197,140 @@ def test_bash_command_that_only_reads_is_silent(command: str) -> None:
 
 def test_other_tool_is_silent() -> None:
     assert decide("Read", {"file_path": "/repo/pyproject.toml"}) is None
+
+
+def test_main_asks_before_raw_apply_patch_to_protected_file() -> None:
+    event: dict[str, object] = {
+        "tool_name": "apply_patch",
+        "tool_input": "*** Begin Patch\n*** Update File: tools/hooks/guard_protected.py\n*** End Patch",
+    }
+    stdout: io.StringIO = io.StringIO()
+
+    assert main(io.StringIO(json.dumps(event)), stdout) == 0
+    decision: dict[str, object] = json.loads(stdout.getvalue())
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+    assert specific["permissionDecision"] == "ask"
+
+
+def test_main_emits_copilot_compatible_root_level_decision() -> None:
+    event: dict[str, object] = {
+        "hook_event_name": "PreToolUse",
+        "session_id": "fixture-session",
+        "timestamp": "2026-10-20T12:00:00Z",
+        "cwd": "/repo",
+        "tool_name": "Edit",
+        "tool_input": "*** Begin Patch\n*** Update File: pyproject.toml\n*** End Patch",
+    }
+    stdout: io.StringIO = io.StringIO()
+
+    assert main(io.StringIO(json.dumps(event)), stdout) == 0
+    decision: dict[str, object] = json.loads(stdout.getvalue())
+    assert decision["permissionDecision"] == "ask"
+    assert "hookSpecificOutput" not in decision
+
+
+def test_main_keeps_local_harness_nested_decision() -> None:
+    event: dict[str, object] = {
+        "hook_event_name": "PreToolUse",
+        "session_id": "fixture-session",
+        "timestamp": "2026-10-20T12:00:00Z",
+        "tool_use_id": "tool-123",
+        "tool_name": "Edit",
+        "tool_input": {"file_path": "pyproject.toml"},
+    }
+    stdout: io.StringIO = io.StringIO()
+
+    assert main(io.StringIO(json.dumps(event)), stdout) == 0
+    decision: dict[str, object] = json.loads(stdout.getvalue())
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+    assert specific["permissionDecision"] == "ask"
+
+
+def test_unsupported_input_for_recognized_tool_asks_instead_of_crashing() -> None:
+    event: dict[str, object] = {"tool_name": "Edit", "tool_input": ["pyproject.toml"]}
+    stdout: io.StringIO = io.StringIO()
+
+    assert main(io.StringIO(json.dumps(event)), stdout) == 0
+    decision: dict[str, object] = json.loads(stdout.getvalue())
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+    assert specific["permissionDecision"] == "ask"
+
+
+def test_malformed_path_value_for_recognized_tool_asks() -> None:
+    event: dict[str, object] = {"tool_name": "Edit", "tool_input": {"file_path": ["pyproject.toml"]}}
+    stdout: io.StringIO = io.StringIO()
+
+    assert main(io.StringIO(json.dumps(event)), stdout) == 0
+    decision: dict[str, object] = json.loads(stdout.getvalue())
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+    assert specific["permissionDecision"] == "ask"
+
+
+def test_write_content_with_patch_header_is_not_misread_as_target_path() -> None:
+    event: dict[str, object] = {
+        "tool_name": "Write",
+        "tool_input": {"file_path": "src/example.py", "content": "*** Update File: pyproject.toml"},
+    }
+    stdout: io.StringIO = io.StringIO()
+
+    assert main(io.StringIO(json.dumps(event)), stdout) == 0
+    assert stdout.getvalue() == ""
+
+
+def test_sanitized_transcript_tool_events_keep_their_hook_input_shapes() -> None:
+    fixture_path: Path = Path(__file__).parent / "fixtures" / "hook_events.json"
+    fixtures: object = json.loads(fixture_path.read_text(encoding="utf-8"))
+    assert isinstance(fixtures, list)
+
+    fixture: object
+    for fixture in fixtures:
+        assert isinstance(fixture, dict)
+        event: dict[str, object] = {
+            "tool_name": fixture["tool_name"],
+            "tool_input": fixture["tool_input"],
+        }
+        stdout: io.StringIO = io.StringIO()
+
+        assert main(io.StringIO(json.dumps(event)), stdout) == 0
+        assert stdout.getvalue() == ""
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        {"tool_name": "Edit", "tool_input": "unstructured file input"},
+        {"tool_name": "Edit", "tool_input": json.dumps({"file_path": "pyproject.toml"})},
+        {"tool_name": "Edit", "tool_input": "{"},
+        {"tool_name": "PowerShell", "tool_input": "Set-Content pyproject.toml"},
+        {"tool_name": "Bash", "tool_input": {"command": ["rm", "pyproject.toml"]}},
+        {"tool_name": "MultiEdit", "tool_input": {"changes": [{"path": "pyproject.toml"}]}},
+        {"tool_name": "MultiEdit", "tool_input": {"changes": [{"file_path": ["pyproject.toml"]}]}},
+        {"tool_name": "MultiEdit", "tool_input": {"changes": []}},
+    ],
+    ids=["raw-file-input", "json-object-input", "invalid-json-input", "raw-shell-command", "invalid-command-type", "nested-path", "nested-invalid-path", "empty-nested-paths"],
+)
+def test_hook_inspects_additional_payload_shapes(event: dict[str, object]) -> None:
+    stdout: io.StringIO = io.StringIO()
+
+    assert main(io.StringIO(json.dumps(event)), stdout) == 0
+    decision: dict[str, object] = json.loads(stdout.getvalue())
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+    assert specific["permissionDecision"] == "ask"
+
+
+def test_empty_path_containers_are_safe() -> None:
+    assert target_paths([]) == []
+    assert has_invalid_path([]) is False
+    assert target_paths(0) == []
+    assert has_invalid_path(0) is False
+
+
+def test_unsupported_input_for_unrecognized_tool_is_silent() -> None:
+    event: dict[str, object] = {"tool_name": "Read", "tool_input": ["pyproject.toml"]}
+    stdout: io.StringIO = io.StringIO()
+
+    assert main(io.StringIO(json.dumps(event)), stdout) == 0
+    assert stdout.getvalue() == ""
 
 
 def test_runs_as_script(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

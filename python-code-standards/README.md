@@ -1,6 +1,8 @@
 # python-code-standards skill
 
-Source of the `python-code-standards` skill for Claude Code. Install steps are in the
+Source of the `python-code-standards` skill for Claude Code. The language guidance can be
+reused by other skill-compatible agents, but the supplied setup and lifecycle hooks target
+Claude Code; see the [host comparison](../docs/agent-hooks.md). Install steps are in the
 [top-level README](../README.md); this file covers what the skill is for and how to work on it.
 
 ## Why it exists

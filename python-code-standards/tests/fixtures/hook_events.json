@@ -1,0 +1,28 @@
+[
+    {
+        "case": "captured Claude Edit call; text redacted",
+        "tool_name": "Edit",
+        "tool_input": {
+            "file_path": "notebooks/build_users_scd2.ipynb",
+            "old_string": "[redacted]",
+            "new_string": "[redacted]",
+            "replace_all": false
+        }
+    },
+    {
+        "case": "captured Claude Write call; content redacted",
+        "tool_name": "Write",
+        "tool_input": {
+            "file_path": "zipit.bat",
+            "content": "[redacted]"
+        }
+    },
+    {
+        "case": "captured Claude Bash call; description redacted",
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": "git status --short",
+            "description": "[redacted]"
+        }
+    }
+]

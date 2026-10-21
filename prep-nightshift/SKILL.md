@@ -6,6 +6,11 @@ disable-model-invocation: true
 
 # Prep nightshift
 
+This preparation workflow is specific to Claude Code's session, permissions, and hook
+configuration, with Codex as its review companion. Another agent may load this skill without
+implementing those contracts; verify the host explicitly and do not claim the night is ready
+unless its permission and resume behavior matches the checks below.
+
 Overnight, nightshift makes every call alone and logs it for the morning. This skill makes
 those calls with the user first, so the night spends its hours on work instead of on
 decisions the user might overrule, and no task ends blocked on something a minute of

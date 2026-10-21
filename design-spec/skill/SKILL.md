@@ -19,6 +19,11 @@ Two modes share one spec format, one set of rules, and one size gate:
 
 Pick the mode from the request. "Design", "build", "architect", or given inputs and outputs means design mode. "Document", "diagram", "explain the architecture", "resync the design", or "review the design of" an existing codebase means document mode. State the mode and size class in the first line.
 
+The Mermaid validator in this skill's `hooks` frontmatter is a Claude Code hook, not part of
+the portable Agent Skills format. Other hosts may ignore it or use a different hook contract.
+Run the validator explicitly as described in section 7 before delivering a spec, regardless
+of whether an automatic hook also ran.
+
 ## 1. Size gate (both modes)
 
 - **Small**: at most two layers and under ~150 lines, or, in design mode only, an existing ADR already forces the answer. Design mode: skip the spec and skip SQLMesh; plain `duckdb` in one typed module is fine. Document mode: a five-line summary plus the component flowchart only.
