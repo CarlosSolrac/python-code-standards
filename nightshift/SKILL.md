@@ -135,7 +135,7 @@ Repeat until every task is `done` or `blocked`:
 
 1. Pick the first `todo` task whose dependencies are `done`. Mark it `in progress` in the log
    with a timestamp.
-2. Start one general-purpose subagent for it with `run_in_background: false`, and wait for
+2. Start one general-purpose subagent for it with `model: "sonnet"` and `run_in_background: false`, and wait for
    it. Foreground matters: the watchdog fires only while the session is idle, so a
    background subagent would let the watchdog start the same task a second time. Run one
    task at a time. The brief gives the task, its done-check, its branch base, its worktree
