@@ -668,6 +668,11 @@ def test_citations_exist_fails_an_unknown_build_commit(repo: tuple[Path, str]) -
     assert citations_exist(_repo_run(repo, "`src/app.py:1`", commit="0" * 40)) == Verdict(passed=False, evidence=f"build commit {'0' * 40} is not a commit in {repo[0]}")
 
 
+def test_citations_exist_fails_a_build_commit_that_names_a_range(repo: tuple[Path, str]) -> None:
+    commit: str = f"{repo[1]}..{repo[1]}"
+    assert citations_exist(_repo_run(repo, "`src/app.py:1`", commit=commit)) == Verdict(passed=False, evidence=f"build commit {commit} is not a commit in {repo[0]}")
+
+
 def test_citations_exist_fails_without_a_spec(repo: tuple[Path, str]) -> None:
     assert citations_exist(_repo_run(repo)) == Verdict(passed=False, evidence=f"no spec at {repo[0] / 'docs' / 'design.md'}")
 

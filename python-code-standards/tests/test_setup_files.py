@@ -553,6 +553,12 @@ def test_rewrite_keeps_the_last_line_exactly(last: str) -> None:
     assert rewrite_tables(project, BASELINE, {"mypy"}) == "[tool.mypy]\nstrict = true\n\n[tool.black]\n" + last
 
 
+@pytest.mark.parametrize("last", ["strict = true # owned by X\n", "strict = true  \n"], ids=["ends-in-x", "ends-in-spaces"])
+@pytest.mark.parametrize(("project", "kept"), [("[tool.mypy]\nstrict = false\n", ""), ('[project]\nname = "x"\n', '[project]\nname = "x"\n\n')], ids=["replaced", "appended"])
+def test_rewrite_copies_the_baseline_table_exactly(project: str, kept: str, last: str) -> None:
+    assert rewrite_tables(project, "[tool.mypy]\n" + last, {"mypy"}) == kept + "[tool.mypy]\n" + last
+
+
 def test_rewrite_keeps_the_comment_above_the_next_section() -> None:
     project: str = '[tool.mypy]\nstrict = false\n\n# The project itself.\n\n[project]\nname = "x"\n'
     assert rewrite_tables(project, BASELINE, {"mypy"}) == '[tool.mypy]\nstrict = true\n\n# The project itself.\n\n[project]\nname = "x"\n'

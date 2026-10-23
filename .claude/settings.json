@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run --no-sync mutmut results)",
+      "Bash(uv run --no-sync mutmut show *)",
+      "Bash(tmux capture-pane *)"
+    ]
+  }
+}
