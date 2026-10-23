@@ -69,6 +69,17 @@ there without it.
 | `x_grade__mutmut_10` | files joined with `"XX\nXX"` instead of `"\n"` | The joined text is only searched for `pip install` and `python -m venv`; neither separator can complete a phrase across a file boundary. |
 | `x_main__mutmut_38` | `--json` `default=None` removed | `None` is argparse's own default. |
 
+## `evals/design_spec_grade.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_main__mutmut_96`, `_98`, `_142`, `_144`, `_147`, `_149`, `_194`, `_196`, `_204`; `x__print__mutmut_12` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_main__mutmut_88`, `_92`, `_93`, `_94` | `cast(...)` type string changed | `typing.cast` returns its value unchanged at run time. |
+| `x_main__mutmut_31`, `_43`, `_54`, `_77` | `default=None` removed | `None` is argparse's own default. |
+| `x__stated_mode__mutmut_6` | the skill name replaced by `"XXXX"` instead of `""` | The name is bounded by non-word characters, so neither replacement joins or splits a mode word. |
+| `x_inferred_marker__mutmut_26` | `classDef` fallback `""` → `"XXXX"` | Neither contains `stroke-dasharray`. |
+| `x_citations_exist__mutmut_13`, `_15` | `--verify` → `--VERIFY`, `--quiet` → `--QUIET` | `git rev-parse` still exits non-zero for an unknown commit (1 or 128) and zero for a real one, and only the status is read. |
+
 ## Timeouts
 
 `evals.grade.x__payload__mutmut_5`, `_6`, `_7`, `_10`, `_12`, `_14` and `_16` turn the
@@ -84,7 +95,8 @@ lines between a comment and its header.
 
 | Mutant | Change | Why it is equivalent |
 |---|---|---|
-| `x_main__mutmut_70`, `_72`; `x_staged_templates__mutmut_2`, `_4`; `x_read__mutmut_3`, `_5`, `_8`; `x_digest__mutmut_10`; `x_table_digest__mutmut_9`; `x_write__mutmut_13`, `_16`, `_19`; `x_install_tables__mutmut_11`, `_13`; `x_report_dev_tools__mutmut_8`, `_11` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_main__mutmut_70`, `_72`; `x_staged_templates__mutmut_2`, `_4`; `x_read__mutmut_3`, `_5`, `_8`; `x_digest__mutmut_10`; `x_table_digest__mutmut_9`; `x_write__mutmut_13`, `_16`, `_19`; `x_install_tables__mutmut_11`, `_13`; `x_add_dev_tools__mutmut_9`, `_12` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_run_command__mutmut_2`, `_4` | `check=False` → `None` or removed | `None` is falsy and `False` is the default. |
 | `x_write__mutmut_14`, `_17` | `newline=""` → `None` or removed | Newline translation writes `os.linesep`, which is `"\n"` on Linux. |
 | `x_rewrite_tables__mutmut_23`, `_25`, `_41`, `_43` | a baseline table's `rstrip("\n")` → `rstrip()` or `rstrip("XX\nXX")` | Baseline lines end in neither blanks nor `X`. |
 | `x_rewrite_tables__mutmut_36` | `"".join(kept)` → `"XXXX".join(kept)` before `endswith` | The joined text ends with its last block either way; they differ only when that block is empty, and then neither ends in a blank line. |
@@ -96,9 +108,10 @@ lines between a comment and its header.
 | Mutant | Change | Why it is equivalent |
 |---|---|---|
 | `x_main__mutmut_7`, `_9`, `_28`, `_31`, `_34` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
-| `x_main__mutmut_32` | `newline=""` removed | Newline translation writes `os.linesep`, which is `"\n"` on Linux. |
+| `x_main__mutmut_29`, `_32` | `newline=""` → `None` or removed | Newline translation writes `os.linesep`, which is `"\n"` on Linux. |
 | `x__digest_span__mutmut_5` | `index` → `rindex` for the opener | The script has one `HASHEOF` opener. |
 | `x__digest_span__mutmut_8`, `_10` | the closing delimiter searched from the start of the script | No line before the opener is exactly `HASHEOF`. |
+| `x__digest_span__mutmut_11` | `index` → `rindex` for the closing delimiter | The script has one closing `HASHEOF` line. |
 | `x__digest_span__mutmut_13` | search from `start - 2` instead of `start - 1` | The character at `start - 2` is the opener's closing quote, so no match can begin there. |
 
 ## `skill/tools/review_brief.py`

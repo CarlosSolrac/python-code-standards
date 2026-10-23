@@ -284,6 +284,16 @@ def test_a_gate_tool_that_is_not_installed_is_named_as_a_setup_problem(tool: str
     )
 
 
+@pytest.mark.parametrize("probe_exit", [1, 127])
+def test_a_missing_tool_is_named_whatever_nonzero_exit_the_probe_reports(probe_exit: int) -> None:
+    """Only a successful probe clears the tool; any other exit with the spawn failure message means it is not installed."""
+    probe: Result = Result(probe_exit, spawn_failed("pytest").output)
+    runner: FakeRunner = FakeRunner({**changed(modified=["a.py"]), "uv run pytest": spawn_failed("pytest"), "uv run --no-sync pytest --version": probe})
+    output: dict[str, object] | None = stop(runner)
+    assert output is not None
+    assert "`pytest (not installed)`" in str(output["reason"])
+
+
 def test_a_failing_gate_tool_that_is_installed_keeps_its_command() -> None:
     runner: FakeRunner = FakeRunner({**changed(modified=["a.py"]), "uv run pytest": Result(1, "1 failed")})
     output: dict[str, object] | None = stop(runner)
