@@ -7,6 +7,7 @@ anything it cannot decide is reported ``manual``, never ``pass``.
 
 from __future__ import annotations
 
+import ast
 import io
 import json
 import re
@@ -16,6 +17,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import cast
 
+import grimp
 import pytest
 
 from evals import design_spec_grade
@@ -635,6 +637,11 @@ def test_run_returns_status_and_both_streams_from_cwd(tmp_path: Path) -> None:
     assert (status, output.strip(), error.strip()) == (0, str(tmp_path), "→")
 
 
+def test_run_replaces_bytes_that_are_not_utf8(tmp_path: Path) -> None:
+    """A tool's stray byte must not crash the grader."""
+    assert run_command([sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'a\\xffb')"], tmp_path) == (0, "a�b", "")
+
+
 def test_citations_exist_passes_when_every_line_is_there(repo: tuple[Path, str]) -> None:
     spec: str = "Rows (`src/app.py:1`, `src/app.py:3`) and README.md:1."
     assert citations_exist(_repo_run(repo, spec)) == Verdict(passed=True, evidence=f"all 3 cited path:line exist at {repo[1]}")
@@ -814,7 +821,7 @@ def test_run_reports_a_missing_program_as_exit_127(tmp_path: Path) -> None:
     error: str
     status, output, error = run_command(["no-such-program-for-the-grader"], tmp_path)
     assert (status, output) == (127, "")
-    assert error
+    assert "no-such-program-for-the-grader" in error
 
 
 @pytest.mark.parametrize(("number", "status"), [(1, "pass"), (6, "pass")])
@@ -881,12 +888,22 @@ class FakeReader:
             Verdict(passed=True, evidence="the named cells agree with the code at abc1234 (cli → core !, io → core d); the rest of the matrix differs: io → common is blank in the spec, Y in the code"),
         ),
         (
+            (("core", "cli"),),
+            _matrix("| core | Y | | | |", "| io | | d | | |", "| cli | Y | ! | Y | |"),
+            Verdict(passed=True, evidence="the named cells agree with the code at abc1234 (core → cli blank); the rest of the matrix differs: io → common is blank in the spec, Y in the code"),
+        ),
+        (
             (),
             _matrix("| core | Y | | | |", "| io | Y | | | |", "| cli | Y | ! | Y | |"),
             Verdict(passed=None, evidence="the dependency matrix differs from the code at abc1234: io → core is blank in the spec, d in the code"),
         ),
+        (
+            (),
+            _matrix("| core | Y | | | |", "| io | | | | |", "| cli | Y | ! | Y | |"),
+            Verdict(passed=None, evidence="the dependency matrix differs from the code at abc1234: io → common is blank in the spec, Y in the code, io → core is blank in the spec, d in the code"),
+        ),
     ],
-    ids=["equal", "equal-no-cells", "named-cell-differs", "named-and-other-cells-differ", "other-cell-differs", "differs-no-cells"],
+    ids=["equal", "equal-no-cells", "named-cell-differs", "named-and-other-cells-differ", "other-cell-differs", "named-blank-cell-agrees", "differs-no-cells", "two-cells-differ"],
 )
 def test_dependency_matrix_compares_the_spec_with_the_code(cells: tuple[tuple[str, str], ...], spec: str, verdict: Verdict) -> None:
     reader: FakeReader = FakeReader(SHOP)
@@ -917,11 +934,30 @@ def test_dependency_matrix_without_a_matrix(cells: tuple[tuple[str, str], ...], 
 
 def test_dependency_matrix_names_packages_in_neither_a_row_nor_a_column() -> None:
     docs: Package = Package("shop-docs", frozenset({"shop_docs"}), frozenset())
-    workspace: Workspace = replace(SHOP, packages=(*SHOP.packages, docs))
+    web: Package = Package("shop-web", frozenset({"shop_web"}), frozenset())
+    workspace: Workspace = replace(SHOP, packages=(*SHOP.packages, docs, web))
     spec: str = "| imports | common | core | io |\n|---|---|---|---|\n| core | Y | | |\n| io | Y | d | |\n| cli | Y | ! | Y |\n"
     assert dependency_matrix(FakeReader(workspace))(_run(spec=spec)) == Verdict(
-        passed=True, evidence="the dependency matrix equals the code's at abc1234 (5 packages, 4 Y cells): cli → core !, io → core d; not in the matrix: docs"
+        passed=True, evidence="the dependency matrix equals the code's at abc1234 (6 packages, 4 Y cells): cli → core !, io → core d; not in the matrix: docs, web"
     )
+
+
+def test_dependency_matrix_equal_without_undeclared_or_unused_cells() -> None:
+    base: Package = Package("app-base", frozenset({"app_base"}), frozenset())
+    top: Package = Package("app-top", frozenset({"app_top"}), frozenset({"app-base"}))
+    workspace: Workspace = Workspace(packages=(base, top), imports=frozenset({("app-top", "app-base")}), modules=frozenset({"app_base", "app_top"}))
+    spec: str = "| imports | base | top |\n|---|---|---|\n| top | Y | |\n"
+    assert dependency_matrix(FakeReader(workspace))(_run(spec=spec)) == Verdict(passed=True, evidence="the dependency matrix equals the code's at abc1234 (2 packages, 1 Y cells): no ! or d cells")
+
+
+@pytest.mark.parametrize(
+    ("names", "label"),
+    [(("my-app-core", "my-app-io"), "core"), (("app-core", "app-cli"), "core"), (("core", "cli"), "core")],
+    ids=["prefix-with-two-hyphens", "prefix-past-the-hyphen", "no-prefix"],
+)
+def test_workspace_label_drops_the_prefix_up_to_the_last_shared_hyphen(names: tuple[str, str], label: str) -> None:
+    workspace: Workspace = Workspace(packages=tuple(Package(name, frozenset(), frozenset()) for name in names), imports=frozenset(), modules=frozenset())
+    assert workspace.label(names[0]) == label
 
 
 def test_workspace_matrix_leaves_imports_within_a_package_out() -> None:
@@ -973,6 +1009,56 @@ def _shop_run(root: Path, commit: str) -> Run:
     return Run(fixture=root, commit=commit, spec_path=root / "docs" / "design.md", spec=None, reply=None)
 
 
+@dataclass(frozen=True)
+class FakeGraph:
+    """Stand-in for ``grimp.ImportGraph``: the modules and the direct imports between top-level packages."""
+
+    modules: frozenset[str]
+    edges: frozenset[tuple[str, str]]
+
+    def direct_import_exists(self, *, importer: str, imported: str, as_packages: bool) -> bool:
+        """Return whether any module in ``importer`` imports one in ``imported``; only package-level questions are modelled."""
+        assert as_packages is True
+        return (importer, imported) in self.edges
+
+
+def build_fake_graph(*names: str, cache_dir: object = "grimp's default") -> FakeGraph:
+    """Build a FakeGraph as ``grimp.build_graph`` would, without grimp's threads.
+
+    grimp's worker threads do not survive ``fork``, so a real build hangs in a
+    mutmut worker forked after grimp ran. Each package is found on ``sys.path``,
+    as grimp finds it, and imports are read with ``ast``, ``TYPE_CHECKING`` ones
+    included. A grimp cache written into the fixture is refused.
+    """
+    assert cache_dir is None
+    modules: set[str] = set()
+    edges: set[tuple[str, str]] = set()
+    name: str
+    for name in names:
+        package: Path = next(Path(entry) / name for entry in sys.path if (Path(entry) / name / "__init__.py").is_file())
+        source: Path
+        for source in package.rglob("*.py"):
+            parts: tuple[str, ...] = (name, *source.relative_to(package).with_suffix("").parts)
+            modules.add(".".join(parts[:-1] if parts[-1] == "__init__" else parts))
+            tree: ast.Module = ast.parse(source.read_text(encoding="utf-8"))
+            imported: set[str] = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
+            imported |= {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module}
+            edges |= {(name, module.split(".")[0]) for module in imported if module.split(".")[0] in names}
+    return FakeGraph(modules=frozenset(modules), edges=frozenset(edges))
+
+
+@pytest.fixture(params=[pytest.param("grimp", marks=pytest.mark.no_mutation), "fake"])
+def import_graph(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Build the import graph with real grimp, or with ``build_fake_graph`` under mutation testing.
+
+    Normal runs use both, so the same assertions prove the fake agrees with grimp;
+    mutmut deselects the real one, whose threads hang in its forked workers.
+    """
+    if request.param == "fake":
+        monkeypatch.setattr(grimp, "build_graph", build_fake_graph)
+
+
+@pytest.mark.usefixtures("import_graph")
 def test_read_workspace_reads_packages_declarations_and_imports_at_the_build_commit(tmp_path: Path) -> None:
     commit: str = _workspace_repo(tmp_path, SHOP_TREE)
     (tmp_path / "packages" / "shop-common" / "src" / "shop_common" / "__init__.py").write_text("import shop_cli\n", encoding="utf-8")
@@ -990,6 +1076,7 @@ def test_read_workspace_reads_packages_declarations_and_imports_at_the_build_com
     assert sys.path == path
 
 
+@pytest.mark.usefixtures("import_graph")
 def test_read_workspace_reads_only_package_source(tmp_path: Path) -> None:
     tree: Tree = {
         "app-base": ([], {"app_base/__init__.py": "", "loose.py": "import app_top\n"}),
@@ -1004,6 +1091,16 @@ def test_read_workspace_reads_only_package_source(tmp_path: Path) -> None:
     workspace: Workspace | Verdict = read_workspace(_shop_run(tmp_path, _git(tmp_path, "rev-parse", "HEAD")))
     assert isinstance(workspace, Workspace)
     assert workspace.matrix() == {("app-top", "app-base"): "Y", ("app-empty", "app-top"): "d"}
+
+
+@pytest.mark.usefixtures("import_graph")
+def test_read_workspace_reads_a_package_without_dependencies(tmp_path: Path) -> None:
+    _workspace_repo(tmp_path, {"app-base": ([], {"app_base/__init__.py": ""})})
+    (tmp_path / "packages" / "app-base" / "pyproject.toml").write_text('[project]\nname = "app-base"\nversion = "0.1.0"\n', encoding="utf-8")
+    _git(tmp_path, "commit", "-q", "-am", "no dependencies")
+    workspace: Workspace | Verdict = read_workspace(_shop_run(tmp_path, _git(tmp_path, "rev-parse", "HEAD")))
+    assert isinstance(workspace, Workspace)
+    assert workspace.packages == (Package("app-base", frozenset({"app_base"}), frozenset()),)
 
 
 def test_read_workspace_needs_a_build_commit(tmp_path: Path) -> None:
@@ -1049,6 +1146,7 @@ def _pqx_matrix(common: str, report_frame: str) -> str:
     ],
     ids=["3", "3-report-wrong", "3-other-cell-wrong", "4", "4-reversed-import-missing", "4-other-cell-wrong", "3b-equal", "3b-differs"],
 )
+@pytest.mark.usefixtures("import_graph")
 def test_rules_decide_the_matrix_assertions(tmp_path: Path, number: int, start: str, spec: str, status: Status) -> None:
     commit: str = _workspace_repo(tmp_path, PQX_TREE)
     run: Run = replace(_shop_run(tmp_path, commit), spec=spec)
@@ -1173,6 +1271,15 @@ def test_impact_nodes_accept_a_code_named_id_for_changed_and_removed_nodes() -> 
     )
 
 
+def test_impact_nodes_keep_a_name_whole_and_judge_an_added_node_by_its_label() -> None:
+    """A name keeps its last letter, and an added node's described label is not swapped for its code-named ID."""
+    spec: str = _mermaid("flowchart LR", '  Ui["webX"]:::changed', '  shop_core["New records"]:::added', *IMPACT_CLASSES)
+    assert impact_nodes(FakeReader(SHOP))(_run(spec=spec)) == Verdict(
+        passed=False,
+        evidence="at abc1234: Ui (changed) names 'webX', which is not a package or module; shop_core (added) names 'New', which is not written as a package or module",
+    )
+
+
 def test_impact_nodes_fail_without_a_spec() -> None:
     assert impact_nodes(FakeReader(SHOP))(_run(spec=None)) == Verdict(passed=False, evidence=f"no spec at {Path('fixture/docs/design.md')}")
 
@@ -1187,6 +1294,7 @@ def test_impact_nodes_decide_nothing_when_the_code_cannot_be_read() -> None:
     [('  New["pqx_common.records"]:::added', "pass"), ('  Gone["pqx-gone"]:::removed', "fail")],
     ids=["existing-and-new", "removed-missing"],
 )
+@pytest.mark.usefixtures("import_graph")
 def test_rules_decide_the_impact_nodes_assertion(tmp_path: Path, node: str, status: Status) -> None:
     commit: str = _workspace_repo(tmp_path, PQX_TREE)
     spec: str = _mermaid("flowchart LR", '  Common["pqx-common"]:::changed', node, *IMPACT_CLASSES)
