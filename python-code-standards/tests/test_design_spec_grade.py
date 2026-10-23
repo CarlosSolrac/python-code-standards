@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import runpy
 import sys
 from dataclasses import dataclass, field, replace
@@ -17,6 +18,7 @@ from typing import cast
 
 import pytest
 
+from evals import design_spec_grade
 from evals.design_spec_grade import (
     CITATION,
     CLOSING,
@@ -221,6 +223,34 @@ def test_main_rejects_bad_arguments(tmp_path: Path, capsys: pytest.CaptureFixtur
     assert message in capsys.readouterr().err
 
 
+def test_main_grades_with_the_shipped_rules_when_none_are_given(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["1", str(_fixture(tmp_path))]) == 0
+    assert "manual  The first line states design mode and the Standard size class" in capsys.readouterr().out
+
+
+def test_main_help_describes_the_grader_and_every_argument(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    """A wide terminal keeps argparse from wrapping, so each help string appears whole."""
+    monkeypatch.setenv("COLUMNS", "1000")
+    exit_info: pytest.ExceptionInfo[SystemExit]
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--help"])
+    assert exit_info.value.code == 0
+    out: str = capsys.readouterr().out
+    assert design_spec_grade.__doc__ is not None
+    assert design_spec_grade.__doc__.strip() in out
+    text: str
+    for text in (
+        "the eval's id in evals.json; 3b is accepted for 5",
+        "the fixture folder the session worked in",
+        "the build commit build-fixture.sh printed; eval 1 has none",
+        "the spec to grade (default: <fixture>/docs/design.md)",
+        "the session's reply saved as text; without it the reply checks are manual",
+        "the evals.json to read the assertions from",
+        "also write the report as JSON to this file",
+    ):
+        assert re.search(rf"\s{re.escape(text)}$", out, re.MULTILINE), text
+
+
 @pytest.mark.parametrize("depth", [2, 3], ids=["in-the-repository", "in-mutmuts-copy"])
 def test_find_evals_walks_up_to_the_nearest_design_spec(tmp_path: Path, depth: int) -> None:
     evals: Path = tmp_path / "design-spec" / "evals" / "evals.json"
@@ -293,6 +323,8 @@ def test_runs_as_script(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureF
         ("Design mode — using standard libraries", "design", "Standard", False),
         ("Design mode, size: standard", "design", "Standard", True),
         ("Document mode, a standard-size spec", "document", None, True),
+        ("Document mode, Small", "document", None, True),
+        ("Document mode, Large", "document", None, True),
     ],
     ids=[
         "document-any-size",
@@ -311,6 +343,8 @@ def test_runs_as_script(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureF
         "lowercase-word-is-not-a-size",
         "lowercase-size-labelled",
         "lowercase-size-adjacent",
+        "any-size-small",
+        "any-size-large",
     ],
 )
 def test_first_line_states_the_mode_and_size(reply: str, mode: str | None, size: str | None, *, passed: bool) -> None:
@@ -333,8 +367,9 @@ def test_first_line_names_what_it_wanted() -> None:
         (f"The spec.\n**{CLOSING}**", True),
         (f"Open questions above. {CLOSING}", True),
         (f"{CLOSING}\nThanks.", False),
+        (f"{CLOSING}X", False),
     ],
-    ids=["plain", "bold", "end-of-a-sentence", "not-last"],
+    ids=["plain", "bold", "end-of-a-sentence", "not-last", "only-emphasis-is-stripped"],
 )
 def test_closing_line_ends_the_reply(reply: str, *, passed: bool) -> None:
     line: str = [line.strip() for line in reply.splitlines() if line.strip()][-1]
@@ -747,13 +782,17 @@ class FakeValidator:
             FakeValidator(1, "d.md: block 1 (line 2): OK flowchart-v2\nd.md: block 2 (line 9): FAIL Error: Parse error on line 4\n"),
             Verdict(passed=False, evidence="validate_mermaid.mjs exit 1: d.md: block 2 (line 9): FAIL Error: Parse error on line 4"),
         ),
+        (
+            FakeValidator(1, "d.md: block 1 (line 2): FAIL Error: one\nd.md: block 2 (line 9): FAIL Error: two\n"),
+            Verdict(passed=False, evidence="validate_mermaid.mjs exit 1: d.md: block 1 (line 2): FAIL Error: one; d.md: block 2 (line 9): FAIL Error: two"),
+        ),
         (FakeValidator(2, "", "needs Node 22.22.2+\n"), Verdict(passed=None, evidence="validate_mermaid.mjs could not run (exit 2): needs Node 22.22.2+")),
         (
             FakeValidator(1, "", "Error: npm install failed in cache: ECONNREFUSED\n"),
             Verdict(passed=None, evidence="validate_mermaid.mjs could not run (exit 1): Error: npm install failed in cache: ECONNREFUSED"),
         ),
     ],
-    ids=["parse", "no-diagrams", "parse-error", "cannot-run", "crash-before-parsing"],
+    ids=["parse", "no-diagrams", "parse-error", "two-parse-errors", "cannot-run", "crash-before-parsing"],
 )
 def test_diagrams_parse_reports_the_checker(monkeypatch: pytest.MonkeyPatch, fake: FakeValidator, verdict: Verdict) -> None:
     # A fresh copy: parametrize builds ``fake`` once per process, and mutmut runs the suite more than once in one.

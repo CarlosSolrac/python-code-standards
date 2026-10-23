@@ -118,6 +118,9 @@ reportUnknownMemberType = true
 # A suppression that no longer suppresses anything is noise that hides the next real one.
 reportUnnecessaryTypeIgnoreComment = "error"
 stubPath = "stubs"
+# Setting exclude replaces Pyright's defaults, so they are repeated. mutants/ holds mutmut's generated copies of the sources;
+# evals/fixtures holds deliberately non-conforming inputs for the evals.
+exclude = ["mutants", "evals/fixtures", "**/node_modules", "**/__pycache__", "**/.*"]
 
 [[tool.pyright.executionEnvironments]]
 # AST walking and other metaprogramming cannot satisfy strict unknown-type
