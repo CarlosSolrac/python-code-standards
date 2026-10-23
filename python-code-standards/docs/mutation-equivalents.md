@@ -78,7 +78,7 @@ there without it.
 | `x_main__mutmut_31`, `_43`, `_54`, `_77` | `default=None` removed | `None` is argparse's own default. |
 | `x__stated_mode__mutmut_6` | the skill name replaced by `"XXXX"` instead of `""` | The name is bounded by non-word characters, so neither replacement joins or splits a mode word. |
 | `x_inferred_marker__mutmut_26` | `classDef` fallback `""` → `"XXXX"` | Neither contains `stroke-dasharray`. |
-| `x_citations_exist__mutmut_13`, `_15` | `--verify` → `--VERIFY`, `--quiet` → `--QUIET` | `git rev-parse` still exits non-zero for an unknown commit (1 or 128) and zero for a real one, and only the status is read. |
+| `x_citations_exist__mutmut_15` | `--quiet` → `--QUIET` | `git rev-parse` still exits non-zero for an unknown commit or a range (1 or 128) and zero for a real one, and only the status is read. |
 | `x__run__mutmut_5`, `_11`, `_16`; `x__package__mutmut_3`, `_5` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. `errors="replace"` keeps `_run` in text mode without it. |
 | `x__run__mutmut_7`, `_13` | `check=False` → `None` or removed | `None` is falsy and `False` is the default. |
 | `x__package__mutmut_9`, `_13`, `_14`, `_28`, `_32`, `_33` | `cast(...)` type string changed | `typing.cast` returns its value unchanged at run time. |
@@ -124,7 +124,6 @@ header.
 | `x_main__mutmut_70`, `_72`; `x_staged_templates__mutmut_2`, `_4`; `x_read__mutmut_3`, `_5`, `_8`; `x_digest__mutmut_10`; `x_table_digest__mutmut_9`; `x_write__mutmut_13`, `_16`, `_19`; `x_install_tables__mutmut_11`, `_13`; `x_add_dev_tools__mutmut_9`, `_12` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
 | `x_run_command__mutmut_2`, `_4` | `check=False` → `None` or removed | `None` is falsy and `False` is the default. |
 | `x_write__mutmut_14`, `_17` | `newline=""` → `None` or removed | Newline translation writes `os.linesep`, which is `"\n"` on Linux. |
-| `x_rewrite_tables__mutmut_23`, `_25`, `_41`, `_43` | a baseline table's `rstrip("\n")` → `rstrip()` or `rstrip("XX\nXX")` | Baseline lines end in neither blanks nor `X`. |
 | `x_rewrite_tables__mutmut_36` | `"".join(kept)` → `"XXXX".join(kept)` before `endswith` | The joined text ends with its last block either way; they differ only when that block is empty, and then neither ends in a blank line. |
 | `x_tool_name__mutmut_4`, `_16` | `""` → `"XXXX"` for a header that is not a tool table | Neither name is a baseline tool, so the block is kept either way. |
 | `x_requirement_name__mutmut_4`, `_12` | `.lower()` → `.upper()`; separator → `"XX-XX"` | Both sides of the comparison are normalized the same way, so names match exactly when they did. |
