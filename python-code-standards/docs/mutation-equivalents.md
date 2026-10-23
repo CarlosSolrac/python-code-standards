@@ -79,17 +79,43 @@ there without it.
 | `x__stated_mode__mutmut_6` | the skill name replaced by `"XXXX"` instead of `""` | The name is bounded by non-word characters, so neither replacement joins or splits a mode word. |
 | `x_inferred_marker__mutmut_26` | `classDef` fallback `""` → `"XXXX"` | Neither contains `stroke-dasharray`. |
 | `x_citations_exist__mutmut_13`, `_15` | `--verify` → `--VERIFY`, `--quiet` → `--QUIET` | `git rev-parse` still exits non-zero for an unknown commit (1 or 128) and zero for a real one, and only the status is read. |
+| `x__run__mutmut_5`, `_11`, `_16`; `x__package__mutmut_3`, `_5` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. `errors="replace"` keeps `_run` in text mode without it. |
+| `x__run__mutmut_7`, `_13` | `check=False` → `None` or removed | `None` is falsy and `False` is the default. |
+| `x__package__mutmut_9`, `_13`, `_14`, `_28`, `_32`, `_33` | `cast(...)` type string changed | `typing.cast` returns its value unchanged at run time. |
+| `x__package__mutmut_50`, `_53` | `maxsplit=1` removed or → `2` | Only the first piece, `[0]`, is read. |
+| `x_read_workspace__mutmut_4`, `_5`, `_30`, `_31` | `build.tar` or `tree` renamed | They are names inside a fresh temporary folder, and the two names still differ. |
+| `x__tables__mutmut_7` | a fenced block replaced by `"XXXX"` instead of `""` | The fence pattern starts and ends at line boundaries, so either replacement is a line of its own that does not start with `\|`, and it ends a table the same way. |
+| `x__tables__mutmut_8` | the closing sentinel line `""` → `"XXXX"` | Neither starts with `\|`, so both flush the last table. |
+| `x__diagram_type__mutmut_10` | fallback `""` → `"XXXX"` | Callers only test membership of `{"flowchart", "graph"}`. |
+| `x__styled_nodes__mutmut_6` | a `%%` comment replaced by `"XXXX"` instead of `""` | `XXXX` reads as an unstyled node, and unstyled nodes are dropped. |
+| `xǁ_Matricesǁread__mutmut_12`, `_15`, `_17` | the row `zip(strict=True)` → `None`, `False`, or removed | `rows` is built from `table[1:]`, so the two always have the same length. |
+| `xǁ_Matricesǁread__mutmut_20`, `_23` | the cell `zip(strict=False)` → `None` or removed | `None` is falsy and `False` is the default. |
+| `xǁ_Matricesǁdiffer__mutmut_4`, `_6`, `_7`, `_10`, `_12`, `_13` | a `.get(cell, "")` default → `None`, none, or `"XXXX"` | Each cell comes from one of the two dicts and both hold only non-blank marks, so a default is only ever compared with a mark. A code mark is `Y`, `!` or `d`; only a spec that writes the literal mark `XXXX` would tell `_13` apart. |
+
+The grader's tests that build a real import graph are marked `no_mutation`, and
+under mutmut the same tests run on a fake graph instead (`import_graph` in
+`tests/test_design_spec_grade.py`). Real grimp hangs in mutmut's forked workers, which
+hid these survivors behind timeouts (see
+[quality-gates.md](quality-gates.md#mutation-testing)). The fake rejects any
+`cache_dir` other than `None` and any `as_packages` other than `True`, so mutants of the
+call itself are still killed. Which modules grimp finds and which imports it reports are
+checked only by the real-grimp tests, which mutmut does not run.
 
 ## Timeouts
 
-`evals.grade.x__payload__mutmut_5`, `_6`, `_7`, `_10`, `_12`, `_14` and `_16` turn the
-retry loop in `_payload` into one that never ends. The tests hang and mutmut stops
-them, so these mutants are caught, not survivors.
+A timeout counts as caught only when the mutant also hangs outside mutmut's fork. See
+[quality-gates.md](quality-gates.md#mutation-testing) for how to check one.
+
+`evals.grade.x__payload__mutmut_6`, `_7`, `_10`, `_12` and `_14` turn the retry loop in
+`_payload` into one that never ends. The tests hang and mutmut stops them, so these
+mutants are caught, not survivors.
 
 `skill.tools.setup_files.x_backup__mutmut_5` (`number += 1` → `number = 1`) does the
-same to the search for a free `<name>.orig.N` once two backups exist, and
-`x_leading_comments__mutmut_20` (`start += 1` → `start = 1`) to the skip over the blank
-lines between a comment and its header.
+same to the search for a free `<name>.orig.N` once two backups exist.
+`x_leading_comments__mutmut_14` (`start -= 1` → `start = 1`) does it to the backward
+scan once the first line is blank or a comment, and `x_leading_comments__mutmut_20`
+(`start += 1` → `start = 1`) to the skip over the blank lines between a comment and its
+header.
 
 ## `skill/tools/setup_files.py`
 

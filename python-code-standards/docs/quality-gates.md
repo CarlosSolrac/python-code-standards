@@ -135,8 +135,29 @@ nudged) and reruns the tests. A **surviving mutant** is a change no test noticed
   never fail a build. Some survivors are *equivalent* (no observable change), which
   makes any fixed threshold arbitrary.
 - **Tests mutmut cannot use** carry `@pytest.mark.no_mutation`: a test that runs
-  project code in a child process (mutants are only switched on in-process) or that
-  compares source bytes (mutmut rewrites them).
+  project code in a child process (mutants are only switched on in-process), that
+  compares source bytes (mutmut rewrites them), or that calls a library which hangs
+  after `fork` (below).
+- **A timeout is not always a caught mutant.** mutmut first runs the tests in its own
+  process, then forks one worker per mutant. A library that starts its own threads,
+  such as grimp (Rust, Rayon thread pool), leaves them behind in the fork: the worker
+  holds the pool's state but not its threads, so the next call into the library waits
+  forever. mutmut reports every such mutant as a timeout and counts it as killed,
+  survivors included. In this repository that hid 53 survivors in
+  `evals/design_spec_grade.py` behind 87 timeouts (2026-10-23). Python warns about
+  it: `DeprecationWarning: This process ... is multi-threaded, use of fork() may lead
+  to deadlocks in the child`. `RAYON_NUM_THREADS=1` does not help.
+  - **Check a timeout** by running its mutant without the fork, from `mutants/`:
+    `MUTANT_UNDER_TEST=<name> uv run --no-sync pytest tests/ -x -m "not no_mutation"`.
+    It should hang there too; a pass is a hidden survivor, a failure a kill.
+  - **Avoid it:** never call such a library from a test mutmut runs. Run each test
+    that needs it twice, through a fixture parametrized over the real library (marked
+    `no_mutation`) and a fake built without threads, as `import_graph` in
+    `tests/test_design_spec_grade.py` does. Normal runs then prove the fake agrees
+    with the library, and mutmut uses only the fake. Running the library in a
+    subprocess instead would put its call out of mutmut's reach as well.
+  - **After changing only tests**, mutmut keeps its earlier verdicts. Name the
+    mutants to re-run them: `bash tools/mutation.sh "evals.design_spec_grade*"`.
 - **Reading a survivor:** `mutmut show <name>` prints the diff. In a live check a
   test asserting `discount(25_000) == 2500` survived `total // 10` becoming
   `total / 10`, because `2500.0 == 2500`. Strict Pyright rejects that mutant through
