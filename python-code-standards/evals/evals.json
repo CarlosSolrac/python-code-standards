@@ -45,6 +45,12 @@
       "files": [
         "fixtures/nonconforming.py"
       ]
+    },
+    {
+      "id": 7,
+      "tests": "middle-layer shape: pass-through count on a multi-step task with no design hint",
+      "prompt": "Write a module that loads orders from a CSV file, keeps the latest version of each order by order_id, and writes daily revenue to a DuckDB table, with tests.",
+      "files": []
     }
   ]
 }
