@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from evals.grade import GRADER_VERSION, Score, _payload, _run, count_declarations, count_pyright, count_ruff, grade, main, third_party_imports  # pyright: ignore[reportPrivateUsage]
+from evals.grade import GRADER_VERSION, Score, _payload, _run, count_declarations, count_passthroughs, count_pyright, count_ruff, grade, main, third_party_imports  # pyright: ignore[reportPrivateUsage]
 
 
 @dataclass
@@ -301,17 +301,25 @@ def test_runs_as_script(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureF
 class ScriptedRun:
     """Stand-in for ``_run`` that answers per tool and records every command with its directory."""
 
-    def __init__(self, checker: tuple[int, str] = (0, ""), ruff: tuple[int, str] = (0, "[]"), pyright: tuple[int, str] = (0, '{"summary": {"errorCount": 0}}')) -> None:
+    def __init__(
+        self,
+        checker: tuple[int, str] = (0, ""),
+        ruff: tuple[int, str] = (0, "[]"),
+        pyright: tuple[int, str] = (0, '{"summary": {"errorCount": 0}}'),
+        passthrough: tuple[int, str] = (0, ""),
+    ) -> None:
         """Initialize the fake.
 
         Args:
             checker: Result for the declaration checker.
             ruff: Result for Ruff.
             pyright: Result for Pyright.
+            passthrough: Result for the pass-through checker.
         """
         self.checker: tuple[int, str] = checker
         self.ruff: tuple[int, str] = ruff
         self.pyright: tuple[int, str] = pyright
+        self.passthrough: tuple[int, str] = passthrough
         self.calls: list[tuple[list[str], Path]] = []
 
     def __call__(self, command: list[str], cwd: Path) -> tuple[int, str]:
@@ -321,6 +329,8 @@ class ScriptedRun:
             return self.ruff
         if "pyright@latest" in command:
             return self.pyright
+        if any(part.endswith("check_passthrough.py") for part in command):
+            return self.passthrough
         return self.checker
 
 
@@ -456,3 +466,31 @@ def test_help_shows_the_module_docstring(monkeypatch: pytest.MonkeyPatch, capsys
         main(["--help"])
     assert exit_info.value.code == 0
     assert "Score generated Python against the standards, mechanically." in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("status", "output", "expected"),
+    [
+        (0, "", 0),
+        (1, "/run/a.py:3 forward\n/run/sub/b.py:12 relay\n", 2),
+        (1, "C:\\run\\a.py:3 forward\n", 1),
+        (2, "Traceback (most recent call last):\n", -1),
+        (1, "/run/a.py:4:7: could not parse: invalid syntax\n", -1),
+        (1, "/run/a.py:3 forward\n/run/b.py:4:7: could not parse: invalid syntax\n", -1),
+        (1, "/run/missing: no such file or directory\n", -1),
+        (1, "/run/a.py:3 forward\n\n  \n", 1),
+    ],
+    ids=["clean", "two-findings", "windows-path", "tool-crashed", "unparseable-file", "findings-then-unparseable", "missing-target", "blank-lines-ignored"],
+)
+def test_count_passthroughs_counts_findings_and_scores_a_failed_run_negative(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int, output: str, expected: int) -> None:
+    monkeypatch.setattr("evals.grade._run", ScriptedRun(passthrough=(status, output)))
+    assert count_passthroughs(tmp_path, tmp_path / "check_passthrough.py") == expected
+
+
+def test_count_passthroughs_runs_the_tool_beside_the_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake: ScriptedRun = ScriptedRun()
+    monkeypatch.setattr("evals.grade._run", fake)
+    target: Path = tmp_path / "run"
+    tool: Path = tmp_path / "check_passthrough.py"
+    assert count_passthroughs(target, tool) == 0
+    assert fake.calls == [([sys.executable, str(tool), str(target)], tmp_path)]

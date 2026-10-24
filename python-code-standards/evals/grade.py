@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import re
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -101,6 +102,27 @@ def count_declarations(target: Path, checker: Path) -> int:
     if status not in (0, 1):
         return -1
     return sum(1 for line in output.splitlines() if "bound before annotation" in line)
+
+
+_PASSTHROUGH_FINDING: re.Pattern[str] = re.compile(r".+:\d+ \S+")
+"""One ``path:line name`` finding from ``check_passthrough.py``; its error messages never fit this shape."""
+
+
+def count_passthroughs(target: Path, tool: Path) -> int:
+    """Return the number of pass-through functions under a directory.
+
+    Returns -1 when the tool could not run or stopped before scanning everything
+    (a path it could not find, a file it could not parse), because a partial scan
+    would otherwise score as fewer pass-throughs.
+    """
+    status: int
+    output: str
+    status, output = _run([sys.executable, str(tool), str(target)], target.parent)
+    lines: list[str] = [line for line in output.splitlines() if line.strip()]
+    findings: list[str] = [line for line in lines if _PASSTHROUGH_FINDING.fullmatch(line)]
+    if status not in (0, 1) or len(findings) != len(lines):
+        return -1
+    return len(findings)
 
 
 def count_ruff(target: Path, config: Path) -> tuple[int, dict[str, int]]:
