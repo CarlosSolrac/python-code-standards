@@ -6,11 +6,13 @@ misses that sit just outside it.
 
 from __future__ import annotations
 
+import runpy
+import sys
 from pathlib import Path
 
 import pytest
 
-from skill.tools.check_passthrough import Finding, find_passthroughs
+from skill.tools.check_passthrough import Finding, find_passthroughs, iter_python_files, main
 
 
 def found(source: str) -> list[str]:
@@ -222,3 +224,101 @@ def test_a_skipped_decorator_among_others_still_skips() -> None:
 def test_other_decorators_do_not_skip(decorator: str) -> None:
     """Only ``overload`` and ``abstractmethod``, bare or through a module, are skipped."""
     assert found(f"class C:\n    @{decorator}\n    def f(x):\n        return g(x)") == ["f"]
+
+
+def test_finding_renders_as_path_line_name() -> None:
+    """One ``path:line name`` per finding."""
+    assert Finding(Path("pkg/m.py"), 7, "total").render() == "pkg/m.py:7 total"
+
+
+def test_iter_python_files_takes_files_as_given_and_walks_directories(tmp_path: Path) -> None:
+    """A directory yields its ``.py`` files, sorted and recursive; other suffixes and directories named ``*.py`` are left out, explicit files included."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "dir.py").mkdir()
+    (tmp_path / "b.py").write_text("", encoding="utf-8")
+    (tmp_path / "a.py").write_text("", encoding="utf-8")
+    (tmp_path / "pkg" / "c.py").write_text("", encoding="utf-8")
+    (tmp_path / "n.ipynb").write_text("", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("", encoding="utf-8")
+    explicit: Path = tmp_path / "pkg" / "c.py"
+    assert list(iter_python_files([tmp_path])) == [tmp_path / "a.py", tmp_path / "b.py", explicit]
+    assert list(iter_python_files([explicit, tmp_path / "notes.txt", tmp_path / "a.py"])) == [explicit, tmp_path / "a.py"]
+
+
+def test_main_prints_each_finding_and_exits_1(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Findings go to stdout as ``path:line name``, across files, in argument order."""
+    first: Path = tmp_path / "first.py"
+    second: Path = tmp_path / "second.py"
+    first.write_text("def a(x):\n    return g(x)\n\n\ndef b(x):\n    return g(x + 1)\n", encoding="utf-8")
+    second.write_text("class C:\n    def total(self):\n        return self._inner.total()\n", encoding="utf-8")
+    assert main([str(second), str(first)]) == 1
+    out: str
+    err: str
+    out, err = capsys.readouterr()
+    assert out == f"{second}:2 total\n{first}:1 a\n"
+    assert err == ""
+
+
+def test_main_exits_0_and_prints_nothing_when_clean(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """No findings, no output, status 0."""
+    module: Path = tmp_path / "m.py"
+    module.write_text("def f(x):\n    return g(x + 1)\n", encoding="utf-8")
+    assert main([str(module)]) == 0
+    assert capsys.readouterr() == ("", "")
+
+
+def test_main_reports_a_file_it_cannot_parse(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A syntax error is named on stderr and fails the run, rather than passing it silently."""
+    module: Path = tmp_path / "bad.py"
+    module.write_text("def f(:\n", encoding="utf-8")
+    assert main([str(module)]) == 1
+    out: str
+    err: str
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err.startswith(f"{module}:1:")
+    assert "could not parse" in err
+
+
+@pytest.mark.parametrize(
+    ("content", "line"),
+    [
+        (b"\xef\xbb\xbfdef f(x):\n    return g(x)\n", 1),
+        (b"# coding: latin-1\n# caf\xe9\ndef f(x):\n    return g(x)\n", 3),
+    ],
+    ids=["utf-8-bom", "encoding-cookie"],
+)
+def test_main_reads_source_the_way_python_does(tmp_path: Path, capsys: pytest.CaptureFixture[str], content: bytes, line: int) -> None:
+    """A byte-order mark or an encoding declaration is honoured, so a valid module is checked rather than rejected."""
+    module: Path = tmp_path / "m.py"
+    module.write_bytes(content)
+    assert main([str(module)]) == 1
+    assert capsys.readouterr() == (f"{module}:{line} f\n", "")
+
+
+def test_main_rejects_a_path_that_does_not_exist(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A mistyped path fails the run instead of passing it with nothing checked."""
+    module: Path = tmp_path / "m.py"
+    module.write_text("def f(x):\n    return g(x + 1)\n", encoding="utf-8")
+    missing: Path = tmp_path / "nope"
+    assert main([str(module), str(missing)]) == 1
+    assert capsys.readouterr() == ("", f"{missing}: no such file or directory\n")
+
+
+def test_help_shows_the_module_docstring(capsys: pytest.CaptureFixture[str]) -> None:
+    """``--help`` describes what a pass-through is."""
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    assert "Report functions that only forward their arguments." in capsys.readouterr().out
+
+
+def test_runs_as_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Executed as a script, the module exits with ``main``'s status."""
+    module: Path = tmp_path / "m.py"
+    module.write_text("def f(x):\n    return g(x)\n", encoding="utf-8")
+    script: Path = Path(__file__).parent.parent / "skill" / "tools" / "check_passthrough.py"
+    monkeypatch.setattr(sys, "argv", [str(script), str(module)])
+    exit_info: pytest.ExceptionInfo[SystemExit]
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_path(str(script), run_name="__main__")
+    assert exit_info.value.code == 1
