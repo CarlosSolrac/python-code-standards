@@ -57,6 +57,13 @@ there without it.
 | `x__cell_code__mutmut_11` | always `"".join(lines)` | Joining a string's characters returns the same string, and `source` is a list or a string. |
 | `xǁScopeCheckerǁ__init____mutmut_10` | `in_enum_body` default `False` → `None` | It is only tested for truth, and both are falsy. |
 
+## `skill/tools/check_passthrough.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x__name__mutmut_3` | the `"?"` placeholder for a non-name argument → `"XX?XX"` | The placeholder only has to differ from every parameter name, and neither string is a valid identifier, so a call that passes a non-name never matches the parameters either way. |
+| `x_main__mutmut_20` | `found: bool = False` → `None` | `found` is only tested for truth, and `None` is falsy like `False`. |
+
 ## `evals/grade.py`
 
 | Mutant | Change | Why it is equivalent |
