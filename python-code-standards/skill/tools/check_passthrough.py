@@ -4,14 +4,25 @@ A pass-through is a ``def`` or ``async def`` whose body, apart from a leading
 docstring, is one statement: ``return <call>`` or a bare ``<call>``, awaited or
 not. The call's arguments are exactly the function's own parameters, each passed once
 and unchanged (positionally, by keyword, or as ``*args``/``**kwargs``), in any order,
-leaving out ``self`` and ``cls``. The callee may be any expression.
+leaving out ``self`` and ``cls``. The callee may be any expression. Functions decorated
+``@overload`` or ``@abstractmethod`` are skipped.
+
+Usage:
+    uv run python skill/tools/check_passthrough.py src tests
+Prints one ``path:line name`` per finding, for ``.py`` files only. Exit status is 1 when
+any is found, or when a path does not exist or a file cannot be parsed.
 """
 
 from __future__ import annotations
 
+import argparse
 import ast
+import sys
+import tokenize
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
 
 _DECLARATION_DECORATORS: frozenset[str] = frozenset({"overload", "abstractmethod"})
 """Decorators marking a function whose body is not its implementation; such functions are never reported."""
@@ -24,6 +35,10 @@ class Finding:
     path: Path
     line: int
     name: str
+
+    def render(self) -> str:
+        """Return a single-line, editor-navigable description."""
+        return f"{self.path}:{self.line} {self.name}"
 
 
 def find_passthroughs(path: Path, source: str) -> list[Finding]:
@@ -99,3 +114,58 @@ def _received(arguments: ast.arguments) -> list[tuple[str, str]]:
     if arguments.kwarg:
         received.append(("**", arguments.kwarg.arg))
     return received
+
+
+def iter_python_files(roots: list[Path]) -> Iterator[Path]:
+    """Yield every ``.py`` file among the given files, and under the given directories in sorted order (a directory named ``*.py`` is not one)."""
+    root: Path
+    for root in roots:
+        if root.is_file():
+            if root.suffix == ".py":
+                yield root
+        else:
+            yield from sorted(match for match in root.rglob("*.py") if match.is_file())
+
+
+def read_source(path: Path) -> str:
+    """Return a module's text decoded the way Python does: honouring a byte-order mark or an encoding declaration."""
+    handle: TextIO
+    with tokenize.open(path) as handle:
+        return handle.read()
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the checker over the given paths.
+
+    Args:
+        argv: Command-line arguments, defaulting to ``sys.argv[1:]``.
+
+    Returns:
+        1 when any pass-through is found, a path does not exist, or a file cannot be parsed, otherwise 0.
+    """
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("paths", nargs="+", type=Path)
+    args: argparse.Namespace = parser.parse_args(argv)
+
+    path: Path
+    for path in args.paths:
+        if not path.exists():
+            print(f"{path}: no such file or directory", file=sys.stderr)
+            return 1
+
+    found: bool = False
+    for path in iter_python_files(args.paths):
+        try:
+            findings: list[Finding] = find_passthroughs(path, read_source(path))
+        except SyntaxError as exc:
+            print(f"{path}:{exc.lineno}:{exc.offset}: could not parse: {exc.msg}", file=sys.stderr)
+            return 1
+        finding: Finding
+        for finding in findings:
+            print(finding.render())
+            found = True
+    return 1 if found else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
