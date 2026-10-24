@@ -69,12 +69,12 @@ there without it.
 | Mutant | Change | Why it is equivalent |
 |---|---|---|
 | `x__run__mutmut_6`, `_11` | `check=False` → `None` or removed | `None` is falsy and `False` is the default. |
-| `x_count_ruff__mutmut_7`, `_9`, `_10`, `_12`, `_14`; `x_third_party_imports__mutmut_12`, `_14`; `x_grade__mutmut_11`, `_13`; `x_main__mutmut_68`, `_70`, `_78` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_count_ruff__mutmut_7`, `_9`, `_10`, `_12`, `_14`; `x_third_party_imports__mutmut_12`, `_14`; `x_grade__mutmut_11`, `_13`; `x_main__mutmut_83`, `_85`, `_93` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
 | `x_count_ruff__mutmut_48`, `_52`, `_53`; `x_count_pyright__mutmut_40`, `_44`, `_45`, `_56`, `_60`, `_61` | `cast(...)` type string changed | `typing.cast` returns its value unchanged at run time. |
 | `x_count_pyright__mutmut_37`, `_39` | `summary` default `{}` → `None` or none | A missing summary fails the following `isinstance(summary, dict)` check either way and scores -1. |
 | `x_count_pyright__mutmut_53`, `_55` | `errorCount` default `-1` → `None` or none | A missing count fails the following `isinstance(count, int)` check either way and scores -1. |
 | `x_grade__mutmut_10` | files joined with `"XX\nXX"` instead of `"\n"` | The joined text is only searched for `pip install` and `python -m venv`; neither separator can complete a phrase across a file boundary. |
-| `x_main__mutmut_38` | `--json` `default=None` removed | `None` is argparse's own default. |
+| `x_main__mutmut_49` | `--json` `default=None` removed | `None` is argparse's own default. |
 
 ## `evals/design_spec_grade.py`
 

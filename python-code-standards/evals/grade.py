@@ -1,7 +1,8 @@
 """Score generated Python against the standards, mechanically.
 
 Given a directory of files produced by one eval run, this reports violation
-counts from the declaration checker, Ruff, and Pyright. It makes no judgment
+counts from the declaration checker, Ruff, and Pyright, plus the number of
+functions that only forward their arguments. It makes no judgment
 calls: every number here comes from a tool, so the same output scores the same
 way regardless of who ran it.
 
@@ -21,13 +22,14 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import re
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import cast
 
-GRADER_VERSION: str = "4.2.0"
+GRADER_VERSION: str = "4.3.0"
 """Bump on any change to what is counted.
 
 Scores from different grader versions are not comparable: v3.0.0 dropped the
@@ -37,7 +39,8 @@ changed which Ruff rules fire. v4.0.0 counts against the expanded rule set
 v4.1.0 stops treating comprehension variables as declared in the enclosing scope,
 so a later unannotated binding of the same name now counts as a violation. v4.2.0
 exempts enum members, and stops treating class-body names as declared in methods
-and nested classes. The version is recorded in every result so a
+and nested classes. v4.3.0 adds the ``passthroughs`` field, the count of functions that
+only forward their arguments, so results gain a field. The version is recorded in every result so a
 cross-run comparison can be checked rather than assumed.
 """
 
@@ -54,6 +57,7 @@ class Score:
     ruff_violations: int
     ruff_by_rule: dict[str, int]
     pyright_errors: int
+    passthroughs: int
     notes: list[str]
 
 
@@ -101,6 +105,27 @@ def count_declarations(target: Path, checker: Path) -> int:
     if status not in (0, 1):
         return -1
     return sum(1 for line in output.splitlines() if "bound before annotation" in line)
+
+
+_PASSTHROUGH_FINDING: re.Pattern[str] = re.compile(r".+:\d+ \S+")
+"""One ``path:line name`` finding from ``check_passthrough.py``; its error messages never fit this shape."""
+
+
+def count_passthroughs(target: Path, tool: Path) -> int:
+    """Return the number of pass-through functions under a directory.
+
+    Returns -1 when the tool could not run or stopped before scanning everything
+    (a path it could not find, a file it could not parse), because a partial scan
+    would otherwise score as fewer pass-throughs.
+    """
+    status: int
+    output: str
+    status, output = _run([sys.executable, str(tool), str(target)], target.parent)
+    lines: list[str] = [line for line in output.splitlines() if line.strip()]
+    findings: list[str] = [line for line in lines if _PASSTHROUGH_FINDING.fullmatch(line)]
+    if status not in (0, 1) or len(findings) != len(lines):
+        return -1
+    return len(findings)
 
 
 def count_ruff(target: Path, config: Path) -> tuple[int, dict[str, int]]:
@@ -192,13 +217,14 @@ def count_pyright(target: Path, config: Path) -> int:
     return count if isinstance(count, int) else -1
 
 
-def grade(run: Path, checker: Path, config: Path) -> Score:
+def grade(run: Path, checker: Path, config: Path, passthrough: Path) -> Score:
     """Score one run directory.
 
     Args:
         run: Directory holding the files an agent produced.
         checker: Path to ``check_declarations.py``.
         config: Path to the ``pyproject.toml`` carrying the standards.
+        passthrough: Path to ``check_passthrough.py``.
 
     Returns:
         Mechanical counts for the run.
@@ -229,6 +255,7 @@ def grade(run: Path, checker: Path, config: Path) -> Score:
         ruff_violations=ruff_total,
         ruff_by_rule=ruff_rules,
         pyright_errors=count_pyright(run, config),
+        passthroughs=count_passthroughs(run, passthrough),
         notes=notes,
     )
 
@@ -245,19 +272,20 @@ def main(argv: list[str] | None = None) -> int:
     parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runs", nargs="+", type=Path)
     parser.add_argument("--checker", type=Path, default=Path("skill/tools/check_declarations.py"))
+    parser.add_argument("--passthrough", type=Path, default=Path("skill/tools/check_passthrough.py"))
     parser.add_argument("--config", type=Path, default=Path("pyproject.toml"))
     parser.add_argument("--json", type=Path, default=None)
     args: argparse.Namespace = parser.parse_args(argv)
 
     # Resolve every path: the tools below run with a different working
     # directory, so a relative run path would resolve twice and match nothing.
-    scores: list[Score] = [grade(run.resolve(), args.checker.resolve(), args.config.resolve()) for run in args.runs]
+    scores: list[Score] = [grade(run.resolve(), args.checker.resolve(), args.config.resolve(), args.passthrough.resolve()) for run in args.runs]
 
     print(f"grader {GRADER_VERSION} — scores are comparable only across runs of the same version\n")
-    print(f"{'run':<24}{'files':>6}{'lines':>7}{'decl':>7}{'ruff':>7}{'pyright':>9}")
+    print(f"{'run':<24}{'files':>6}{'lines':>7}{'decl':>7}{'ruff':>7}{'pyright':>9}{'passthru':>10}")
     score: Score
     for score in scores:
-        print(f"{score.run:<24}{score.files:>6}{score.lines:>7}{score.declaration_violations:>7}{score.ruff_violations:>7}{score.pyright_errors:>9}")
+        print(f"{score.run:<24}{score.files:>6}{score.lines:>7}{score.declaration_violations:>7}{score.ruff_violations:>7}{score.pyright_errors:>9}{score.passthroughs:>10}")
         note: str
         for note in score.notes:
             print(f"  ! {note}")

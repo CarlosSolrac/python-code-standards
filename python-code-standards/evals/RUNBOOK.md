@@ -40,7 +40,7 @@ uv run python skill/tools/check_declarations.py skill/tools tests evals/grade.py
 ```
 
 Run these from this repository's root, the directory holding `pyproject.toml`; the
-`%CD%\skill` link target above assumes the same. Expect 85 tests passing and clean
+`%CD%\skill` link target above assumes the same. Expect 942 tests passing and clean
 output from the rest, verified on Linux (CPython 3.13) and Windows 11. Report a failure rather than patching around it.
 
 ## 3. Set up the scratch repository
