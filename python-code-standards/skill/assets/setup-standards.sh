@@ -651,7 +651,7 @@ class ScopeChecker(ast.NodeVisitor):
         self.visit_body(node.body)
         self.visit_body(node.orelse)
 
-    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:  # passthrough: allow -- NodeVisitor dispatches by name
         """Async loops behave identically."""
         self.visit_For(node)  # type: ignore[arg-type]
 
@@ -664,7 +664,7 @@ class ScopeChecker(ast.NodeVisitor):
                 self._bind(item.optional_vars)
         self.visit_body(node.body)
 
-    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:  # passthrough: allow -- NodeVisitor dispatches by name
         """Async context managers behave identically."""
         self.visit_With(node)  # type: ignore[arg-type]
 
@@ -802,7 +802,7 @@ class ScopeChecker(ast.NodeVisitor):
         self.declared.add(node.name)
         self._enter_function(node)
 
-    def visit_Lambda(self, node: ast.Lambda) -> None:
+    def visit_Lambda(self, node: ast.Lambda) -> None:  # passthrough: allow -- NodeVisitor dispatches by name
         """Lambdas open a scope with no statements to check."""
         self._enter_function(node)
 
@@ -1144,9 +1144,9 @@ Suppressing a lint, type, or coverage finding needs the user's explicit
 authorization. This makes that rule mechanical: a ``noqa``, ``type: ignore``,
 ``pyright: ignore``, ``pragma: no cover``, or ``pragma: no branch`` comment on an
 added line fails, as does a file- or function-level one (``ruff: noqa``,
-``flake8: noqa``, ``mypy:`` and ``pyright:`` settings, ``complexipy: ignore``),
-unless ``suppressions.toml`` lists its file and code (for a setting, its whole
-value):
+``flake8: noqa``, ``mypy:`` and ``pyright:`` settings, ``complexipy: ignore``,
+``passthrough: allow``), unless ``suppressions.toml`` lists its file and code
+(for a setting, its whole value):
 
     [[suppression]]
     path = "tools/hooks/stop_gate.py"
@@ -1183,10 +1183,12 @@ from .hooks.stop_gate import PYTHON_SUFFIXES, GitError, Runner, run_command
 ALLOW_LIST: Path = Path("suppressions.toml")
 REQUIRED_KEYS: tuple[str, ...] = ("path", "code", "reason")
 # Line-level directives, then the file- and function-level ones (ruff and flake8
-# file noqa, mypy and pyright file comments, complexipy's ignore), which silence
-# more than a line. coverage.py honors "no cover" and "no branch" pragmas, and
-# mutmut skips lines marked "no mutate".
-DIRECTIVE: re.Pattern[str] = re.compile(r"#\s*(ruff:\s*noqa|flake8:\s*noqa|noqa|type:\s*ignore|pyright:\s*ignore|pyright:|mypy:|complexipy:\s*ignore|pragma:?\s*no\s*(?:cover|branch|mutate))", re.IGNORECASE)
+# file noqa, mypy and pyright file comments, complexipy's ignore, check_passthrough's
+# allow), which silence more than a line. coverage.py honors "no cover" and "no
+# branch" pragmas, and mutmut skips lines marked "no mutate".
+DIRECTIVE: re.Pattern[str] = re.compile(
+    r"#\s*(ruff:\s*noqa|flake8:\s*noqa|noqa|type:\s*ignore|pyright:\s*ignore|pyright:|mypy:|complexipy:\s*ignore|passthrough:\s*allow|pragma:?\s*no\s*(?:cover|branch|mutate))", re.IGNORECASE
+)
 # Ruff separates noqa codes with commas, spaces, or both; every code is captured.
 NOQA_CODES: re.Pattern[str] = re.compile(r":\s*([A-Z]+[0-9]+(?:[\s,]+[A-Z]+[0-9]+)*)")
 CODE: re.Pattern[str] = re.compile(r"[A-Z]+[0-9]+")
@@ -1201,6 +1203,7 @@ CANONICAL: dict[str, str] = {
     "pyright": "pyright:",
     "mypy": "mypy:",
     "complexipyignore": "complexipy: ignore",
+    "passthroughallow": "passthrough: allow",
     "pragmanocover": "pragma: no cover",
     "pragmanobranch": "pragma: no branch",
     "pragmanomutate": "pragma: no mutate",
@@ -1220,7 +1223,7 @@ class Suppression:
         """Return the suppression as it reads in source."""
         if self.kind in NOQA_KINDS:
             return f"{self.kind}: {self.code}" if self.code else f"{self.kind} ({'blanket' if self.kind == 'noqa' else 'whole file'})"
-        if self.kind in {"pragma", "complexipy", "mypy", "pyright"}:
+        if self.kind in {"pragma", "complexipy", "passthrough", "mypy", "pyright"}:
             return f"{self.kind}: {self.code}"
         return f"{self.kind}[{self.code}]" if self.code else self.kind
 
@@ -1266,6 +1269,8 @@ def parse_directive(word: str, tail: str) -> list[Suppression]:
         return [Suppression(word.removesuffix(":"), " ".join(tail.split()))]
     if word == "complexipy: ignore":
         return [Suppression("complexipy", "ignore")]
+    if word == "passthrough: allow":
+        return [Suppression("passthrough", "allow")]
     return [Suppression("pragma", word.removeprefix("pragma: "))]
 
 
@@ -1737,6 +1742,11 @@ reason = "subprocess argv comes from the hook's fixed gate list, never a shell"
 path = "tools/check_declarations.py"
 code = "arg-type"
 reason = "the async visitors reuse the sync ones; async nodes carry the same fields"
+
+[[suppression]]
+path = "tools/check_declarations.py"
+code = "allow"
+reason = "NodeVisitor dispatches by method name, so the async and lambda visitors must exist"
 ALLOWEOF
 
 # --------------------------------------------------------------------------- #
@@ -2734,7 +2744,8 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "c3133cfe1581b414de030c3215785f07ba1ed8e41450c297bb872cc9c083b098"
   ],
   "suppressions.toml": [
-   "17647f5f57f7691cba0353e4b762ae6afca3420579756e5e24d8787928886b42"
+   "17647f5f57f7691cba0353e4b762ae6afca3420579756e5e24d8787928886b42",
+   "1fba69e5a598ef5ce6fc1e00963adf6baea4d15597bb361d55bc3c37e438b8bd"
   ],
   "tests/.gitkeep": [
    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -2752,9 +2763,11 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "27e8ad6f8cc9436f6e712c89b413b8a64d030e02e872eb317a2f8d67a624d56a",
    "67554527c78bf95e1573ca3c1752e28ccb4db7c80e88d74bd1456d9f65778759",
    "70642cbf1a03131d1edc69d1fcda8f08b80c8689b6122295667938b72b9d6334",
+   "d0f1364a001d5616f52970d7a471ad2c2820e435a622b7a6b363edc73e6ed8f9",
    "f9e2699d313f57992183115235610815fefcb758fa07d452d96d81f0996165d3"
   ],
   "tools/check_suppressions.py": [
+   "4de0ff76d121c6f8638f027e4fdc70958fd19274c8bb24801a91b972572f092e",
    "7dd40b8ae5a8367f4ec20bd17eb0048ea200d4cb786234b5dac9b68d0823cd5e",
    "7df224a2c43c344cafe165df0e922fbe4028d46299c3c554bfce13122df0e0f9",
    "ab58c10d44859946605794a15a368161349c1a0582719e69f483146c1fe50937"

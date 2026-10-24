@@ -86,7 +86,7 @@ uv run pre-commit run --files <files>
 # Repository without pre-commit: run the tools individually.
 uv run ruff check --fix <files> && uv run ruff format <files>
 uv run python "${CLAUDE_SKILL_DIR}/tools/check_declarations.py" <files>
-uv run python "${CLAUDE_SKILL_DIR}/tools/check_passthrough.py" <files>   # not in pre-commit; run it in both cases
+uv run python "${CLAUDE_SKILL_DIR}/tools/check_passthrough.py" <files>   # not in pre-commit; run it in both cases. `# passthrough: allow` on a def line skips a protocol-named forwarder and is a suppression needing approval
 uv run pyright <files> && uv run mypy <files>
 # 3. Tests and coverage:
 uv run pytest <tests> -q

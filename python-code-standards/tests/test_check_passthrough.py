@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from skill.tools.check_passthrough import Finding, find_passthroughs, iter_python_files, main
+from skill.tools.check_suppressions import Suppression, suppressions_in
 
 
 def found(source: str) -> list[str]:
@@ -224,6 +225,54 @@ def test_a_skipped_decorator_among_others_still_skips() -> None:
 def test_other_decorators_do_not_skip(decorator: str) -> None:
     """Only ``overload`` and ``abstractmethod``, bare or through a module, are skipped."""
     assert found(f"class C:\n    @{decorator}\n    def f(x):\n        return g(x)") == ["f"]
+
+
+MARKER: str = "# " + "passthrough: allow"  # split so this file marks nothing of its own
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        f"def f(x):  {MARKER}\n    return g(x)",
+        f"async def f(x):  {MARKER}\n    return await g(x)",
+        f"@property\ndef f(self):  {MARKER}\n    return g()",
+        f"def f(x):  {MARKER} -- protocol name\n    return g(x)",
+        f"def f(  {MARKER}\n    x,\n):\n    return g(x)",
+    ],
+    ids=["def", "async-def", "decorated", "with-reason", "multi-line-signature"],
+)
+def test_marker_on_the_def_line_skips_the_function(source: str) -> None:
+    """A function whose ``def`` line carries the marker is approved, so it is not reported."""
+    assert found(source) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (f"@property  {MARKER}\ndef f(self):\n    return g()", ["f"]),
+        (f"def f(x):\n    return g(x)  {MARKER}", ["f"]),
+        (f"{MARKER}\ndef f(x):\n    return g(x)", ["f"]),
+        (f"def f(\n    x,  {MARKER}\n):\n    return g(x)", ["f"]),
+        (f"def f(x, s='{MARKER}'):\n    return g(x, s)", ["f"]),
+        ("def f(x):  # passthrough: deny\n    return g(x)", ["f"]),
+        (f"def f(x):  {MARKER}\n    return g(x)\n\ndef h(y):\n    return k(y)", ["h"]),
+    ],
+    ids=["on-decorator", "on-body", "line-before", "later-signature-line", "inside-string", "other-word", "marks-only-its-own-def"],
+)
+def test_marker_elsewhere_does_not_skip(source: str, expected: list[str]) -> None:
+    """Only a real comment on the reported ``def`` line counts."""
+    assert found(source) == expected
+
+
+@pytest.mark.parametrize(
+    "comment",
+    ["# passthrough: allow", "#passthrough:allow", "# PASSTHROUGH: Allow", "# passthrough:  allow -- reason", "# passthrough allow", "# passthrough: deny", "# pass-through: allow"],
+)
+def test_every_honoured_marker_is_a_suppression(comment: str) -> None:
+    """A marker this checker honours is one ``check_suppressions`` reports, so none escapes approval."""
+    honoured: bool = found(f"def f(x):  {comment}\n    return g(x)") == []
+    reported: bool = Suppression("passthrough", "allow") in suppressions_in(comment)
+    assert honoured == reported
 
 
 def test_finding_renders_as_path_line_name() -> None:

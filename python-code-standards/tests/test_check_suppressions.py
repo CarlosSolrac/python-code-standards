@@ -58,6 +58,10 @@ NOQA: str = "# " + "noqa"  # split so this file holds no suppression of its own
         # mutmut skips a line marked this way, hiding it from mutation testing.
         ("x = 1  # pragma: no mutate", [Suppression("pragma", "no mutate")]),
         ("x = 1  # pragma no mutate", [Suppression("pragma", "no mutate")]),
+        # check_passthrough skips a def marked this way.
+        ("def f(x):  # passthrough: allow", [Suppression("passthrough", "allow")]),
+        ("def f(x):  # Passthrough:Allow", [Suppression("passthrough", "allow")]),
+        ("def f(x):  # passthrough: allow -- visitor protocol", [Suppression("passthrough", "allow")]),
     ],
     ids=[
         "none",
@@ -89,6 +93,9 @@ NOQA: str = "# " + "noqa"  # split so this file holds no suppression of its own
         "ruff-noqa-compact",
         "pragma-no-mutate",
         "pragma-no-mutate-no-colon",
+        "passthrough",
+        "passthrough-compact-case",
+        "passthrough-reason",
     ],
 )
 def test_suppressions_in(line: str, expected: list[Suppression]) -> None:
@@ -107,6 +114,7 @@ def test_label_reads_like_the_comment() -> None:
     assert Suppression("complexipy", "ignore").label() == "complexipy: ignore"
     assert Suppression("flake8: noqa", "").label() == "flake8: noqa (whole file)"
     assert Suppression("pragma", "no branch").label() == "pragma: no branch"
+    assert Suppression("passthrough", "allow").label() == "passthrough: allow"
 
 
 ALLOW: str = """
@@ -182,6 +190,15 @@ def test_allow_listed_suppression_passes(tmp_path: Path) -> None:
     allow.write_text(ALLOW, encoding="utf-8")
     source: str = f"run(cmd)  {NOQA}: S603 -- fixed argv\n"
     assert main(["tools/hooks/stop_gate.py"], Git(untracked("tools/hooks/stop_gate.py")), lambda _: source, allow) == 0
+
+
+def test_passthrough_marker_needs_approval(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    allow: Path = tmp_path / "suppressions.toml"
+    source: str = "def f(x):  # passthrough: allow\n    return g(x)\n"
+    assert main(["src/app.py"], Git(untracked("src/app.py")), lambda _: source, allow) == 1
+    assert "src/app.py:1: new suppression `passthrough: allow`" in capsys.readouterr().out
+    allow.write_text('[[suppression]]\npath = "src/app.py"\ncode = "allow"\nreason = "protocol name"\n', encoding="utf-8")
+    assert main(["src/app.py"], Git(untracked("src/app.py")), lambda _: source, allow) == 0
 
 
 def test_space_separated_codes_need_every_approval(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

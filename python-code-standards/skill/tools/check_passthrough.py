@@ -5,7 +5,10 @@ docstring, is one statement: ``return <call>`` or a bare ``<call>``, awaited or
 not. The call's arguments are exactly the function's own parameters, each passed once
 and unchanged (positionally, by keyword, or as ``*args``/``**kwargs``), in any order,
 leaving out ``self`` and ``cls``. The callee may be any expression. Functions decorated
-``@overload`` or ``@abstractmethod`` are skipped.
+``@overload`` or ``@abstractmethod`` are skipped, as is one whose ``def`` line carries a
+``# passthrough: allow`` comment (for a name a protocol dictates, such as an
+``ast.NodeVisitor`` method). ``check_suppressions.py`` treats that comment as a
+suppression, so it needs the user's approval in ``suppressions.toml``.
 
 Usage:
     uv run python skill/tools/check_passthrough.py src tests
@@ -17,6 +20,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+import io
+import re
 import sys
 import tokenize
 from collections.abc import Iterator
@@ -26,6 +31,8 @@ from typing import TextIO
 
 _DECLARATION_DECORATORS: frozenset[str] = frozenset({"overload", "abstractmethod"})
 """Decorators marking a function whose body is not its implementation; such functions are never reported."""
+_MARKER: re.Pattern[str] = re.compile(r"#\s*passthrough:\s*allow", re.IGNORECASE)
+"""The approval comment; ``check_suppressions.DIRECTIVE`` must match every spelling this does."""
 
 
 @dataclass(frozen=True)
@@ -49,11 +56,21 @@ def find_passthroughs(path: Path, source: str) -> list[Finding]:
         source: Module source text.
 
     Returns:
-        One finding per pass-through ``def`` or ``async def``, including methods and nested functions.
+        One finding per pass-through ``def`` or ``async def``, including methods and nested functions, unless its ``def`` line is marked.
     """
     tree: ast.Module = ast.parse(source)
-    findings: list[Finding] = [Finding(path, node.lineno, node.name) for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not _is_declaration(node) and _forwards_exactly(node)]
+    marked: set[int] = _marked_lines(source)
+    findings: list[Finding] = [
+        Finding(path, node.lineno, node.name)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.lineno not in marked and not _is_declaration(node) and _forwards_exactly(node)
+    ]
     return sorted(findings, key=lambda finding: finding.line)
+
+
+def _marked_lines(source: str) -> set[int]:
+    """Return the lines whose comment carries the approval marker; text inside a string is not a comment."""
+    return {token.start[0] for token in tokenize.generate_tokens(io.StringIO(source).readline) if token.type == tokenize.COMMENT and _MARKER.search(token.string)}
 
 
 def _is_declaration(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
