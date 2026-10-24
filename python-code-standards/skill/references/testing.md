@@ -2,15 +2,16 @@
 
 Standard pytest practice is assumed. What follows is what shapes the outcome.
 
-## Test-first, top-down
+## Test-first, outside-in
 
-1. **Start at the top.** Write a unit test for the public entry point. Inject its collaborators as fakes with the interface you want them to have; the test fixes that interface before any helper exists.
-2. **Red.** Run the single test (`uv run pytest <test_file>::<test_name> -q`) and confirm it fails for the expected reason — a missing function or a wrong result, not an import typo or a broken fixture.
-3. **Green.** Write the least production code that passes: the entry point, calling helpers by the interface the fakes defined.
-4. **Refactor** with the suite green, then commit the step if the repository's workflow asks for it.
-5. **Descend.** Each helper the entry point needed becomes the next unit: write its failing test, make it pass, repeat until every leaf is real. Stubs never survive to the finished change.
+1. **Types first.** Name the domain states the unit moves data through and declare each as a type (frozen dataclass, Pydantic model, or `Literal`-tagged record), so each function maps one state to the next. Parse input once, at the edge, into a type that carries its invariant.
+2. **Outer loop.** Write one failing acceptance test per use case, through the composition root, with in-memory adapters (DuckDB `:memory:`, a fake HTTP client) behind the ports. It stays red until the use case works end to end.
+3. **Red.** Write one failing test against the unit's public API and run it alone (`uv run pytest <test_file>::<test_name> -q`); confirm it fails for the expected reason — a missing function or a wrong result, not an import typo or a broken fixture.
+4. **Green.** Write the least production code that passes.
+5. **Refactor** with the suite green. Helpers are extracted here, each named for the decision it owns, and are tested through the public API; give one its own tests only when it holds independently complex logic. Commit the step if the repository's workflow asks for it.
+6. **Ascend.** Look at each new helper from its caller: change an interface that no longer fits, and merge any function that only forwards its arguments (`check_passthrough.py` finds them). Repeat from step 3 until the acceptance test passes.
 
-Unit tests isolate one unit. Collaborators arrive through parameters or constructor injection, so a test swaps them without patching. I/O, time, randomness, and the network stay at the edges, behind injected protocols, and out of unit tests; a few integration tests cover the real wiring.
+Ports — I/O, time, randomness, the network — arrive through parameters or constructor injection as protocols, so a test swaps them without patching; unit tests replace them with fakes and nothing else. In-process collaborators are real. The acceptance tests cover the real wiring.
 
 ## Coverage
 
