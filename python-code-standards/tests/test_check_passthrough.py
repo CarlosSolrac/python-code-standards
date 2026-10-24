@@ -198,3 +198,27 @@ def test_every_parameter_passed_once_unchanged_is_a_passthrough(source: str) -> 
 def test_arguments_that_differ_from_the_parameters_are_not_a_passthrough(source: str) -> None:
     """An added, transformed, dropped or repeated argument makes the call real work."""
     assert found(source) == []
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    ["overload", "typing.overload", "typing_extensions.overload", "abstractmethod", "abc.abstractmethod"],
+)
+def test_overloads_and_abstract_methods_are_skipped(decorator: str) -> None:
+    """A declaration that must exist for the type checker or a subclass is not a function to delete."""
+    assert found(f"class C:\n    @{decorator}\n    def f(self, x):\n        return g(x)") == []
+
+
+def test_a_skipped_decorator_among_others_still_skips() -> None:
+    """The skip applies wherever the decorator sits in the stack, and to ``async def`` too."""
+    assert found("class C:\n    @staticmethod\n    @abstractmethod\n    async def f(x):\n        return await g(x)\n") == []
+    assert found("class C:\n    @abstractmethod\n    @staticmethod\n    def f(x):\n        return g(x)\n") == []
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    ["property", "staticmethod", "functools.cache", "wraps(g)", "overloaded", "my_overload", "abstractmethod_", "overload(1)", "overload.other", "abstractmethod()"],
+)
+def test_other_decorators_do_not_skip(decorator: str) -> None:
+    """Only ``overload`` and ``abstractmethod``, bare or through a module, are skipped."""
+    assert found(f"class C:\n    @{decorator}\n    def f(x):\n        return g(x)") == ["f"]
