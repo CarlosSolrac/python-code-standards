@@ -159,6 +159,10 @@ runs the evals, and grades them.
 A near-zero delta in declaration violations means the rule is not landing, and the fix is to
 make it louder in `SKILL.md` — not to conclude the eval failed.
 
+A pass-through count (`passthru` in the table, `passthroughs` in the JSON) that does not drop with the
+skill means the design-shape rule is not landing; eval 7 is the task that measures it. A count of -1 means
+the checker could not scan the whole run, so read that run's files rather than the number.
+
 A low trigger rate on eval 6 means the `description` frontmatter needs work. That field is the
 only thing loaded before a skill fires, so a strong body behind a weak description is worth
 nothing.
