@@ -644,7 +644,7 @@ class ScopeChecker(ast.NodeVisitor):
             if not (self.in_enum_body and _is_member_target(target)):
                 self._bind(target)
 
-    def visit_For(self, node: ast.For) -> None:
+    def visit_For(self, node: ast.For | ast.AsyncFor) -> None:
         """Check the loop target, then the body."""
         self.visit(node.iter)
         self._bind(node.target)
@@ -653,9 +653,9 @@ class ScopeChecker(ast.NodeVisitor):
 
     def visit_AsyncFor(self, node: ast.AsyncFor) -> None:  # passthrough: allow -- NodeVisitor dispatches by name
         """Async loops behave identically."""
-        self.visit_For(node)  # type: ignore[arg-type]
+        self.visit_For(node)
 
-    def visit_With(self, node: ast.With) -> None:
+    def visit_With(self, node: ast.With | ast.AsyncWith) -> None:
         """Check each ``as`` target, then the body."""
         item: ast.withitem
         for item in node.items:
@@ -666,7 +666,7 @@ class ScopeChecker(ast.NodeVisitor):
 
     def visit_AsyncWith(self, node: ast.AsyncWith) -> None:  # passthrough: allow -- NodeVisitor dispatches by name
         """Async context managers behave identically."""
-        self.visit_With(node)  # type: ignore[arg-type]
+        self.visit_With(node)
 
     def _bind_pattern(self, node: ast.pattern) -> None:
         """Record every name a structural pattern binds.
@@ -2761,6 +2761,7 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
   ],
   "tools/check_declarations.py": [
    "27e8ad6f8cc9436f6e712c89b413b8a64d030e02e872eb317a2f8d67a624d56a",
+   "572b11a72259a8afbb0ec99ce21ca9cded53444983949c261c3b1a52c8696e54",
    "67554527c78bf95e1573ca3c1752e28ccb4db7c80e88d74bd1456d9f65778759",
    "70642cbf1a03131d1edc69d1fcda8f08b80c8689b6122295667938b72b9d6334",
    "d0f1364a001d5616f52970d7a471ad2c2820e435a622b7a6b363edc73e6ed8f9",
