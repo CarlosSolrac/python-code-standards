@@ -11,8 +11,10 @@ Python (`.py`, `.ipynb`): invoke the `python-code-standards` skill before readin
 - State assumptions that change the solution. Two possible readings: ask, do not pick.
 - A simpler approach exists: say so.
 - Write the success check first: a test, a command, or an observable output.
-- Design architecture from the domain outward, per the `design-spec` skill. Implement a unit
-  top-down: the entry point first, then each helper it calls, one level at a time.
+- Design from the domain outward, per the `design-spec` skill, down to each unit: domain
+  states are types, functions map one state to the next, and every function owns a
+  decision. No function only forwards its arguments. Top-down is for sketching, not
+  for build order.
 - Implement test-first: a failing unit test before each unit, watched failing for the
   expected reason. Changed code reaches 100% statement and branch coverage.
 - More than two files, or a new dependency: post a numbered plan (step → check) and wait.
@@ -22,7 +24,8 @@ Python (`.py`, `.ipynb`): invoke the `python-code-standards` skill before readin
 ## While writing code
 
 - Build only what was asked. No extra features, options, abstractions, or handling for cases
-  that cannot occur.
+  that cannot occur. A type that names a domain state, or a function for one use case, is
+  not an extra abstraction.
 - Change only lines the request requires. Do not reformat, rename, or improve neighbours.
 - Remove only what your change orphaned. Leave pre-existing dead code; mention it.
 - Update every comment or docstring that describes code you changed.
