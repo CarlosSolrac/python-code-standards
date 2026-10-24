@@ -133,11 +133,13 @@ def test_grade_records_version_and_counts(tmp_path: Path) -> None:
     (run / "m.py").write_text("total = 0\n", encoding="utf-8")
     checker: Path = Path(__file__).parent.parent / "skill" / "tools" / "check_declarations.py"
     config: Path = Path(__file__).parent.parent / "pyproject.toml"
+    tool: Path = Path(__file__).parent.parent / "skill" / "tools" / "check_passthrough.py"
 
-    score: Score = grade(run.resolve(), checker.resolve(), config.resolve())
+    score: Score = grade(run.resolve(), checker.resolve(), config.resolve(), tool.resolve())
     assert score.grader_version == GRADER_VERSION
     assert score.declaration_violations == 1
     assert score.files == 1
+    assert score.passthroughs == 0
 
 
 @pytest.mark.no_mutation
@@ -147,8 +149,9 @@ def test_grade_notes_missing_python_files(tmp_path: Path) -> None:
     run.mkdir()
     checker: Path = Path(__file__).parent.parent / "skill" / "tools" / "check_declarations.py"
     config: Path = Path(__file__).parent.parent / "pyproject.toml"
+    tool: Path = Path(__file__).parent.parent / "skill" / "tools" / "check_passthrough.py"
 
-    score: Score = grade(run.resolve(), checker.resolve(), config.resolve())
+    score: Score = grade(run.resolve(), checker.resolve(), config.resolve(), tool.resolve())
     assert any("no Python files" in note for note in score.notes)
 
 
@@ -160,8 +163,9 @@ def test_grade_flags_pip_usage(tmp_path: Path) -> None:
     (run / "setup.py").write_text('# run: pip install duckdb\nname: str = "x"\n', encoding="utf-8")
     checker: Path = Path(__file__).parent.parent / "skill" / "tools" / "check_declarations.py"
     config: Path = Path(__file__).parent.parent / "pyproject.toml"
+    tool: Path = Path(__file__).parent.parent / "skill" / "tools" / "check_passthrough.py"
 
-    score: Score = grade(run.resolve(), checker.resolve(), config.resolve())
+    score: Score = grade(run.resolve(), checker.resolve(), config.resolve(), tool.resolve())
     assert any("pip" in note for note in score.notes)
 
 
@@ -173,8 +177,9 @@ def test_score_serializes_to_json(tmp_path: Path) -> None:
     (run / "m.py").write_text("value: int = 1\n", encoding="utf-8")
     checker: Path = Path(__file__).parent.parent / "skill" / "tools" / "check_declarations.py"
     config: Path = Path(__file__).parent.parent / "pyproject.toml"
+    tool: Path = Path(__file__).parent.parent / "skill" / "tools" / "check_passthrough.py"
 
-    score: Score = grade(run.resolve(), checker.resolve(), config.resolve())
+    score: Score = grade(run.resolve(), checker.resolve(), config.resolve(), tool.resolve())
     restored: dict[str, object] = json.loads(json.dumps(score.__dict__))
     assert restored["grader_version"] == GRADER_VERSION
 
@@ -187,7 +192,7 @@ def test_main_prints_table_and_returns_zero(tmp_path: Path, capsys: pytest.Captu
     (run / "m.py").write_text("x = 1\n", encoding="utf-8")
     root: Path = Path(__file__).parent.parent
 
-    status: int = main([str(run), "--checker", str(root / "skill" / "tools" / "check_declarations.py"), "--config", str(root / "pyproject.toml")])
+    status: int = main([str(run), "--checker", str(root / "skill" / "tools" / "check_declarations.py"), "--config", str(root / "pyproject.toml"), "--passthrough", str(root / "skill" / "tools" / "check_passthrough.py")])
     captured: str = capsys.readouterr().out
     assert status == 0
     assert GRADER_VERSION in captured
@@ -203,7 +208,19 @@ def test_main_writes_json_with_version(tmp_path: Path) -> None:
     root: Path = Path(__file__).parent.parent
     out: Path = tmp_path / "scores.json"
 
-    main([str(run), "--checker", str(root / "skill" / "tools" / "check_declarations.py"), "--config", str(root / "pyproject.toml"), "--json", str(out)])
+    main(
+        [
+            str(run),
+            "--checker",
+            str(root / "skill" / "tools" / "check_declarations.py"),
+            "--config",
+            str(root / "pyproject.toml"),
+            "--passthrough",
+            str(root / "skill" / "tools" / "check_passthrough.py"),
+            "--json",
+            str(out),
+        ]
+    )
     written: list[dict[str, object]] = json.loads(out.read_text(encoding="utf-8"))
     assert written[0]["grader_version"] == GRADER_VERSION
 
@@ -271,7 +288,7 @@ def test_grade_notes_packages_pyright_ran_with(tmp_path: Path, monkeypatch: pyte
     config: Path = tmp_path / "standards.toml"
     config.write_text("", encoding="utf-8")
 
-    score: Score = grade(run, tmp_path / "checker.py", config)
+    score: Score = grade(run, tmp_path / "checker.py", config, tmp_path / "check_passthrough.py")
     assert "pyright ran with: duckdb" in score.notes
 
 
@@ -399,7 +416,9 @@ def test_count_pyright_without_an_error_count_scores_negative(tmp_path: Path, mo
     ids=["clean", "pip", "venv", "imports"],
 )
 def test_grade_scores_a_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str, notes: list[str]) -> None:
-    fake: ScriptedRun = ScriptedRun(checker=(1, "m.py:1:0: x bound before annotation\n"), ruff=(1, json.dumps([{"code": "F401"}])), pyright=(1, '{"summary": {"errorCount": 4}}'))
+    fake: ScriptedRun = ScriptedRun(
+        checker=(1, "m.py:1:0: x bound before annotation\n"), ruff=(1, json.dumps([{"code": "F401"}])), pyright=(1, '{"summary": {"errorCount": 4}}'), passthrough=(1, "m.py:1 f\nsub/n.py:2 g\n")
+    )
     monkeypatch.setattr("evals.grade._run", fake)
     run: Path = tmp_path / "sample"
     (run / "sub").mkdir(parents=True)
@@ -408,7 +427,8 @@ def test_grade_scores_a_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tex
     checker: Path = tmp_path / "check.py"
     config: Path = tmp_path / "pyproject.toml"
     config.write_text("# standards\n", encoding="utf-8")
-    score: Score = grade(run, checker, config)
+    tool: Path = tmp_path / "check_passthrough.py"
+    score: Score = grade(run, checker, config, tool)
     assert score == Score(
         grader_version=GRADER_VERSION,
         run="sample",
@@ -418,25 +438,27 @@ def test_grade_scores_a_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tex
         ruff_violations=1,
         ruff_by_rule={"F401": 1},
         pyright_errors=4,
+        passthroughs=2,
         notes=notes,
     )
     assert any(str(checker) in command for command, _ in fake.calls)
     assert any(str(config) in command for command, _ in fake.calls)
+    assert any(str(tool) in command for command, _ in fake.calls)
 
 
 def test_main_prints_the_table_and_writes_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr("evals.grade._run", ScriptedRun(ruff=(1, json.dumps([{"code": "F401"}]))))
+    monkeypatch.setattr("evals.grade._run", ScriptedRun(ruff=(1, json.dumps([{"code": "F401"}])), passthrough=(1, "m.py:1 f\n")))
     run: Path = tmp_path / "sample"
     run.mkdir()
     (run / "m.py").write_text("# pip install x\n", encoding="utf-8")
     out: Path = tmp_path / "scores.json"
     (tmp_path / "pyproject.toml").write_text("# standards\n", encoding="utf-8")
-    assert main([str(run), "--checker", str(tmp_path / "check.py"), "--config", str(tmp_path / "pyproject.toml"), "--json", str(out)]) == 0
+    assert main([str(run), "--checker", str(tmp_path / "check.py"), "--config", str(tmp_path / "pyproject.toml"), "--passthrough", str(tmp_path / "check_passthrough.py"), "--json", str(out)]) == 0
     assert capsys.readouterr().out.splitlines() == [
         f"grader {GRADER_VERSION} — scores are comparable only across runs of the same version",
         "",
-        "run                      files  lines   decl   ruff  pyright",
-        "sample                       1      1      0      1        0",
+        "run                      files  lines   decl   ruff  pyright  passthru",
+        "sample                       1      1      0      1        0         1",
         "  ! mentions pip or venv; the standards require uv",
         "",
         f"wrote {out}",
@@ -444,6 +466,7 @@ def test_main_prints_the_table_and_writes_json(tmp_path: Path, monkeypatch: pyte
     written: str = out.read_text(encoding="utf-8")
     assert written == json.dumps(json.loads(written), indent=2)
     assert json.loads(written)[0]["run"] == "sample"
+    assert json.loads(written)[0]["passthroughs"] == 1
 
 
 def test_main_defaults_to_the_repository_checker_and_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -457,6 +480,7 @@ def test_main_defaults_to_the_repository_checker_and_config(tmp_path: Path, monk
     commands: list[str] = [part for command, _ in fake.calls for part in command]
     assert str((tmp_path / "skill" / "tools" / "check_declarations.py").resolve()) in commands
     assert str((tmp_path / "pyproject.toml").resolve()) in commands
+    assert str((tmp_path / "skill" / "tools" / "check_passthrough.py").resolve()) in commands
 
 
 def test_help_shows_the_module_docstring(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
