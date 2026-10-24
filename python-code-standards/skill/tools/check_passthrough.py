@@ -13,6 +13,9 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path
 
+_DECLARATION_DECORATORS: frozenset[str] = frozenset({"overload", "abstractmethod"})
+"""Decorators marking a function whose body is not its implementation; such functions are never reported."""
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -34,8 +37,20 @@ def find_passthroughs(path: Path, source: str) -> list[Finding]:
         One finding per pass-through ``def`` or ``async def``, including methods and nested functions.
     """
     tree: ast.Module = ast.parse(source)
-    findings: list[Finding] = [Finding(path, node.lineno, node.name) for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _forwards_exactly(node)]
+    findings: list[Finding] = [Finding(path, node.lineno, node.name) for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not _is_declaration(node) and _forwards_exactly(node)]
     return sorted(findings, key=lambda finding: finding.line)
+
+
+def _is_declaration(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Whether the function is an ``@overload`` or ``@abstractmethod``, whose body exists only to be replaced or overridden."""
+    return any(_last_name(decorator) in _DECLARATION_DECORATORS for decorator in function.decorator_list)
+
+
+def _last_name(expression: ast.expr) -> str:
+    """Return the final name of ``name`` or ``module.name``, or ``"?"`` for any other expression."""
+    if isinstance(expression, ast.Attribute):
+        return expression.attr
+    return _name(expression)
 
 
 def _forwards_exactly(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
