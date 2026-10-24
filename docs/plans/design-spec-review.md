@@ -1,3 +1,5 @@
+Not for nightshift: all tasks done; kept as the record of decisions. docs/graphify-evaluation.md moved to the graphify repo (53ee4e2).
+
 # Plan: design-spec review items, eval coverage, a mechanical grader, and a tool evaluation
 
 Source material: items 2–7 of [TODO.md at c743325](https://github.com/CarlosSolrac/python-code-standards/blob/c743325/TODO.md),
