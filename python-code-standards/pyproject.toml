@@ -14,7 +14,7 @@ dev = [
     "complexipy>=8,<9",           # cognitive complexity cap, see [tool.complexipy]
     "deptry>=0.25,<0.26",         # unused, missing, and transitive dependencies
     "diff-cover>=10,<11",        # CI: 100% coverage of changed lines
-    "duckdb>=1.5,<2",             # lets Pyright type-check skill/assets/conformance.py; not in the baseline
+    "duckdb>=1.5.6,<2",             # lets Pyright type-check skill/assets/conformance.py; not in the baseline
     "grimp>=3.17,<4",             # import graph for the design-spec eval grader; not in the baseline
     "mutmut>=3.8,<4; sys_platform != 'win32'",  # needs os.fork; on Windows run it through WSL
     "mypy>=2.4,<3",
