@@ -23,7 +23,7 @@ dev = [
     "pyright>=1.1.414,<2",       # PyPI wrapper; downloads a Node runtime on first run
     "pytest>=9.1.1,<10",         # 9.0.3 fixes PYSEC-2026-1845
     "pytest-cov>=7.1.0,<8",
-    "ruff>=0.16.10,<0.17",       # pinned: minor releases change which rules fire
+    "ruff>=0.17.2,<0.18",       # pinned: minor releases change which rules fire
 ]
 
 [tool.ruff]
