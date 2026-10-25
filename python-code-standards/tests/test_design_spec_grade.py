@@ -1045,11 +1045,15 @@ def build_fake_graph(*names: str, cache_dir: object = "grimp's default") -> Fake
         for source in package.rglob("*.py"):
             parts: tuple[str, ...] = (name, *source.relative_to(package).with_suffix("").parts)
             modules.add(".".join(parts[:-1] if parts[-1] == "__init__" else parts))
-            tree: ast.Module = ast.parse(source.read_text(encoding="utf-8"))
-            imported: set[str] = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
-            imported |= {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module}
-            edges |= {(name, module.split(".")[0]) for module in imported if module.split(".")[0] in names}
+            edges |= {(name, module.split(".")[0]) for module in _imported_modules(source) if module.split(".")[0] in names}
     return FakeGraph(modules=frozenset(modules), edges=frozenset(edges))
+
+
+def _imported_modules(source: Path) -> set[str]:
+    """Return every module a file imports, ``TYPE_CHECKING`` imports included."""
+    tree: ast.Module = ast.parse(source.read_text(encoding="utf-8"))
+    imported: set[str] = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
+    return imported | {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module}
 
 
 @pytest.fixture(params=[pytest.param("grimp", marks=pytest.mark.no_mutation), "fake"])
