@@ -277,7 +277,7 @@ def test_every_honoured_marker_is_a_suppression(comment: str) -> None:
 
 def test_finding_renders_as_path_line_name() -> None:
     """One ``path:line name`` per finding."""
-    assert Finding(Path("pkg/m.py"), 7, "total").render() == "pkg/m.py:7 total"
+    assert Finding(Path("m.py"), 7, "total").render() == "m.py:7 total"
 
 
 def test_iter_python_files_takes_files_as_given_and_walks_directories(tmp_path: Path) -> None:
