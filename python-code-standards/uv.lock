@@ -1264,7 +1264,7 @@ dev = [
 dev = [
     { name = "complexipy", specifier = ">=8,<9" },
     { name = "deptry", specifier = ">=0.25,<0.26" },
-    { name = "diff-cover", specifier = ">=10,<11" },
+    { name = "diff-cover", specifier = ">=10.6.0,<11" },
     { name = "duckdb", specifier = ">=1.5.6,<2" },
     { name = "grimp", specifier = ">=3.17,<4" },
     { name = "mutmut", marker = "sys_platform != 'win32'", specifier = ">=3.8,<4" },

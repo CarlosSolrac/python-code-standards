@@ -13,7 +13,7 @@ dependencies = []
 dev = [
     "complexipy>=8,<9",           # cognitive complexity cap, see [tool.complexipy]
     "deptry>=0.25,<0.26",         # unused, missing, and transitive dependencies
-    "diff-cover>=10,<11",        # CI: 100% coverage of changed lines
+    "diff-cover>=10.6.0,<11",        # CI: 100% coverage of changed lines
     "mutmut>=3.8,<4; sys_platform != 'win32'",  # needs os.fork; on Windows run it through WSL
     "mypy>=2.4,<3",
     "pip-audit>=2.10.1,<3",         # CI: dependencies with known vulnerabilities
