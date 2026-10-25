@@ -417,12 +417,12 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # diff-cover compares against the base branch
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10.3.2
         with:
           enable-cache: true
 
@@ -1813,10 +1813,10 @@ jobs:
   mutation:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10.3.2
         with:
           enable-cache: true
 
@@ -1825,7 +1825,7 @@ jobs:
 
       - name: Upload survivors
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-report
           path: |
@@ -2724,12 +2724,14 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "2abf4a37e4c86b07efe43284e7136af0d5f7dc37059c988751390565fa40dce6"
   ],
   ".github/workflows/ci.yml": [
+   "1b72d5ee3708b47ee2f712c77e1df9d275245df3818b133a294c10037a6f4189",
    "3c619d62a2f3c3ac5dd598d52c18b541ebe5eac8f6c7e47b536f303a6210b32a",
    "3d74634f38daf5e61b5dba5444b97088e5de351d227419732ad5f270a5a0aa04",
    "ef7ddbb3b1623a416fbdf6c7ec1a8b7b6e285eee6ace5048a2533e7450c8fd64"
   ],
   ".github/workflows/mutation.yml": [
-   "0111fa893e4fdf60771a6b29e541669e3f5191ec49e49f059fc0c3a6c643f922"
+   "0111fa893e4fdf60771a6b29e541669e3f5191ec49e49f059fc0c3a6c643f922",
+   "b626fc6c38fb861793c397fcb36b9890760041fa4e8acc23e960b686b708df91"
   ],
   ".gitignore": [
    "abd5c51f23b8e555fb48b5c4b28103b9a7fc7ecceacd9ff6cbb73e1ac814af21",
