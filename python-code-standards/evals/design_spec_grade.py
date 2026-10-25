@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -665,8 +664,13 @@ class Workspace:
 
     def _prefix(self) -> str:
         """Return the hyphen-ended prefix every package name shares (``pqx-``), or an empty string."""
-        shared: str = os.path.commonprefix([package.name for package in self.packages])
-        return shared[: shared.rfind("-") + 1]
+        shared: str = ""
+        parts: tuple[str, ...]
+        for parts in zip(*(package.name.split("-")[:-1] for package in self.packages), strict=False):
+            if len(set(parts)) > 1:
+                break
+            shared += f"{parts[0]}-"
+        return shared
 
 
 def _canonical(label: str) -> str:

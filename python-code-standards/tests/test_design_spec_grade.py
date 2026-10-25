@@ -957,8 +957,8 @@ def test_dependency_matrix_equal_without_undeclared_or_unused_cells() -> None:
 
 @pytest.mark.parametrize(
     ("names", "label"),
-    [(("my-app-core", "my-app-io"), "core"), (("app-core", "app-cli"), "core"), (("core", "cli"), "core")],
-    ids=["prefix-with-two-hyphens", "prefix-past-the-hyphen", "no-prefix"],
+    [(("my-app-core", "my-app-io"), "core"), (("app-core", "app-cli"), "core"), (("my-app-core", "my-lib-io"), "app-core"), (("core", "cli"), "core")],
+    ids=["prefix-with-two-hyphens", "prefix-past-the-hyphen", "prefix-before-a-differing-part", "no-prefix"],
 )
 def test_workspace_label_drops_the_prefix_up_to_the_last_shared_hyphen(names: tuple[str, str], label: str) -> None:
     workspace: Workspace = Workspace(packages=tuple(Package(name, frozenset(), frozenset()) for name in names), imports=frozenset(), modules=frozenset())
