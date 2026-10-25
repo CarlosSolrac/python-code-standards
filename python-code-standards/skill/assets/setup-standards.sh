@@ -165,7 +165,7 @@ dev = [
     "pyright>=1.1.414,<2",       # PyPI wrapper; downloads a Node runtime on first run
     "pytest>=9.1.1,<10",         # 9.0.3 fixes PYSEC-2026-1845
     "pytest-cov>=7.1.0,<8",
-    "ruff>=0.16.10,<0.17",       # pinned: minor releases change which rules fire
+    "ruff>=0.17.2,<0.18",       # pinned: minor releases change which rules fire
 ]
 
 [tool.ruff]
@@ -319,7 +319,7 @@ write_file .pre-commit-config.yaml <<'YAML'
 # they need the narrowest practical entry point chosen per change.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.10
+    rev: v0.17.2
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -2738,6 +2738,7 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
   ],
   ".pre-commit-config.yaml": [
    "2aca5bf0725afe7b605a6d4b1bb08c4bccc0cfae03f1b2627849fc3b743301af",
+   "362170faf216c61530367fce609afe2b09e3de598488ffd2be86c47e6d7d7f17",
    "3e92832f817e483c793dc743c6273b65dffb4d9f9e1fd0556ddaa9b96a39cd2e",
    "b4c08952f1e2c7a61a06ffcaafe4bcf935e7b5163e432e3b5726757f609f3d9c",
    "c173562759098fbc74717df06805a98ddeb1bd8b8382f78f1e70c06d67be5bee",
