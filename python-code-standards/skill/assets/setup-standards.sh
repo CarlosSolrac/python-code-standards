@@ -160,7 +160,7 @@ dev = [
     "diff-cover>=10,<11",        # CI: 100% coverage of changed lines
     "mutmut>=3.8,<4; sys_platform != 'win32'",  # needs os.fork; on Windows run it through WSL
     "mypy>=2.4,<3",
-    "pip-audit>=2.10,<3",         # CI: dependencies with known vulnerabilities
+    "pip-audit>=2.10.1,<3",         # CI: dependencies with known vulnerabilities
     "pre-commit>=4,<5",
     "pyright>=1.1.400,<2",       # PyPI wrapper; downloads a Node runtime on first run
     "pytest>=9.0.3,<10",         # 9.0.3 fixes PYSEC-2026-1845
