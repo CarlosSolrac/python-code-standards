@@ -1,6 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  "gitAuthor": "Renovate Bot <CarlosSolrac@users.noreply.github.com>",
   "enabledManagers": ["pep621", "pre-commit", "github-actions", "custom.regex"],
   "ignorePaths": ["**/evals/fixtures/**", "**/mutants/**", "**/.venv/**"],
   "pep621": {
