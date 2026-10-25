@@ -40,7 +40,8 @@
       "description": "setup-standards.sh embeds the skill's templates and their digests; refresh both",
       "matchFileNames": ["python-code-standards/skill/assets/**"],
       "postUpgradeTasks": {
-        "commands": ["cd python-code-standards && uv run --frozen python -m skill.tools.vendor_templates && uv run --frozen python -m skill.tools.template_history"],
+        "commands": ["uv run --frozen python -m skill.tools.vendor_templates", "uv run --frozen python -m skill.tools.template_history"],
+        "workingDirTemplate": "python-code-standards",
         "fileFilters": ["python-code-standards/skill/assets/setup-standards.sh"],
         "executionMode": "branch"
       }
