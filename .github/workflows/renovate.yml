@@ -36,6 +36,6 @@ jobs:
           RENOVATE_ONBOARDING: "false"
           RENOVATE_REQUIRE_CONFIG: required
           RENOVATE_BINARY_SOURCE: global
-          RENOVATE_ALLOWED_COMMANDS: '["^cd python-code-standards && uv run --frozen python -m skill\\.tools\\.vendor_templates && uv run --frozen python -m skill\\.tools\\.template_history$"]'
+          RENOVATE_ALLOWED_COMMANDS: '["^uv run --frozen python -m skill\\.tools\\.(vendor_templates|template_history)$"]'
           LOG_LEVEL: info
         run: npx --yes "renovate@${RENOVATE_VERSION}"
