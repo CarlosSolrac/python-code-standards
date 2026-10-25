@@ -592,12 +592,13 @@ def _run(command: list[str], cwd: Path) -> tuple[int, str, str]:
     """Execute a command, returning its exit status, stdout and stderr, decoded as UTF-8.
 
     A program that cannot be started (``node`` or ``git`` missing) reports exit 127,
-    as a shell would, so the check reports it instead of the grader crashing.
+    as a shell would, so the check reports it instead of the grader crashing. The
+    message names the program, which Windows' own error text does not.
     """
     try:
         completed: subprocess.CompletedProcess[str] = subprocess.run(command, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace", check=False)
     except OSError as error:
-        return 127, "", str(error)
+        return 127, "", f"{command[0]}: {error}"
     return completed.returncode, completed.stdout, completed.stderr
 
 
