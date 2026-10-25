@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -1265,7 +1265,7 @@ dev = [
     { name = "complexipy", specifier = ">=8,<9" },
     { name = "deptry", specifier = ">=0.25,<0.26" },
     { name = "diff-cover", specifier = ">=10,<11" },
-    { name = "duckdb", specifier = ">=1.5,<2" },
+    { name = "duckdb", specifier = ">=1.5.6,<2" },
     { name = "grimp", specifier = ">=3.17,<4" },
     { name = "mutmut", marker = "sys_platform != 'win32'", specifier = ">=3.8,<4" },
     { name = "mypy", specifier = ">=2.4,<3" },
