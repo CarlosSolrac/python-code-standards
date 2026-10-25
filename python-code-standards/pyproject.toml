@@ -11,7 +11,7 @@ dependencies = []
 
 [dependency-groups]
 dev = [
-    "complexipy>=8,<9",           # cognitive complexity cap, see [tool.complexipy]
+    "complexipy>=8.1.0,<9",           # cognitive complexity cap, see [tool.complexipy]
     "deptry>=0.25,<0.26",         # unused, missing, and transitive dependencies
     "diff-cover>=10.6.0,<11",        # CI: 100% coverage of changed lines
     "duckdb>=1.5.6,<2",             # lets Pyright type-check skill/assets/conformance.py; not in the baseline
