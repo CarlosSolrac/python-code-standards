@@ -385,3 +385,62 @@ def test_claude_code_event_gets_the_nested_decision(tool_name: str, tool_input: 
     specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
     assert specific["hookEventName"] == "PreToolUse"
     assert specific["permissionDecision"] == "ask"
+
+
+COPILOT_EVENT: dict[str, object] = {
+    "hook_event_name": "PreToolUse",
+    "timestamp": "2026-10-20T12:00:00Z",
+    "cwd": "/repo",
+}
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "command"),
+    [("Bash", "rm pyproject.toml"), ("PowerShell", "Set-Content pyproject.toml 'x'"), ("Bash", "uv add requests")],
+    ids=["bash-gate-file", "powershell-gate-file", "bash-dependency"],
+)
+def test_copilot_shell_event_gets_the_root_level_decision(tool_name: str, command: str) -> None:
+    """A Copilot event has a string timestamp and no tool_use_id, so the answer sits at the root of the output."""
+    decision: dict[str, object] | None = run_event({**COPILOT_EVENT, "tool_name": tool_name, "tool_input": {"command": command}})
+    assert decision is not None
+    assert decision["permissionDecision"] == "ask"
+    assert isinstance(decision["permissionDecisionReason"], str)
+    assert "hookSpecificOutput" not in decision
+
+
+def test_json_string_input_naming_an_ordinary_file_is_silent() -> None:
+    assert run_event({"tool_name": "Edit", "tool_input": json.dumps({"file_path": "src/app.py"})}) is None
+
+
+@pytest.mark.parametrize(
+    "event_fields",
+    [{"timestamp": 1760961600}, {"tool_use_id": None}, {"tool_use_id": None, "timestamp": 1760961600}],
+    ids=["non-string-timestamp", "null-tool-use-id", "null-tool-use-id-and-non-string-timestamp"],
+)
+def test_event_that_is_not_clearly_copilot_gets_the_nested_decision(event_fields: dict[str, object]) -> None:
+    """Only a string timestamp with no tool_use_id key at all marks a Copilot event; anything else keeps the Claude Code shape."""
+    decision: dict[str, object] | None = run_event({**COPILOT_EVENT, **event_fields, "tool_name": "Edit", "tool_input": {"file_path": "pyproject.toml"}})
+    assert decision is not None
+    assert "permissionDecision" not in decision
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+    assert specific["permissionDecision"] == "ask"
+
+
+@pytest.mark.parametrize("header", ["Delete File", "Move to"])
+def test_raw_apply_patch_that_deletes_or_moves_onto_a_gate_file_asks(header: str) -> None:
+    patch: str = f"*** Begin Patch\n*** {header}: pyproject.toml\n*** End Patch"
+    decision: dict[str, object] | None = run_event({"tool_name": "apply_patch", "tool_input": patch})
+    assert decision is not None
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+    assert specific["permissionDecision"] == "ask"
+    assert str(specific["permissionDecisionReason"]).startswith("pyproject.toml defines a quality gate")
+
+
+def test_apply_patch_nested_in_an_object_asks_as_uninspectable_pinned_not_endorsed() -> None:
+    """Pins today's behaviour: a patch under an unrecognised key is never parsed, so even an ordinary-file patch asks."""
+    patch: str = "*** Begin Patch\n*** Update File: src/app.py\n*** End Patch"
+    decision: dict[str, object] | None = run_event({"tool_name": "apply_patch", "tool_input": {"input": patch}})
+    assert decision is not None
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+    assert specific["permissionDecision"] == "ask"
+    assert str(specific["permissionDecisionReason"]) == "This file tool input could not be inspected for quality-gate changes, so the user must approve it."
