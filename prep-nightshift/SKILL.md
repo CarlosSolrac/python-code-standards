@@ -47,6 +47,11 @@ per check, pass or fail:
 - **gh logged in.** `gh auth status`.
 - **Codex answers.** Resolve `$CX` as nightshift's *Preflight* does and run
   `node "$CX" status --json`.
+- **Codex stop gate off.** Read `config.stopReviewGate` from that status output. The gate
+  reviews the coordinator's checkout at every turn end, where nightshift changes nothing,
+  and blocks the stop when Codex fails or takes over 15 minutes, so one outage holds every
+  wake-up. If it is on, offer `node "$CX" setup --disable-review-gate`, run it only on the
+  user's yes, and add turning it back on to the morning steps (step 6).
 - **Permission mode will not prompt.** With nightshift's permission hook installed, a
   prompt ends as a blocker on that task rather than stalling the night (*Running it*), but
   every blocker is work left undone. Check that `~/.claude/settings.json` runs
@@ -151,7 +156,8 @@ the task's text. The `adversarial=once|thorough` setting is typed by the user af
 
 In the plan file and in your reply, in order: open the log and read *Morning summary* and
 *Needs you* first, then close the nightshift session and start a fresh one (*Running it*);
-mark each draft PR ready for review and merge them in
+if step 1 turned the Codex stop gate off, turn it back on with
+`node "$CX" setup --enable-review-gate`; mark each draft PR ready for review and merge them in
 dependency order, retargeting any stacked PR after its base merges; then every step moved out in step 4, each with its exact
 command or change.
 

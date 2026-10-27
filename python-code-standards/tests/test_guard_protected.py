@@ -41,6 +41,11 @@ def asks(tool_name: str, tool_input: dict[str, str]) -> bool:
     return specific["permissionDecision"] == "ask"
 
 
+def test_asks_is_false_when_the_hook_stays_silent() -> None:
+    """The helper must report a silent hook as not asking, or every allowed case below would pass vacuously."""
+    assert not asks("Edit", {"file_path": "/repo/README.md"})
+
+
 @pytest.mark.parametrize(
     "path",
     [

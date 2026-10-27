@@ -155,17 +155,17 @@ dependencies = []
 
 [dependency-groups]
 dev = [
-    "complexipy>=8,<9",           # cognitive complexity cap, see [tool.complexipy]
+    "complexipy>=8.1.0,<9",           # cognitive complexity cap, see [tool.complexipy]
     "deptry>=0.25,<0.26",         # unused, missing, and transitive dependencies
-    "diff-cover>=10,<11",        # CI: 100% coverage of changed lines
+    "diff-cover>=10.6.0,<11",        # CI: 100% coverage of changed lines
     "mutmut>=3.8,<4; sys_platform != 'win32'",  # needs os.fork; on Windows run it through WSL
     "mypy>=2.4,<3",
-    "pip-audit>=2.10,<3",         # CI: dependencies with known vulnerabilities
-    "pre-commit>=4,<5",
-    "pyright>=1.1.400,<2",       # PyPI wrapper; downloads a Node runtime on first run
-    "pytest>=9.0.3,<10",         # 9.0.3 fixes PYSEC-2026-1845
-    "pytest-cov>=6,<8",
-    "ruff>=0.16.10,<0.17",       # pinned: minor releases change which rules fire
+    "pip-audit>=2.10.1,<3",         # CI: dependencies with known vulnerabilities
+    "pre-commit>=4.7.0,<5",
+    "pyright>=1.1.414,<2",       # PyPI wrapper; downloads a Node runtime on first run
+    "pytest>=9.1.1,<10",         # 9.0.3 fixes PYSEC-2026-1845
+    "pytest-cov>=7.1.0,<8",
+    "ruff>=0.17.2,<0.18",       # pinned: minor releases change which rules fire
 ]
 
 [tool.ruff]
@@ -319,7 +319,7 @@ write_file .pre-commit-config.yaml <<'YAML'
 # they need the narrowest practical entry point chosen per change.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.10
+    rev: v0.17.2
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -417,12 +417,12 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # diff-cover compares against the base branch
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
 
@@ -644,18 +644,18 @@ class ScopeChecker(ast.NodeVisitor):
             if not (self.in_enum_body and _is_member_target(target)):
                 self._bind(target)
 
-    def visit_For(self, node: ast.For) -> None:
+    def visit_For(self, node: ast.For | ast.AsyncFor) -> None:
         """Check the loop target, then the body."""
         self.visit(node.iter)
         self._bind(node.target)
         self.visit_body(node.body)
         self.visit_body(node.orelse)
 
-    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:  # passthrough: allow -- NodeVisitor dispatches by name
         """Async loops behave identically."""
-        self.visit_For(node)  # type: ignore[arg-type]
+        self.visit_For(node)
 
-    def visit_With(self, node: ast.With) -> None:
+    def visit_With(self, node: ast.With | ast.AsyncWith) -> None:
         """Check each ``as`` target, then the body."""
         item: ast.withitem
         for item in node.items:
@@ -664,9 +664,9 @@ class ScopeChecker(ast.NodeVisitor):
                 self._bind(item.optional_vars)
         self.visit_body(node.body)
 
-    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:  # passthrough: allow -- NodeVisitor dispatches by name
         """Async context managers behave identically."""
-        self.visit_With(node)  # type: ignore[arg-type]
+        self.visit_With(node)
 
     def _bind_pattern(self, node: ast.pattern) -> None:
         """Record every name a structural pattern binds.
@@ -802,7 +802,7 @@ class ScopeChecker(ast.NodeVisitor):
         self.declared.add(node.name)
         self._enter_function(node)
 
-    def visit_Lambda(self, node: ast.Lambda) -> None:
+    def visit_Lambda(self, node: ast.Lambda) -> None:  # passthrough: allow -- NodeVisitor dispatches by name
         """Lambdas open a scope with no statements to check."""
         self._enter_function(node)
 
@@ -1144,9 +1144,9 @@ Suppressing a lint, type, or coverage finding needs the user's explicit
 authorization. This makes that rule mechanical: a ``noqa``, ``type: ignore``,
 ``pyright: ignore``, ``pragma: no cover``, or ``pragma: no branch`` comment on an
 added line fails, as does a file- or function-level one (``ruff: noqa``,
-``flake8: noqa``, ``mypy:`` and ``pyright:`` settings, ``complexipy: ignore``),
-unless ``suppressions.toml`` lists its file and code (for a setting, its whole
-value):
+``flake8: noqa``, ``mypy:`` and ``pyright:`` settings, ``complexipy: ignore``,
+``passthrough: allow``), unless ``suppressions.toml`` lists its file and code
+(for a setting, its whole value):
 
     [[suppression]]
     path = "tools/hooks/stop_gate.py"
@@ -1183,10 +1183,12 @@ from .hooks.stop_gate import PYTHON_SUFFIXES, GitError, Runner, run_command
 ALLOW_LIST: Path = Path("suppressions.toml")
 REQUIRED_KEYS: tuple[str, ...] = ("path", "code", "reason")
 # Line-level directives, then the file- and function-level ones (ruff and flake8
-# file noqa, mypy and pyright file comments, complexipy's ignore), which silence
-# more than a line. coverage.py honors "no cover" and "no branch" pragmas, and
-# mutmut skips lines marked "no mutate".
-DIRECTIVE: re.Pattern[str] = re.compile(r"#\s*(ruff:\s*noqa|flake8:\s*noqa|noqa|type:\s*ignore|pyright:\s*ignore|pyright:|mypy:|complexipy:\s*ignore|pragma:?\s*no\s*(?:cover|branch|mutate))", re.IGNORECASE)
+# file noqa, mypy and pyright file comments, complexipy's ignore, check_passthrough's
+# allow), which silence more than a line. coverage.py honors "no cover" and "no
+# branch" pragmas, and mutmut skips lines marked "no mutate".
+DIRECTIVE: re.Pattern[str] = re.compile(
+    r"#\s*(ruff:\s*noqa|flake8:\s*noqa|noqa|type:\s*ignore|pyright:\s*ignore|pyright:|mypy:|complexipy:\s*ignore|passthrough:\s*allow|pragma:?\s*no\s*(?:cover|branch|mutate))", re.IGNORECASE
+)
 # Ruff separates noqa codes with commas, spaces, or both; every code is captured.
 NOQA_CODES: re.Pattern[str] = re.compile(r":\s*([A-Z]+[0-9]+(?:[\s,]+[A-Z]+[0-9]+)*)")
 CODE: re.Pattern[str] = re.compile(r"[A-Z]+[0-9]+")
@@ -1201,6 +1203,7 @@ CANONICAL: dict[str, str] = {
     "pyright": "pyright:",
     "mypy": "mypy:",
     "complexipyignore": "complexipy: ignore",
+    "passthroughallow": "passthrough: allow",
     "pragmanocover": "pragma: no cover",
     "pragmanobranch": "pragma: no branch",
     "pragmanomutate": "pragma: no mutate",
@@ -1220,7 +1223,7 @@ class Suppression:
         """Return the suppression as it reads in source."""
         if self.kind in NOQA_KINDS:
             return f"{self.kind}: {self.code}" if self.code else f"{self.kind} ({'blanket' if self.kind == 'noqa' else 'whole file'})"
-        if self.kind in {"pragma", "complexipy", "mypy", "pyright"}:
+        if self.kind in {"pragma", "complexipy", "passthrough", "mypy", "pyright"}:
             return f"{self.kind}: {self.code}"
         return f"{self.kind}[{self.code}]" if self.code else self.kind
 
@@ -1266,6 +1269,8 @@ def parse_directive(word: str, tail: str) -> list[Suppression]:
         return [Suppression(word.removesuffix(":"), " ".join(tail.split()))]
     if word == "complexipy: ignore":
         return [Suppression("complexipy", "ignore")]
+    if word == "passthrough: allow":
+        return [Suppression("passthrough", "allow")]
     return [Suppression("pragma", word.removeprefix("pragma: "))]
 
 
@@ -1737,6 +1742,11 @@ reason = "subprocess argv comes from the hook's fixed gate list, never a shell"
 path = "tools/check_declarations.py"
 code = "arg-type"
 reason = "the async visitors reuse the sync ones; async nodes carry the same fields"
+
+[[suppression]]
+path = "tools/check_declarations.py"
+code = "allow"
+reason = "NodeVisitor dispatches by method name, so the async and lambda visitors must exist"
 ALLOWEOF
 
 # --------------------------------------------------------------------------- #
@@ -1803,10 +1813,10 @@ jobs:
   mutation:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
 
@@ -1815,7 +1825,7 @@ jobs:
 
       - name: Upload survivors
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mutation-report
           path: |
@@ -2802,12 +2812,16 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "2abf4a37e4c86b07efe43284e7136af0d5f7dc37059c988751390565fa40dce6"
   ],
   ".github/workflows/ci.yml": [
+   "1b72d5ee3708b47ee2f712c77e1df9d275245df3818b133a294c10037a6f4189",
    "3c619d62a2f3c3ac5dd598d52c18b541ebe5eac8f6c7e47b536f303a6210b32a",
    "3d74634f38daf5e61b5dba5444b97088e5de351d227419732ad5f270a5a0aa04",
-   "ef7ddbb3b1623a416fbdf6c7ec1a8b7b6e285eee6ace5048a2533e7450c8fd64"
+   "ef7ddbb3b1623a416fbdf6c7ec1a8b7b6e285eee6ace5048a2533e7450c8fd64",
+   "ff87d7a0ef4670a3a95db28c5a4144291df149a8d836de5989b7d101d93188ea"
   ],
   ".github/workflows/mutation.yml": [
-   "0111fa893e4fdf60771a6b29e541669e3f5191ec49e49f059fc0c3a6c643f922"
+   "0111fa893e4fdf60771a6b29e541669e3f5191ec49e49f059fc0c3a6c643f922",
+   "ab9e2e0e59a1269f37b56a1cd4466fc952f2796fed1777b20a6b0d75fce76a55",
+   "b626fc6c38fb861793c397fcb36b9890760041fa4e8acc23e960b686b708df91"
   ],
   ".gitignore": [
    "abd5c51f23b8e555fb48b5c4b28103b9a7fc7ecceacd9ff6cbb73e1ac814af21",
@@ -2816,13 +2830,15 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
   ],
   ".pre-commit-config.yaml": [
    "2aca5bf0725afe7b605a6d4b1bb08c4bccc0cfae03f1b2627849fc3b743301af",
+   "362170faf216c61530367fce609afe2b09e3de598488ffd2be86c47e6d7d7f17",
    "3e92832f817e483c793dc743c6273b65dffb4d9f9e1fd0556ddaa9b96a39cd2e",
    "b4c08952f1e2c7a61a06ffcaafe4bcf935e7b5163e432e3b5726757f609f3d9c",
    "c173562759098fbc74717df06805a98ddeb1bd8b8382f78f1e70c06d67be5bee",
    "c3133cfe1581b414de030c3215785f07ba1ed8e41450c297bb872cc9c083b098"
   ],
   "suppressions.toml": [
-   "17647f5f57f7691cba0353e4b762ae6afca3420579756e5e24d8787928886b42"
+   "17647f5f57f7691cba0353e4b762ae6afca3420579756e5e24d8787928886b42",
+   "1fba69e5a598ef5ce6fc1e00963adf6baea4d15597bb361d55bc3c37e438b8bd"
   ],
   "tests/.gitkeep": [
    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -2838,11 +2854,14 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
   ],
   "tools/check_declarations.py": [
    "27e8ad6f8cc9436f6e712c89b413b8a64d030e02e872eb317a2f8d67a624d56a",
+   "572b11a72259a8afbb0ec99ce21ca9cded53444983949c261c3b1a52c8696e54",
    "67554527c78bf95e1573ca3c1752e28ccb4db7c80e88d74bd1456d9f65778759",
    "70642cbf1a03131d1edc69d1fcda8f08b80c8689b6122295667938b72b9d6334",
+   "d0f1364a001d5616f52970d7a471ad2c2820e435a622b7a6b363edc73e6ed8f9",
    "f9e2699d313f57992183115235610815fefcb758fa07d452d96d81f0996165d3"
   ],
   "tools/check_suppressions.py": [
+   "4de0ff76d121c6f8638f027e4fdc70958fd19274c8bb24801a91b972572f092e",
    "7dd40b8ae5a8367f4ec20bd17eb0048ea200d4cb786234b5dac9b68d0823cd5e",
    "7df224a2c43c344cafe165df0e922fbe4028d46299c3c554bfce13122df0e0f9",
    "ab58c10d44859946605794a15a368161349c1a0582719e69f483146c1fe50937"

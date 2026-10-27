@@ -1,0 +1,42 @@
+name: renovate
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate
+
+jobs:
+  # Runs Renovate on the runner rather than in its Docker image, so the uv that
+  # updates uv.lock and runs the post-upgrade tasks is the one installed here.
+  renovate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RENOVATE_VERSION: 44.181.6
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Run Renovate
+        env:
+          # A token, not GITHUB_TOKEN: pushes made with GITHUB_TOKEN do not trigger the ci workflow.
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+          RENOVATE_PLATFORM: github
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: required
+          RENOVATE_BINARY_SOURCE: global
+          RENOVATE_GIT_AUTHOR: "Renovate Bot <CarlosSolrac@users.noreply.github.com>"
+          RENOVATE_ALLOWED_COMMANDS: '["^uv run --frozen python -m skill\\.tools\\.(vendor_templates|template_history)$"]'
+          LOG_LEVEL: info
+        run: npx --yes "renovate@${RENOVATE_VERSION}"

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import tomllib
 from pathlib import Path
 
@@ -51,6 +52,23 @@ def heredoc(delimiter: str) -> str:
     if end is None:
         pytest.fail(f"heredoc {opener} is not closed in {SETUP_SCRIPT.name}")
     return "".join(lines[start:end])
+
+
+@pytest.mark.parametrize(
+    ("script", "message"),
+    [
+        ("echo no heredoc here\n", "no heredoc <<'PYEOF' in script.sh"),
+        ("cat <<'PYEOF'\nbody\n", "heredoc <<'PYEOF' is not closed in script.sh"),
+    ],
+    ids=["no-opener", "no-closer"],
+)
+def test_heredoc_fails_loudly_when_the_script_lacks_the_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script: str, message: str) -> None:
+    """A renamed or truncated heredoc must fail the drift tests, never compare against an empty string."""
+    path: Path = tmp_path / "script.sh"
+    path.write_text(script, encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "SETUP_SCRIPT", path)
+    with pytest.raises(pytest.fail.Exception, match=re.escape(message)):
+        heredoc("PYEOF")
 
 
 @pytest.mark.parametrize(

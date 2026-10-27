@@ -115,6 +115,9 @@ Check once and record the results under `## Setup` in the log.
   (`ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | sort -V | tail -1`)
   and run `node "$CX" status --json`. If it is missing or fails, follow *When Codex is
   unavailable*: the work goes on and every review waits until Codex answers.
+- Codex stop gate: read `config.stopReviewGate` from the same status output. If it is on,
+  log it under *Needs you* with `node "$CX" setup --disable-review-gate` and continue; do
+  not change it yourself, because it is tool configuration outside the repository.
 - Add `.nightshift/` to `.git/info/exclude` so the log is never committed.
 
 ### Plan
@@ -141,7 +144,7 @@ Repeat until every task is `done` or `blocked`:
 
 1. Pick the first `todo` task whose dependencies are `done`. Mark it `in progress` in the log
    with a timestamp.
-2. Start one general-purpose subagent for it with `run_in_background: false`, and wait for
+2. Start one general-purpose subagent for it with `model: "sonnet"` and `run_in_background: false`, and wait for
    it. Foreground matters: the watchdog fires only while the session is idle, so a
    background subagent would let the watchdog start the same task a second time. Run one
    task at a time. The brief gives the task, its done-check, its branch base, its worktree

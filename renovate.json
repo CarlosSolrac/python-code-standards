@@ -1,0 +1,52 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigestsToSemver"],
+  "minimumReleaseAge": "3 days",
+  "osvVulnerabilityAlerts": true,
+  "enabledManagers": ["pep621", "pre-commit", "github-actions", "custom.regex"],
+  "ignorePaths": ["**/evals/fixtures/**", "**/mutants/**", "**/.venv/**"],
+  "pep621": {
+    "managerFilePatterns": ["/(^|/)pyproject-baseline\\.toml$/"]
+  },
+  "pre-commit": {
+    "enabled": true,
+    "managerFilePatterns": ["/(^|/)pre-commit-config\\.yaml$/"]
+  },
+  "github-actions": {
+    "managerFilePatterns": ["/^python-code-standards/skill/assets/(ci|mutation)\\.yml$/"]
+  },
+  "customManagers": [
+    {
+      "description": "The Renovate version the nightly workflow runs",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/renovate\\.yml$/"],
+      "matchStrings": ["RENOVATE_VERSION: (?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "renovate"
+    }
+  ],
+  "rangeStrategy": "bump",
+  "lockFileMaintenance": { "enabled": true, "schedule": ["at any time"] },
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 0,
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "automergeStrategy": "squash",
+  "packageRules": [
+    { "description": "requires-python is a support promise, not a dependency", "matchDepTypes": ["requires-python"], "enabled": false },
+    { "groupName": "pytest", "matchPackageNames": ["pytest", "pytest-cov"] },
+    { "groupName": "ruff", "matchPackageNames": ["ruff", "astral-sh/ruff-pre-commit"] },
+    { "groupName": "github-actions", "groupSlug": "github-actions", "matchManagers": ["github-actions"] },
+    {
+      "description": "setup-standards.sh embeds the skill's templates and their digests; refresh both",
+      "matchFileNames": ["python-code-standards/skill/assets/**"],
+      "postUpgradeTasks": {
+        "commands": ["uv run --frozen python -m skill.tools.vendor_templates", "uv run --frozen python -m skill.tools.template_history"],
+        "workingDirTemplate": "python-code-standards",
+        "fileFilters": ["python-code-standards/skill/assets/setup-standards.sh"],
+        "executionMode": "branch"
+      }
+    }
+  ]
+}

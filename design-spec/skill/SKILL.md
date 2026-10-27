@@ -34,7 +34,7 @@ A single process with external storage is Standard, not Large: external systems 
 
 ## 2. Model before topology (design mode)
 
-1. Name the domain concepts and the states each moves through.
+1. Name the domain concepts and the states each moves through. In code, each state becomes a type and each transition a function from one state type to the next.
 2. Derive the numbers that can change the design: row volumes, growth rate, refresh frequency, latency budget, memory ceiling. Show the arithmetic. These decide model kinds (FULL vs INCREMENTAL_BY_TIME_RANGE) and whether raw tables are replaced or appended.
 3. Challenge contradictory or physically impossible requirements now, not after coding.
 
@@ -62,7 +62,7 @@ Text diagrams only (Mermaid, Markdown tables, directory trees). No rendered SVG 
 
 In a full spec (Standard, Large), when an artifact is skipped by its condition, keep its heading with one line saying why.
 
-Component flowchart: subgraphs by responsibility (ingestion, pure core, data path, assurance, storage, orchestration as they exist); each node labeled with the decision it owns; arrows labeled with the type or table crossing them; dashed arrows to Protocols. In document mode, a `node | source` table under it cites, for every node not marked inferred, the code that makes each decision its label names.
+Component flowchart: subgraphs by responsibility (ingestion, pure core, use cases, data path, assurance, storage, orchestration as they exist); each node labeled with the decision it owns; arrows labeled with the type or table crossing them; dashed arrows to Protocols. In document mode, a `node | source` table under it cites, for every node not marked inferred, the code that makes each decision its label names.
 
 Context and container views: plain flowcharts, not Mermaid's experimental C4 diagrams, so they take `classDef` styles. The system is one `subgraph`, its boundary; each person and each external system is its own node outside it, and arrows are labeled with what crosses. Inside the boundary, the context view has one node for the whole system and the container view one node per process or service.
 
@@ -74,16 +74,16 @@ If the project exposes an HTTP API, its row in the contract table cites the Open
 
 Dependency matrix: rows import columns. Mark each cell `Y` (imported and declared), `!` (imported but not declared), or `d` (declared but not imported). For a uv workspace, use packages as the unit; otherwise modules. Follow it with one line on cycles and direction. In document mode, footnote it with a `cell | source` table: one row per `!` or `d` cell, citing the import (`!`) or the declaration (`d`).
 
-Import contract: whenever the dependency matrix applies, enforce its direction with [import-linter](https://import-linter.readthedocs.io/) so the code cannot drift from the diagram (rule 14). Below that size, the one-line direction statement is enough. In design mode, the spec's directory tree shows the contract, and the implementation plan adds `import-linter` as a dev dependency and `uv run lint-imports` to the project's checks (pre-commit and CI). List the layers highest first, matching the component flowchart: a layer may import the layers below it, never the ones above:
+Import contract: whenever the dependency matrix applies, enforce its direction with [import-linter](https://import-linter.readthedocs.io/) so the code cannot drift from the diagram (rule 14). Below that size, the one-line direction statement is enough. In design mode, the spec's directory tree shows the contract, and the implementation plan adds `import-linter` as a dev dependency and `uv run lint-imports` to the project's checks (pre-commit and CI). List the layers highest first, matching the component flowchart: a layer may import the layers below it, never the ones above; layers joined by | sit side by side and may not import each other:
 
 ```toml
 [tool.importlinter]
-root_packages = ["<prefix>_cli", "<prefix>_io", "<prefix>_core", "<prefix>_common"]
+root_packages = ["<prefix>_cli", "<prefix>_app", "<prefix>_io", "<prefix>_core", "<prefix>_common"]
 
 [[tool.importlinter.contracts]]
 name = "Dependencies point inward"
 type = "layers"
-layers = ["<prefix>_cli", "<prefix>_io", "<prefix>_core", "<prefix>_common"]
+layers = ["<prefix>_cli", "<prefix>_app | <prefix>_io", "<prefix>_core", "<prefix>_common"]
 ```
 
 Each `ignore_imports` entry needs a comment naming the ADR or finding that allows it.
@@ -121,15 +121,15 @@ Works for any codebase; adapt the inventory commands to its language and package
 | # | Rule | Diagram that shows it |
 |---|------|-----------------------|
 | 1 | Apply the size gate. Standard and Large designs get a spec and wait for approval before code. | The spec itself |
-| 2 | Every layer, model, and component owns a decision. One that only forwards or reshapes data without enforcing a rule is deleted. | Component flowchart, nodes labeled by decision |
-| 3 | One responsibility per component: ingestion (adapters), transformation (models or pure core), and orchestration (composition root) are separate. The composition root calls; it never transforms, queries, or writes files itself. | Component flowchart subgraphs |
+| 2 | Every layer, model, component, and function owns a decision. One that only forwards or reshapes data without enforcing a rule is deleted. Red flags: a function that only forwards its arguments; steps split by time order rather than by what each hides; an interface as complex as its implementation; two units that depend on the same detail. | Component flowchart, nodes labeled by decision |
+| 3 | One responsibility per component: ingestion (adapters), transformation (models or pure core), use cases (sequencing and per-unit-of-work error handling, through Protocols), and orchestration (composition root) are separate. The composition root chooses adapters and calls; it never transforms, queries, or writes files itself. | Component flowchart subgraphs |
 | 4 | Boundaries are typed: raw tables declared with column types; models declare `grain` and cast every output column; Python contracts use Protocols (read-only attributes as `@property`, so frozen dataclasses satisfy them) and frozen slotted dataclasses. Never dicts or bare tuples across a boundary. | Boundary contract table; class diagram if needed |
-| 5 | Each boundary's invariants are enforced where the data is produced (SQLMesh audits, model validators). Failures are values or one project exception family, caught once per unit of work. Audits are blocking: a failure raises `PlanError`, skips downstream models, but the failing model's own table keeps the failing rows; consumers read marts only. | Boundary contract table; state diagram failure states |
+| 5 | Each boundary's invariants are enforced where the data is produced (SQLMesh audits, model validators). Failures are values or one project exception family, caught once per unit of work. Audits are blocking: a failure raises `PlanError` and skips downstream models. Restating a `FULL` model rebuilds its table in place, so the run builds on a copy of the warehouse and replaces the live file only when every plan applied; the live tables then never hold rows an audit rejected, and consumers read marts only. | Boundary contract table; state diagram failure states |
 | 6 | Dependencies point inward and are declared exactly: each package declares what it imports and imports what it declares. Core logic depends on Protocols; concrete adapters are chosen only in the composition root. | Dependency matrix with `Y`/`!`/`d`, enforced by an import-linter contract |
 | 7 | Set-based work stays in DuckDB SQL models. A Python model is allowed only when SQL cannot express the step, and the spec names it. | Lineage DAG or flowchart |
 | 8 | SQL lives in `models/` and `audits/` files. No SQL assembled in Python beyond identifier-only DDL inside adapters, and every identifier in it is first checked against an allowlist of declared tables (for SQLMesh projects, read from `external_models.yaml`); never interpolate an unchecked name. | Directory tree |
 | 9 | Prefer many small models or stages with one purpose each over large multi-purpose ones. | Lineage DAG or flowchart |
-| 10 | Design from the domain outward: concepts and states first, then map inputs and outputs onto them. | State diagram |
+| 10 | Design from the domain outward: concepts and states first, then map inputs and outputs onto them. Each state is a type and each transition a function. | State diagram |
 | 11 | Every model has a SQLMesh unit test covering every output column; every adapter has a test against an in-memory DuckDB. A model change without a matching test change fails the pipeline. | Error-flow sequence diagram with fakes |
 | 12 | Every significant decision gets a record stating context, alternatives considered, and consequences. | Decisions table |
 | 13 | Quality requirements are testable NFRs with a measurable target and a verification method. | NFR table |
@@ -226,7 +226,7 @@ For a Standard data pipeline, the default pattern comes from the templates index
 
 ## 9. Implementation
 
-Python code follows the `python-code-standards` skill. With SQLMesh, also:
+Python code follows the `python-code-standards` skill. Once implemented, re-apply rules 2 and 3 to the code, every function as well as every component, and update the component flowchart where the code differs (rule 14). With SQLMesh, also:
 
 - `uv run sqlmesh test` is among the checks that must pass before work is declared done.
-- When a pipeline run fails, the Python API raises a generic `PlanError`; rerun with the CLI (`uv run sqlmesh plan --restate-model <raw table> --auto-apply --no-prompts`) to see which audit or test failed.
+- SQLMesh's Python API raises a generic `PlanError` and its default console is silent, so install a console that logs the failed audits and model tests (`FailureLog` in template-sqlmesh-duckdb) and the run names what failed. Do not send operators to a restating `sqlmesh plan`: it writes to the warehouse.

@@ -1,6 +1,6 @@
 ---
 name: python-code-standards
-version: 4.3.0
+version: 4.4.0
 description: Standards for writing, editing, and reviewing Python. Produces strictly typed, documented, localized changes verified by execution, Ruff, a type checker, and tests. Use whenever Python is written, modified, refactored, reviewed, or debugged — including small edits, scripts, notebooks, and tests — and whenever a project's Python tooling, dependencies, or configuration change.
 ---
 
@@ -79,9 +79,9 @@ Google-style docstrings on every module, class, and non-trivial function in sour
 
 ## Design and testing
 
-- **Top-down implementation.** Architecture is designed from the domain outward, per the `design-spec` skill. Implement each unit top-down: write its public entry point first, expressed as calls to helpers that do not exist yet; then build each helper the same way, one level down at a time, until every leaf is concrete.
-- **Test-driven development.** No production code without a failing test that demands it. Red: write one unit test and watch it fail for the expected reason. Green: write the least code that passes. Refactor with the suite green. Repeat per unit, top level first.
-- **Unit tests.** Each test exercises one unit in isolation, with collaborators injected as fakes; I/O, clocks, randomness, and the network stay out of unit tests.
+- **Design shape.** Architecture is designed from the domain outward, per the `design-spec` skill, and so is each unit: its domain states are types, and its functions map one state to the next. Sketching a unit top-down — the entry point, then the calls it needs — is a way to find those states, not the order to build it in. Every function owns a decision. Red flags, fixed before review: a function that only forwards its arguments, functions split by time order (load, then validate, then write) rather than by what each one knows, an interface about as complex as its implementation, and two functions that depend on the same detail. A type that names a domain state, or a function for one use case, is not an extra abstraction.
+- **Test-driven development.** No production code without a failing test that demands it. Outer loop: one acceptance test per use case, through the composition root with in-memory adapters. Inner loop: red, one failing test against the unit's public API, watched failing for the expected reason; green, the least code that passes; refactor with the suite green, extracting helpers there. Then ascend: revisit each new helper's interface from its caller.
+- **Unit tests.** Fakes replace only ports — I/O, clocks, randomness, the network — injected as protocols. In-process collaborators are real, and helpers are tested through the public API unless they hold independently complex logic.
 
 `references/testing.md` has the mechanics.
 
@@ -96,6 +96,7 @@ uv run pre-commit run --files <files>
 # Repository without pre-commit: run the tools individually.
 uv run ruff check --fix <files> && uv run ruff format <files>
 uv run python "${CLAUDE_SKILL_DIR}/tools/check_declarations.py" <files>
+uv run python "${CLAUDE_SKILL_DIR}/tools/check_passthrough.py" <files>   # not in pre-commit; run it in both cases. `# passthrough: allow` on a def line skips a protocol-named forwarder and is a suppression needing approval
 uv run pyright <files> && uv run mypy <files>
 # 3. Tests and coverage:
 uv run pytest <tests> -q

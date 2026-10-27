@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -592,12 +591,13 @@ def _run(command: list[str], cwd: Path) -> tuple[int, str, str]:
     """Execute a command, returning its exit status, stdout and stderr, decoded as UTF-8.
 
     A program that cannot be started (``node`` or ``git`` missing) reports exit 127,
-    as a shell would, so the check reports it instead of the grader crashing.
+    as a shell would, so the check reports it instead of the grader crashing. The
+    message names the program, which Windows' own error text does not.
     """
     try:
         completed: subprocess.CompletedProcess[str] = subprocess.run(command, cwd=cwd, capture_output=True, encoding="utf-8", errors="replace", check=False)
     except OSError as error:
-        return 127, "", str(error)
+        return 127, "", f"{command[0]}: {error}"
     return completed.returncode, completed.stdout, completed.stderr
 
 
@@ -664,8 +664,13 @@ class Workspace:
 
     def _prefix(self) -> str:
         """Return the hyphen-ended prefix every package name shares (``pqx-``), or an empty string."""
-        shared: str = os.path.commonprefix([package.name for package in self.packages])
-        return shared[: shared.rfind("-") + 1]
+        shared: str = ""
+        parts: tuple[str, ...]
+        for parts in zip(*(package.name.split("-")[:-1] for package in self.packages), strict=False):
+            if len(set(parts)) > 1:
+                break
+            shared += f"{parts[0]}-"
+        return shared
 
 
 def _canonical(label: str) -> str:
