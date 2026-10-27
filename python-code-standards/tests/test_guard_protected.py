@@ -31,6 +31,16 @@ def decide(tool_name: str, tool_input: dict[str, str]) -> dict[str, object] | No
     return output
 
 
+def run_event(event: dict[str, object]) -> dict[str, object] | None:
+    """Run the hook on a complete event; return its parsed decision, or None when it stays silent."""
+    stdout: io.StringIO = io.StringIO()
+    assert main(io.StringIO(json.dumps(event)), stdout) == 0
+    if not stdout.getvalue():
+        return None
+    output: dict[str, object] = json.loads(stdout.getvalue())
+    return output
+
+
 def asks(tool_name: str, tool_input: dict[str, str]) -> bool:
     """Return whether the hook asks the user before this tool call runs."""
     decision: dict[str, object] | None = decide(tool_name, tool_input)
@@ -294,10 +304,14 @@ def test_sanitized_transcript_tool_events_keep_their_hook_input_shapes() -> None
             "tool_name": fixture["tool_name"],
             "tool_input": fixture["tool_input"],
         }
-        stdout: io.StringIO = io.StringIO()
-
-        assert main(io.StringIO(json.dumps(event)), stdout) == 0
-        assert stdout.getvalue() == ""
+        decision: dict[str, object] | None = run_event(event)
+        if fixture["expected"] == "silent":
+            assert decision is None, fixture["case"]
+        else:
+            assert fixture["expected"] == "ask", fixture["case"]
+            assert decision is not None, fixture["case"]
+            specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+            assert specific["permissionDecision"] == "ask", fixture["case"]
 
 
 @pytest.mark.parametrize(
@@ -346,3 +360,28 @@ def test_runs_as_script(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureF
         runpy.run_path(str(GUARD), run_name="__main__")
     assert exit_info.value.code == 0
     assert '"permissionDecision": "ask"' in capsys.readouterr().out
+
+
+CLAUDE_CODE_EVENT: dict[str, object] = {
+    "session_id": "fixture-session",
+    "transcript_path": "/home/user/.claude/projects/repo/fixture-session.jsonl",
+    "cwd": "/repo",
+    "permission_mode": "default",
+    "hook_event_name": "PreToolUse",
+    "tool_use_id": "toolu_fixture",
+}
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "tool_input"),
+    [("Edit", {"file_path": "pyproject.toml", "old_string": "a", "new_string": "b"}), ("Bash", {"command": "uv add requests"})],
+    ids=["edit-protected-file", "dependency-change"],
+)
+def test_claude_code_event_gets_the_nested_decision(tool_name: str, tool_input: dict[str, object]) -> None:
+    """A real Claude Code event has a tool_use_id and no timestamp, so the answer stays under hookSpecificOutput."""
+    decision: dict[str, object] | None = run_event({**CLAUDE_CODE_EVENT, "tool_name": tool_name, "tool_input": tool_input})
+    assert decision is not None
+    assert "permissionDecision" not in decision
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
+    assert specific["hookEventName"] == "PreToolUse"
+    assert specific["permissionDecision"] == "ask"
