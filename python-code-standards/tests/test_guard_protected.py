@@ -286,10 +286,10 @@ def test_sanitized_transcript_tool_events_keep_their_hook_input_shapes() -> None
     fixture_path: Path = Path(__file__).parent / "fixtures" / "hook_events.json"
     fixtures: object = json.loads(fixture_path.read_text(encoding="utf-8"))
     assert isinstance(fixtures, list)
+    fixture_events: list[dict[str, object]] = cast("list[dict[str, object]]", fixtures)
 
-    fixture: object
-    for fixture in fixtures:
-        assert isinstance(fixture, dict)
+    fixture: dict[str, object]
+    for fixture in fixture_events:
         event: dict[str, object] = {
             "tool_name": fixture["tool_name"],
             "tool_input": fixture["tool_input"],
