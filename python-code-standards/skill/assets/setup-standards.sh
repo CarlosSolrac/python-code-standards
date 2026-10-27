@@ -1842,6 +1842,7 @@ write_file .claude/settings.json <<'SETTINGS'
           {
             "type": "command",
             "command": "uv run --no-sync --project \"$CLAUDE_PROJECT_DIR\" python \"$CLAUDE_PROJECT_DIR/tools/hooks/guard_protected.py\"",
+            "powershell": "$root = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { git rev-parse --show-toplevel }; uv run --no-sync --project $root python (Join-Path $root 'tools/hooks/guard_protected.py')",
             "timeout": 30
           }
         ]
@@ -1853,6 +1854,7 @@ write_file .claude/settings.json <<'SETTINGS'
           {
             "type": "command",
             "command": "cd \"$CLAUDE_PROJECT_DIR\" && uv run --no-sync python tools/hooks/stop_gate.py",
+            "powershell": "$root = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { git rev-parse --show-toplevel }; Set-Location $root; uv run --no-sync python tools/hooks/stop_gate.py",
             "timeout": 900
           }
         ]
@@ -2793,6 +2795,7 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
 {
  "files": {
   ".claude/settings.json": [
+   "026ad39eaa4afea7ed33856301f4c537c51370785269c7e10da89ae68ad9da82",
    "beb8f051008d7259df447306cd8ea9869dbf19f35376080fd4bc7ed0de90d8a9"
   ],
   ".gitattributes": [

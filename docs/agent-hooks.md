@@ -42,4 +42,6 @@ The VS Code docs explicitly say to select the harness and compare event names, t
 
 The setup script installs Claude Code hooks. The guard also recognizes the documented PascalCase Copilot provider input signature used by Copilot CLI and the VS Code Copilot harness, and emits that host's root-level PreToolUse decision while retaining the Claude/VS Code Local nested response. The host discriminator is the Copilot PascalCase combination of a string `timestamp` and no `tool_use_id`; Local includes `tool_use_id`.
 
+Copilot CLI on Windows runs a hook's `command` in PowerShell unless the entry has its own `powershell` field, so a POSIX-quoted `"$CLAUDE_PROJECT_DIR"` expands to an empty string there. Each installed hook therefore carries a `powershell` launch line that reads `$env:CLAUDE_PROJECT_DIR` and falls back to `git rev-parse --show-toplevel`.
+
 `tests/fixtures/hook_events.json` contains sanitized Claude tool-call records extracted from the permitted project logs. Their original edit text, write content, descriptions, absolute checkout paths, and session metadata are not retained. The raw `apply_patch` and Copilot-format cases are compatibility tests, not captured Copilot events. The tests validate the adapter contract but do not replace a live hook smoke test in each host.
