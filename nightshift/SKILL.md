@@ -109,6 +109,9 @@ Check once and record the results under `## Setup` in the log.
   (`ls ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | sort -V | tail -1`)
   and run `node "$CX" status --json`. If it is missing or fails, follow *When Codex is
   unavailable*: the work goes on and every review waits until Codex answers.
+- Codex stop gate: read `config.stopReviewGate` from the same status output. If it is on,
+  log it under *Needs you* with `node "$CX" setup --disable-review-gate` and continue; do
+  not change it yourself, because it is tool configuration outside the repository.
 - Add `.nightshift/` to `.git/info/exclude` so the log is never committed.
 
 ### Plan
