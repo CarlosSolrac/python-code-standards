@@ -15,7 +15,7 @@ from typing import cast
 
 import pytest
 
-from skill.tools.hooks.guard_protected import has_invalid_path, main, target_paths
+from skill.tools.hooks.guard_protected import main, path_values, target_paths
 
 GUARD: Path = Path(__file__).resolve().parent.parent / "skill" / "tools" / "hooks" / "guard_protected.py"
 
@@ -323,11 +323,17 @@ def test_hook_inspects_additional_payload_shapes(event: dict[str, object]) -> No
     assert specific["permissionDecision"] == "ask"
 
 
-def test_empty_path_containers_are_safe() -> None:
-    assert target_paths([]) == []
-    assert has_invalid_path([]) is False
-    assert target_paths(0) == []
-    assert has_invalid_path(0) is False
+def test_path_values_collects_every_value_under_a_path_key_without_descending_into_it() -> None:
+    tool_input: dict[str, object] = {"changes": [{"path": "a.py"}, {"File_Path": 3}], "path": {"path": "hidden.py"}}
+
+    assert path_values(tool_input) == ["a.py", 3, {"path": "hidden.py"}]
+    assert path_values([]) == []
+    assert path_values(0) == []
+
+
+def test_target_paths_is_none_when_a_path_value_cannot_be_inspected() -> None:
+    assert target_paths({"changes": [{"path": "a.py"}, {"path": " "}]}) is None
+    assert target_paths({"changes": [{"path": "a.py"}, {"path": "b.py"}]}) == ["a.py", "b.py"]
 
 
 def test_unsupported_input_for_unrecognized_tool_is_silent() -> None:

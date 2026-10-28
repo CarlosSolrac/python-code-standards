@@ -115,9 +115,7 @@ def file_tool_reason(tool_name: str, tool_input: dict[object, object] | str) -> 
     """Return why a file-tool input needs approval, or None when its targets are ordinary files."""
     if tool_name != "apply_patch" and isinstance(tool_input, str):
         return "This file tool input could not be inspected for quality-gate changes, so the user must approve it."
-    if isinstance(tool_input, dict) and has_invalid_path(tool_input):
-        return "This file tool input could not be inspected for quality-gate changes, so the user must approve it."
-    paths: list[str] = target_paths(tool_input)
+    paths: list[str] | None = target_paths(tool_input)
     if not paths:
         return "This file tool input could not be inspected for quality-gate changes, so the user must approve it."
     path: str
@@ -149,43 +147,38 @@ def decode_input(tool_input: object) -> object:
     return tool_input
 
 
-def target_paths(tool_input: object) -> list[str]:
-    """Return recognized paths from structured tool inputs or file headers in a raw patch."""
+def target_paths(tool_input: dict[object, object] | str) -> list[str] | None:
+    """Return recognized paths from structured tool inputs or file headers in a raw patch.
+
+    Returns:
+        The paths, or None when a recognized path key holds an empty or non-string value.
+    """
     if isinstance(tool_input, str):
         return [match.group(1).strip() for match in PATCH_FILE_HEADER.finditer(tool_input)]
     paths: list[str] = []
-    if isinstance(tool_input, dict):
-        key: object
-        value: object
-        for key, value in cast("dict[object, object]", tool_input).items():
-            if isinstance(key, str) and key.casefold() in PATH_KEYS and isinstance(value, str):
-                paths.append(value)
-            elif isinstance(value, (dict, list)):
-                paths.extend(target_paths(value))
-    elif isinstance(tool_input, list):
-        item: object
-        for item in cast("list[object]", tool_input):
-            paths.extend(target_paths(item))
+    value: object
+    for value in path_values(tool_input):
+        if not isinstance(value, str) or not value.strip():
+            return None
+        paths.append(value)
     return paths
 
 
-def has_invalid_path(tool_input: object) -> bool:
-    """Return whether a recognized path key has a value the hook cannot inspect."""
-    if isinstance(tool_input, dict):
-        key: object
-        value: object
-        for key, value in cast("dict[object, object]", tool_input).items():
-            if isinstance(key, str) and key.casefold() in PATH_KEYS:
-                if not isinstance(value, str) or not value.strip():
-                    return True
-            elif isinstance(value, (dict, list)) and has_invalid_path(value):
-                return True
-    elif isinstance(tool_input, list):
-        item: object
-        for item in cast("list[object]", tool_input):
-            if has_invalid_path(item):
-                return True
-    return False
+def path_values(tool_input: object) -> list[object]:
+    """Return every value stored under a recognized path key, at any depth, without descending into those values."""
+    if isinstance(tool_input, list):
+        return [value for item in cast("list[object]", tool_input) for value in path_values(item)]
+    if not isinstance(tool_input, dict):
+        return []
+    values: list[object] = []
+    key: object
+    value: object
+    for key, value in cast("dict[object, object]", tool_input).items():
+        if isinstance(key, str) and key.casefold() in PATH_KEYS:
+            values.append(value)
+        else:
+            values.extend(path_values(value))
+    return values
 
 
 def is_protected(path: str) -> bool:
