@@ -60,9 +60,20 @@ no new style rules.
 
 ## Claude Code hooks
 
+These hooks are installed for Claude Code. Other agent hosts can use different discovery,
+event, payload, decision, and failure contracts; see [Agent Skills and Hooks Across Hosts](../../docs/agent-hooks.md)
+before adapting them. Shared filenames or skill content do not imply hook compatibility.
+
 `setup-standards.sh` installs both into a target repository: `.claude/settings.json`
 registers them, and the scripts live in `tools/hooks/`. Each is vendored, and
 `tests/test_setup_script.py` keeps the copies byte-identical to `skill/`.
+
+Each hook entry has a `powershell` launch line beside its POSIX `command`. GitHub Copilot CLI
+reads `.claude/settings.json` too, and on Windows it runs hook commands in PowerShell, where
+`"$CLAUDE_PROJECT_DIR"` is an unset PowerShell variable rather than the environment variable.
+The empty `--project` value made uv exit 2, and Copilot fails `preToolUse` closed, so every
+edit and shell call was denied. The `powershell` line reads `$env:CLAUDE_PROJECT_DIR` and
+falls back to the git root when the host does not set it. Claude Code runs `command`.
 
 ### `guard_protected.py` (PreToolUse)
 

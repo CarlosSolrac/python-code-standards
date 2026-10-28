@@ -7,6 +7,12 @@ argument-hint: "[adversarial=once|thorough]"
 
 # Nightshift
 
+This workflow is currently specific to Claude Code: it depends on Claude session IDs,
+scheduled wakeups, Claude permission hooks, and the Codex companion review protocol. Loading
+this skill in another host does not provide those capabilities. Verify the host's equivalents
+before starting; if any required lifecycle or permission behavior is missing, do not start an
+unattended run.
+
 The user is asleep. Nobody will answer a question until morning, so a question is never a
 reason to stop: make the call, write down why, and keep going. The morning deliverable is a
 set of draft PRs plus one work log the user can read in five minutes and act on.

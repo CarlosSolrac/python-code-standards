@@ -8,6 +8,7 @@
           {
             "type": "command",
             "command": "uv run --no-sync --project \"$CLAUDE_PROJECT_DIR\" python \"$CLAUDE_PROJECT_DIR/tools/hooks/guard_protected.py\"",
+            "powershell": "$root = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { git rev-parse --show-toplevel }; uv run --no-sync --project $root python (Join-Path $root 'tools/hooks/guard_protected.py')",
             "timeout": 30
           }
         ]
@@ -19,6 +20,7 @@
           {
             "type": "command",
             "command": "cd \"$CLAUDE_PROJECT_DIR\" && uv run --no-sync python tools/hooks/stop_gate.py",
+            "powershell": "$root = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { git rev-parse --show-toplevel }; Set-Location $root; uv run --no-sync python tools/hooks/stop_gate.py",
             "timeout": 900
           }
         ]

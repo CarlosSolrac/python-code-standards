@@ -48,8 +48,10 @@ PROTECTED_SUFFIXES: tuple[str, ...] = (
     "/.claude/settings.local.json",
 )
 PROTECTED_DIRECTORIES: tuple[str, ...] = ("/.github/workflows/", "/tools/hooks/")
-FILE_TOOLS: frozenset[str] = frozenset({"Edit", "Write", "MultiEdit"})
-SHELL_TOOLS: frozenset[str] = frozenset({"Bash", "PowerShell"})
+FILE_TOOLS: frozenset[str] = frozenset({"edit", "write", "multiedit", "apply_patch"})
+SHELL_TOOLS: frozenset[str] = frozenset({"bash", "powershell"})
+PATH_KEYS: frozenset[str] = frozenset({"file_path", "filepath", "path"})
+PATCH_FILE_HEADER: re.Pattern[str] = re.compile(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to):[ \t]*(.+?)[ \t]*\r?$", re.MULTILINE)
 
 # Every protected file as it can appear in a command. One alternation serves both
 # patterns below, so a redirect is checked against exactly the files that are named.
@@ -80,27 +82,110 @@ def main(stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> int:
         stdout: Destination of the decision JSON; nothing is written to allow the call.
 
     Returns:
-        Always 0, so Claude Code reads the decision from stdout.
+        Always 0, so the hook consumer reads the decision from stdout.
     """
     event: dict[str, object] = json.loads(stdin.read())
-    tool_input: dict[str, object] = cast("dict[str, object]", event.get("tool_input", {}))
-    reason: str | None = protected_reason(str(event.get("tool_name", "")), {key: str(value) for key, value in tool_input.items()})
+    tool_input: object = event.get("tool_input", {})
+    reason: str | None = protected_reason(str(event.get("tool_name", "")), tool_input)
     if reason is not None:
-        decision: dict[str, object] = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": reason}}
+        copilot_compatible_event: bool = event.get("hook_event_name") == "PreToolUse" and isinstance(event.get("timestamp"), str) and "tool_use_id" not in event
+        decision: dict[str, object]
+        if copilot_compatible_event:
+            decision = {"permissionDecision": "ask", "permissionDecisionReason": reason}
+        else:
+            decision = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": reason}}
         stdout.write(json.dumps(decision))
     return 0
 
 
-def protected_reason(tool_name: str, tool_input: dict[str, str]) -> str | None:
+def protected_reason(tool_name: str, tool_input: object) -> str | None:
     """Return why this tool call needs the user's approval, or None when it does not."""
-    if tool_name in FILE_TOOLS:
-        path: str = tool_input.get("file_path", "")
+    name: str = tool_name.casefold()
+    if name not in FILE_TOOLS and name not in SHELL_TOOLS:
+        return None
+    decoded_input: object = decode_input(tool_input)
+    if not isinstance(decoded_input, (dict, str)):
+        return "This tool input could not be inspected for quality-gate changes, so the user must approve it."
+    if name in FILE_TOOLS:
+        return file_tool_reason(name, decoded_input)
+    return shell_tool_reason(decoded_input)
+
+
+def file_tool_reason(tool_name: str, tool_input: dict[object, object] | str) -> str | None:
+    """Return why a file-tool input needs approval, or None when its targets are ordinary files."""
+    if tool_name != "apply_patch" and isinstance(tool_input, str):
+        return "This file tool input could not be inspected for quality-gate changes, so the user must approve it."
+    if isinstance(tool_input, dict) and has_invalid_path(tool_input):
+        return "This file tool input could not be inspected for quality-gate changes, so the user must approve it."
+    paths: list[str] = target_paths(tool_input)
+    if not paths:
+        return "This file tool input could not be inspected for quality-gate changes, so the user must approve it."
+    path: str
+    for path in paths:
         if is_protected(path):
             return f"{path} defines a quality gate. Changing it can make a failing check pass without a fix, so the user must approve. If the goal is a passing check, fix the code instead."
-        return None
-    if tool_name in SHELL_TOOLS:
-        return command_reason(tool_input.get("command", ""))
     return None
+
+
+def shell_tool_reason(tool_input: dict[object, object] | str) -> str | None:
+    """Return why a shell-tool input needs approval, or None when its command is safe."""
+    if isinstance(tool_input, dict) and "command" not in tool_input:
+        return "This shell command could not be inspected for quality-gate changes, so the user must approve it."
+    command: object = tool_input.get("command", "") if isinstance(tool_input, dict) else tool_input
+    if not isinstance(command, str):
+        return "This shell command could not be inspected for quality-gate changes, so the user must approve it."
+    return command_reason(command)
+
+
+def decode_input(tool_input: object) -> object:
+    """Parse JSON-encoded tool objects while preserving raw patch and command strings."""
+    if isinstance(tool_input, str) and tool_input.lstrip().startswith(("{", "[")):
+        try:
+            decoded: object = cast("object", json.loads(tool_input))
+        except json.JSONDecodeError:
+            return tool_input
+        else:
+            return decoded
+    return tool_input
+
+
+def target_paths(tool_input: object) -> list[str]:
+    """Return recognized paths from structured tool inputs or file headers in a raw patch."""
+    if isinstance(tool_input, str):
+        return [match.group(1).strip() for match in PATCH_FILE_HEADER.finditer(tool_input)]
+    paths: list[str] = []
+    if isinstance(tool_input, dict):
+        key: object
+        value: object
+        for key, value in cast("dict[object, object]", tool_input).items():
+            if isinstance(key, str) and key.casefold() in PATH_KEYS and isinstance(value, str):
+                paths.append(value)
+            elif isinstance(value, (dict, list)):
+                paths.extend(target_paths(value))
+    elif isinstance(tool_input, list):
+        item: object
+        for item in cast("list[object]", tool_input):
+            paths.extend(target_paths(item))
+    return paths
+
+
+def has_invalid_path(tool_input: object) -> bool:
+    """Return whether a recognized path key has a value the hook cannot inspect."""
+    if isinstance(tool_input, dict):
+        key: object
+        value: object
+        for key, value in cast("dict[object, object]", tool_input).items():
+            if isinstance(key, str) and key.casefold() in PATH_KEYS:
+                if not isinstance(value, str) or not value.strip():
+                    return True
+            elif isinstance(value, (dict, list)) and has_invalid_path(value):
+                return True
+    elif isinstance(tool_input, list):
+        item: object
+        for item in cast("list[object]", tool_input):
+            if has_invalid_path(item):
+                return True
+    return False
 
 
 def is_protected(path: str) -> bool:

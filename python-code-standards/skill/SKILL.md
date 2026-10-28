@@ -48,6 +48,16 @@ Prefer dataclasses and Pydantic models over plain classes for anything holding s
 - Do not add `pyproject.toml`, tests, a lockfile, or config the request did not ask for, even to make verification runnable. Run what the repository supports; report the rest as unrun.
 - Report pre-existing defects; do not fix them. One exception: a security defect on a line the change already touches — fix it and say so.
 
+## Agent hook portability
+
+The language and workflow guidance here can be reused by any host that loads this skill, but
+the setup script installs Claude Code hooks. Hook event names, input/output JSON, and failure
+semantics belong to the selected agent host; do not treat a shared `SKILL.md` or hook filename
+as proof of compatibility. Before adapting a hook, read that host's current reference and
+test its actual event schema and response contract. This guard's Copilot support recognizes
+the documented PascalCase provider input format; its Copilot and VS Code Local output shapes
+differ.
+
 ## Environment
 
 `uv` for everything, Python 3.13+ (`requires-python = ">=3.13"`, Ruff `target-version = "py313"`).
