@@ -15,7 +15,7 @@ dev = [
     "deptry>=0.25,<0.26",         # unused, missing, and transitive dependencies
     "diff-cover>=11.0.0,<12",        # CI: 100% coverage of changed lines
     "duckdb>=2.0.0,<3",             # lets Pyright type-check skill/assets/conformance.py; not in the baseline
-    "grimp>=3.17,<4",             # import graph for the design-spec eval grader; not in the baseline
+    "grimp>=3.18,<4",             # import graph for the design-spec eval grader; not in the baseline
     "mutmut>=3.8,<4; sys_platform != 'win32'",  # needs os.fork; on Windows run it through WSL
     "mypy>=2.4,<3",
     "packaging>=26.3,<27",          # requirement parsing in tests/test_version_consistency.py; not in the baseline

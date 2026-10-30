@@ -1287,7 +1287,7 @@ dev = [
     { name = "deptry", specifier = ">=0.25,<0.26" },
     { name = "diff-cover", specifier = ">=11.0.0,<12" },
     { name = "duckdb", specifier = ">=2.0.0,<3" },
-    { name = "grimp", specifier = ">=3.17,<4" },
+    { name = "grimp", specifier = ">=3.18,<4" },
     { name = "mutmut", marker = "sys_platform != 'win32'", specifier = ">=3.8,<4" },
     { name = "mypy", specifier = ">=2.4,<3" },
     { name = "packaging", specifier = ">=26.3,<27" },
