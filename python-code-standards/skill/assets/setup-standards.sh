@@ -163,7 +163,7 @@ dev = [
     "pip-audit>=2.10.1,<3",         # CI: dependencies with known vulnerabilities
     "pre-commit>=4.7.0,<5",
     "pyright>=1.1.414,<2",       # PyPI wrapper; downloads a Node runtime on first run
-    "pytest>=9.1.1,<10",         # 9.0.3 fixes PYSEC-2026-1845
+    "pytest>=9.2.0,<10",         # 9.0.3 fixes PYSEC-2026-1845
     "pytest-cov>=7.1.0,<8",
     "ruff>=0.17.3,<0.18",       # pinned: minor releases change which rules fire
 ]
