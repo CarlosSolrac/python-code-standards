@@ -422,7 +422,7 @@ jobs:
           fetch-depth: 0 # diff-cover compares against the base branch
 
       - name: Install uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
 
@@ -1816,7 +1816,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
 
@@ -2805,6 +2805,7 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "2abf4a37e4c86b07efe43284e7136af0d5f7dc37059c988751390565fa40dce6"
   ],
   ".github/workflows/ci.yml": [
+   "062488952e347ab7076f705cd89a85635c8e5a858a64aae71b43dd179aea1fd5",
    "1b72d5ee3708b47ee2f712c77e1df9d275245df3818b133a294c10037a6f4189",
    "3c619d62a2f3c3ac5dd598d52c18b541ebe5eac8f6c7e47b536f303a6210b32a",
    "3d74634f38daf5e61b5dba5444b97088e5de351d227419732ad5f270a5a0aa04",
@@ -2813,6 +2814,7 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
   ],
   ".github/workflows/mutation.yml": [
    "0111fa893e4fdf60771a6b29e541669e3f5191ec49e49f059fc0c3a6c643f922",
+   "9083970bdf2c798fd5710f8ad2d480bca6b783b5abb2e7bd1702a5192e591f52",
    "ab9e2e0e59a1269f37b56a1cd4466fc952f2796fed1777b20a6b0d75fce76a55",
    "b626fc6c38fb861793c397fcb36b9890760041fa4e8acc23e960b686b708df91"
   ],
