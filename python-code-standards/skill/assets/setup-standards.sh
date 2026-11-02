@@ -159,7 +159,7 @@ dev = [
     "deptry>=0.25,<0.26",         # unused, missing, and transitive dependencies
     "diff-cover>=11.0.0,<12",        # CI: 100% coverage of changed lines
     "mutmut>=3.8.1,<4; sys_platform != 'win32'",  # needs os.fork; on Windows run it through WSL
-    "mypy>=2.4,<3",
+    "mypy>=2.4.1,<3",
     "pip-audit>=2.10.1,<3",         # CI: dependencies with known vulnerabilities
     "pre-commit>=4.7.0,<5",
     "pyright>=1.1.414,<2",       # PyPI wrapper; downloads a Node runtime on first run
