@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 2 * * *"
   workflow_dispatch:
+    inputs:
+      log_level:
+        description: Renovate log level for this manual run
+        type: choice
+        options: [info, debug]
+        default: info
 
 permissions:
   contents: read
@@ -38,5 +44,6 @@ jobs:
           RENOVATE_BINARY_SOURCE: global
           RENOVATE_GIT_AUTHOR: "Renovate Bot <CarlosSolrac@users.noreply.github.com>"
           RENOVATE_ALLOWED_COMMANDS: '["^uv run --frozen python -m skill\\.tools\\.(vendor_templates|template_history)$"]'
-          LOG_LEVEL: info
+          # Scheduled runs have no inputs, so they stay at info.
+          LOG_LEVEL: ${{ inputs.log_level || 'info' }}
         run: npx --yes "renovate@${RENOVATE_VERSION}"
