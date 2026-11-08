@@ -32,6 +32,8 @@ dev = [
 # bumps, but lock file maintenance runs `uv lock --upgrade`, which would otherwise
 # lock any transitive release the moment it is uploaded.
 exclude-newer = "3 days"
+# Temporary: exempts releases merged inside the window at the maintainer's request. Remove after 2026-11-09T10:39Z.
+exclude-newer-package = { ruff = false }
 
 [tool.ruff]
 target-version = "py313"
