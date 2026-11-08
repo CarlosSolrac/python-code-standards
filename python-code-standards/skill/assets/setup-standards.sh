@@ -413,13 +413,24 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+# A newer push to the same pull request supersedes the run in progress; runs on
+# main always finish, so every merged commit keeps its result.
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # diff-cover compares against the base branch
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -1809,11 +1820,18 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   mutation:
     runs-on: ubuntu-latest
+    # A cap, not an estimate: raise it if a full run outgrows it.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -2809,6 +2827,7 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "1b72d5ee3708b47ee2f712c77e1df9d275245df3818b133a294c10037a6f4189",
    "3c619d62a2f3c3ac5dd598d52c18b541ebe5eac8f6c7e47b536f303a6210b32a",
    "3d74634f38daf5e61b5dba5444b97088e5de351d227419732ad5f270a5a0aa04",
+   "558d21d0cdc66dc41db7553bf80a553d3014f840dd718aaa5d2422aaa0779407",
    "ef7ddbb3b1623a416fbdf6c7ec1a8b7b6e285eee6ace5048a2533e7450c8fd64",
    "ff87d7a0ef4670a3a95db28c5a4144291df149a8d836de5989b7d101d93188ea"
   ],
@@ -2816,7 +2835,8 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "0111fa893e4fdf60771a6b29e541669e3f5191ec49e49f059fc0c3a6c643f922",
    "9083970bdf2c798fd5710f8ad2d480bca6b783b5abb2e7bd1702a5192e591f52",
    "ab9e2e0e59a1269f37b56a1cd4466fc952f2796fed1777b20a6b0d75fce76a55",
-   "b626fc6c38fb861793c397fcb36b9890760041fa4e8acc23e960b686b708df91"
+   "b626fc6c38fb861793c397fcb36b9890760041fa4e8acc23e960b686b708df91",
+   "e3c58bae28c4ec86fa078d0bf29307b22d2bcb4fe772ea1f8befc8eef1829b2b"
   ],
   ".gitignore": [
    "abd5c51f23b8e555fb48b5c4b28103b9a7fc7ecceacd9ff6cbb73e1ac814af21",

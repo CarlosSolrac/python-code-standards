@@ -4,9 +4,16 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+# A newer push to the same pull request supersedes the run in progress; runs on
+# main always finish, so every merged commit keeps its result.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Required check for Renovate's auto-merge: a dependency PR merges only when
@@ -19,6 +26,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     defaults:
       run:
         shell: bash
@@ -27,10 +35,14 @@ jobs:
       SOURCES: skill/tools skill/assets/conformance.py tests evals/grade.py evals/design_spec_grade.py
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          # Pinned so a uv release reaches CI only through a Renovate PR, after minimumReleaseAge.
+          version: 0.13.7
           enable-cache: true
 
       - name: Sync the environment from uv.lock
