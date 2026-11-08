@@ -39,6 +39,14 @@
     { "groupName": "ruff", "matchPackageNames": ["ruff", "astral-sh/ruff-pre-commit"] },
     { "groupName": "github-actions", "groupSlug": "github-actions", "matchManagers": ["github-actions"] },
     {
+      "description": "The ci workflow never runs Renovate, so a passing check cannot vouch for the Node that renovate.yml runs it on; merge those bumps by hand",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["node"],
+      "groupName": "node",
+      "groupSlug": "node",
+      "automerge": false
+    },
+    {
       "description": "setup-standards.sh embeds the skill's templates and their digests; refresh both",
       "matchFileNames": ["python-code-standards/skill/assets/**"],
       "postUpgradeTasks": {
