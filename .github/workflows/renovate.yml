@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      RENOVATE_VERSION: 44.225.1
+      RENOVATE_VERSION: 44.227.4
     steps:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
