@@ -1,0 +1,17 @@
+[project]
+name = "tally-stage"
+version = "0.1.0"
+description = "Loading stage between the CLI and the order source"
+requires-python = ">=3.13"
+dependencies = [
+    "tally-common",
+    "tally-io",
+]
+
+[tool.uv.sources]
+tally-common = { workspace = true }
+tally-io = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"

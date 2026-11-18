@@ -1,0 +1,300 @@
+"""Score generated Python against the standards, mechanically.
+
+Given a directory of files produced by one eval run, this reports violation
+counts from the declaration checker, Ruff, and Pyright, plus the number of
+functions that only forward their arguments. It makes no judgment
+calls: every number here comes from a tool, so the same output scores the same
+way regardless of who ran it.
+
+Whether the agent used uv, claimed an unrun check passed, or kept its diff scoped
+is not measurable here — those live in the transcript. Read them there.
+
+Compare a with-skill run against a without-skill baseline on identical prompts.
+A single run's absolute numbers mean little; the difference between the two is
+the measurement.
+
+Usage:
+    uv run python -m evals.grade runs/with-skill --json scores.json
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import re
+import subprocess
+import sys
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import cast
+
+GRADER_VERSION: str = "4.3.0"
+"""Bump on any change to what is counted.
+
+Scores from different grader versions are not comparable: v3.0.0 dropped the
+``used_uv`` field and began copying the config into the run directory, which
+changed which Ruff rules fire. v4.0.0 counts against the expanded rule set
+(complexity, exception handling, boolean traps, performance), so Ruff totals rise.
+v4.1.0 stops treating comprehension variables as declared in the enclosing scope,
+so a later unannotated binding of the same name now counts as a violation. v4.2.0
+exempts enum members, and stops treating class-body names as declared in methods
+and nested classes. v4.3.0 adds the ``passthroughs`` field, the count of functions that
+only forward their arguments, so results gain a field. The version is recorded in every result so a
+cross-run comparison can be checked rather than assumed.
+"""
+
+
+@dataclass(frozen=True)
+class Score:
+    """Mechanical results for one eval run."""
+
+    grader_version: str
+    run: str
+    files: int
+    lines: int
+    declaration_violations: int
+    ruff_violations: int
+    ruff_by_rule: dict[str, int]
+    pyright_errors: int
+    passthroughs: int
+    notes: list[str]
+
+
+def _run(command: list[str], cwd: Path) -> tuple[int, str]:
+    """Execute a command, returning its exit status and combined output."""
+    completed: subprocess.CompletedProcess[str] = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
+    return completed.returncode, completed.stdout + completed.stderr
+
+
+def _payload(output: str, opener: str) -> object:
+    """Parse the first JSON value in tool output, ignoring text around it.
+
+    ``uvx`` prints installer progress before the tool runs, and ``_run`` appends
+    stderr after stdout, so the payload can have text on either side. Anchoring
+    on a delimiter and slicing to the end fails on the trailing text;
+    ``raw_decode`` stops at the end of the first complete value.
+
+    Args:
+        output: Combined stdout and stderr from the tool.
+        opener: The character the payload starts with, ``{`` or ``[``.
+
+    Returns:
+        The decoded value, or ``None`` when no valid payload is present.
+    """
+    decoder: json.JSONDecoder = json.JSONDecoder()
+    index: int = output.find(opener)
+    while index != -1:
+        try:
+            value: object
+            end: int
+            value, end = decoder.raw_decode(output[index:])
+            del end
+        except json.JSONDecodeError:
+            index = output.find(opener, index + 1)
+            continue
+        return value
+    return None
+
+
+def count_declarations(target: Path, checker: Path) -> int:
+    """Return the number of declaration-rule violations under a directory."""
+    status: int
+    output: str
+    status, output = _run([sys.executable, str(checker), str(target)], target.parent)
+    if status not in (0, 1):
+        return -1
+    return sum(1 for line in output.splitlines() if "bound before annotation" in line)
+
+
+_PASSTHROUGH_FINDING: re.Pattern[str] = re.compile(r".+:\d+ \S+")
+"""One ``path:line name`` finding from ``check_passthrough.py``; its error messages never fit this shape."""
+
+
+def count_passthroughs(target: Path, tool: Path) -> int:
+    """Return the number of pass-through functions under a directory.
+
+    Returns -1 when the tool could not run or stopped before scanning everything
+    (a path it could not find, a file it could not parse), because a partial scan
+    would otherwise score as fewer pass-throughs.
+    """
+    status: int
+    output: str
+    status, output = _run([sys.executable, str(tool), str(target)], target.parent)
+    lines: list[str] = [line for line in output.splitlines() if line.strip()]
+    findings: list[str] = [line for line in lines if _PASSTHROUGH_FINDING.fullmatch(line)]
+    if status not in (0, 1) or len(findings) != len(lines):
+        return -1
+    return len(findings)
+
+
+def count_ruff(target: Path, config: Path) -> tuple[int, dict[str, int]]:
+    """Return the total Ruff violations and a per-rule breakdown.
+
+    The config is copied into the run directory and Ruff is invoked from there,
+    because per-file ignores such as ``tests/**/*.py`` resolve relative to the
+    config's own location. Pointing at a config elsewhere silently fails to match
+    them, which penalises a run for exactly the findings the standards waive.
+    """
+    local: Path = target / "pyproject.toml"
+    if not local.exists():
+        local.write_text(config.read_text(encoding="utf-8"), encoding="utf-8")
+
+    status: int
+    output: str
+    status, output = _run(
+        ["uvx", "ruff@latest", "check", "--no-cache", "--output-format", "json", "."],
+        target,
+    )
+    if status not in (0, 1):
+        return -1, {}
+
+    payload: object = _payload(output, "[")
+    if not isinstance(payload, list):
+        return -1, {}
+    # Ruff's JSON output is a list of finding objects; the cast states that shape.
+    findings: list[dict[str, object]] = cast("list[dict[str, object]]", payload)
+    by_rule: dict[str, int] = {}
+    finding: dict[str, object]
+    for finding in findings:
+        code: str = str(finding.get("code") or "?")
+        by_rule[code] = by_rule.get(code, 0) + 1
+    return len(findings), dict(sorted(by_rule.items()))
+
+
+def third_party_imports(target: Path) -> list[str]:
+    """Return the non-stdlib, non-local packages a run imports.
+
+    Pyright in strict mode reports ``reportMissingImports`` for anything absent
+    from its environment, then cascades unknown types through everything the
+    import touched. Left unhandled that penalises whichever arm happened to
+    import more, which is a fact about the grader rather than about the code.
+
+    Args:
+        target: Directory holding the files an agent produced.
+
+    Returns:
+        Package names to install before running Pyright, sorted.
+    """
+    local: set[str] = {path.stem for path in target.rglob("*.py")}
+    found: set[str] = set()
+    path: Path
+    for path in sorted(target.rglob("*.py")):
+        try:
+            tree: ast.Module = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        node: ast.AST
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                alias: ast.alias
+                for alias in node.names:
+                    found.add(alias.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                found.add(node.module.split(".")[0])
+    return sorted(found - sys.stdlib_module_names - local)
+
+
+def count_pyright(target: Path, config: Path) -> int:
+    """Return the number of Pyright errors, or -1 when Pyright could not run."""
+    extras: list[str] = []
+    package: str
+    for package in third_party_imports(target):
+        extras.extend(["--with", package])
+
+    status: int
+    output: str
+    status, output = _run(["uvx", *extras, "pyright@latest", "--project", str(config), "--outputjson", str(target)], target.parent)
+    if status not in (0, 1):
+        return -1
+    report: object = _payload(output, "{")
+    if not isinstance(report, dict):
+        return -1
+    summary: object = cast("dict[str, object]", report).get("summary", {})
+    if not isinstance(summary, dict):
+        return -1
+    count: object = cast("dict[str, object]", summary).get("errorCount", -1)
+    return count if isinstance(count, int) else -1
+
+
+def grade(run: Path, checker: Path, config: Path, passthrough: Path) -> Score:
+    """Score one run directory.
+
+    Args:
+        run: Directory holding the files an agent produced.
+        checker: Path to ``check_declarations.py``.
+        config: Path to the ``pyproject.toml`` carrying the standards.
+        passthrough: Path to ``check_passthrough.py``.
+
+    Returns:
+        Mechanical counts for the run.
+    """
+    sources: list[Path] = sorted(run.rglob("*.py"))
+    lines: int = sum(len(path.read_text(encoding="utf-8").splitlines()) for path in sources)
+    text: str = "\n".join(path.read_text(encoding="utf-8") for path in sources)
+
+    ruff_total: int
+    ruff_rules: dict[str, int]
+    ruff_total, ruff_rules = count_ruff(run, config)
+
+    notes: list[str] = []
+    if not sources:
+        notes.append("no Python files found; check the run directory")
+    if "pip install" in text or "python -m venv" in text:
+        notes.append("mentions pip or venv; the standards require uv")
+    imports: list[str] = third_party_imports(run)
+    if imports:
+        notes.append(f"pyright ran with: {', '.join(imports)}")
+
+    return Score(
+        grader_version=GRADER_VERSION,
+        run=run.name,
+        files=len(sources),
+        lines=lines,
+        declaration_violations=count_declarations(run, checker),
+        ruff_violations=ruff_total,
+        ruff_by_rule=ruff_rules,
+        pyright_errors=count_pyright(run, config),
+        passthroughs=count_passthroughs(run, passthrough),
+        notes=notes,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Grade one or more run directories and print a comparison.
+
+    Args:
+        argv: Command-line arguments, defaulting to ``sys.argv[1:]``.
+
+    Returns:
+        0 always; this reports, it does not gate.
+    """
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("runs", nargs="+", type=Path)
+    parser.add_argument("--checker", type=Path, default=Path("skill/tools/check_declarations.py"))
+    parser.add_argument("--passthrough", type=Path, default=Path("skill/tools/check_passthrough.py"))
+    parser.add_argument("--config", type=Path, default=Path("pyproject.toml"))
+    parser.add_argument("--json", type=Path, default=None)
+    args: argparse.Namespace = parser.parse_args(argv)
+
+    # Resolve every path: the tools below run with a different working
+    # directory, so a relative run path would resolve twice and match nothing.
+    scores: list[Score] = [grade(run.resolve(), args.checker.resolve(), args.config.resolve(), args.passthrough.resolve()) for run in args.runs]
+
+    print(f"grader {GRADER_VERSION} — scores are comparable only across runs of the same version\n")
+    print(f"{'run':<24}{'files':>6}{'lines':>7}{'decl':>7}{'ruff':>7}{'pyright':>9}{'passthru':>10}")
+    score: Score
+    for score in scores:
+        print(f"{score.run:<24}{score.files:>6}{score.lines:>7}{score.declaration_violations:>7}{score.ruff_violations:>7}{score.pyright_errors:>9}{score.passthroughs:>10}")
+        note: str
+        for note in score.notes:
+            print(f"  ! {note}")
+
+    if args.json is not None:
+        args.json.write_text(json.dumps([asdict(score) for score in scores], indent=2), encoding="utf-8")
+        print(f"\nwrote {args.json}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

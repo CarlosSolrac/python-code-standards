@@ -1,0 +1,157 @@
+# Equivalent mutants
+
+Surviving mutants that change no observable behaviour, so no test can kill them.
+Each is listed by mutmut's name with the reason. The list was reviewed when it was
+written, and any survivor not on it is a gap in the tests. mutmut renumbers the
+mutants in a function when that function's source changes, so re-check a
+function's entries whenever it is edited.
+
+## `skill/tools/changes.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_added_lines__mutmut_46` | `number = 0` → `None` | A unified diff always has an `@@` hunk header, which resets `number`, before its first added line. |
+| `x_added_lines__mutmut_47` | `number = 0` → `1` | Same: the initial value is overwritten before it is read. |
+
+## `skill/tools/hooks/stop_gate.py`
+
+mutmut runs on Linux, where the locale encoding is UTF-8. On Windows the
+explicit encoding matters, and `test_run_command_decodes_output_as_utf8` fails
+there without it.
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_run_command__mutmut_4` | `encoding="utf-8"` → `None` | Under a UTF-8 locale, text mode already decodes UTF-8. |
+| `x_run_command__mutmut_9` | `encoding=` removed | Same. |
+| `x_run_command__mutmut_14` | `"utf-8"` → `"UTF-8"` | Codec names are case-insensitive. |
+| `x_run_command__mutmut_6` | `check=False` → `None` | `None` is falsy, the same as `False`. |
+| `x_run_command__mutmut_11` | `check=` removed | `False` is the default. |
+| `x_read_coverage_xml__mutmut_1` | `encoding="utf-8"` → `None` | Under a UTF-8 locale, the default encoding is UTF-8. |
+| `x_read_coverage_xml__mutmut_3` | `"utf-8"` → `"UTF-8"` | Codec names are case-insensitive. |
+
+## `skill/tools/hooks/guard_protected.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_main__mutmut_4`, `_8`, `_9` | `cast("dict[str, object]", …)` type string changed | `typing.cast` returns its value unchanged at run time; the string only informs type checkers. |
+| `x_main__mutmut_23`, `_25`, `_28` | `tool_name` default `""` → `None`, none, `"XXXX"` | Any default that is not a tool name gives the same result: the event matches no tool, so the hook stays silent. |
+| `x_protected_reason__mutmut_9` | `file_path` default `""` → `"XXXX"` | Neither names a protected file. |
+| `x_protected_reason__mutmut_19` | `command` default `""` → `"XXXX"` | Neither matches a dependency or write pattern. |
+
+## `skill/tools/check_suppressions.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_load_allowed__mutmut_7`, `x_read_file__mutmut_1` | `encoding="utf-8"` → `None` | Under a UTF-8 locale, which mutmut uses on Linux, the default is UTF-8. |
+| `x_load_allowed__mutmut_9`, `x_read_file__mutmut_4` | `"utf-8"` → `"UTF-8"` | Codec names are case-insensitive. |
+| `x_main__mutmut_9` | `default=None` removed from `--base` | `None` is argparse's own default. |
+| `x_unapproved__mutmut_32` | no-comment fallback `""` → `"XXXX"` | Neither text contains a directive. |
+
+## `skill/tools/check_declarations.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x__sub_patterns__mutmut_1` | a bare capture (`case x:`) gets `[None]` as sub-patterns instead of `[]` | `_bind_pattern(None)` finds no sub-patterns and no target, so it binds nothing either way. |
+| `x_check_source__mutmut_6`, `_7` | `ast.parse` `filename` dropped or `"None"` | The filename only sets `SyntaxError.filename`, which `main` never prints; it reports its own path. |
+| `x_read_source__mutmut_2`, `_4`; `x_load_enum_bases__mutmut_16`, `_18` | `encoding="utf-8"` → `None`, `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x__cell_code__mutmut_11` | always `"".join(lines)` | Joining a string's characters returns the same string, and `source` is a list or a string. |
+| `xǁScopeCheckerǁ__init____mutmut_10` | `in_enum_body` default `False` → `None` | It is only tested for truth, and both are falsy. |
+
+## `skill/tools/check_passthrough.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x__name__mutmut_3` | the `"?"` placeholder for a non-name argument → `"XX?XX"` | The placeholder only has to differ from every parameter name, and neither string is a valid identifier, so a call that passes a non-name never matches the parameters either way. |
+| `x_main__mutmut_20` | `found: bool = False` → `None` | `found` is only tested for truth, and `None` is falsy like `False`. |
+
+## `evals/grade.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x__run__mutmut_6`, `_11` | `check=False` → `None` or removed | `None` is falsy and `False` is the default. |
+| `x_count_ruff__mutmut_7`, `_9`, `_10`, `_12`, `_14`; `x_third_party_imports__mutmut_12`, `_14`; `x_grade__mutmut_11`, `_13`; `x_main__mutmut_83`, `_85`, `_93` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_count_ruff__mutmut_48`, `_52`, `_53`; `x_count_pyright__mutmut_40`, `_44`, `_45`, `_56`, `_60`, `_61` | `cast(...)` type string changed | `typing.cast` returns its value unchanged at run time. |
+| `x_count_pyright__mutmut_37`, `_39` | `summary` default `{}` → `None` or none | A missing summary fails the following `isinstance(summary, dict)` check either way and scores -1. |
+| `x_count_pyright__mutmut_53`, `_55` | `errorCount` default `-1` → `None` or none | A missing count fails the following `isinstance(count, int)` check either way and scores -1. |
+| `x_grade__mutmut_10` | files joined with `"XX\nXX"` instead of `"\n"` | The joined text is only searched for `pip install` and `python -m venv`; neither separator can complete a phrase across a file boundary. |
+| `x_main__mutmut_49` | `--json` `default=None` removed | `None` is argparse's own default. |
+
+## `evals/design_spec_grade.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_main__mutmut_96`, `_98`, `_142`, `_144`, `_147`, `_149`, `_194`, `_196`, `_204`; `x__print__mutmut_12` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_main__mutmut_88`, `_92`, `_93`, `_94` | `cast(...)` type string changed | `typing.cast` returns its value unchanged at run time. |
+| `x_main__mutmut_31`, `_43`, `_54`, `_77` | `default=None` removed | `None` is argparse's own default. |
+| `x__stated_mode__mutmut_6` | the skill name replaced by `"XXXX"` instead of `""` | The name is bounded by non-word characters, so neither replacement joins or splits a mode word. |
+| `x_inferred_marker__mutmut_26` | `classDef` fallback `""` → `"XXXX"` | Neither contains `stroke-dasharray`. |
+| `x_citations_exist__mutmut_15` | `--quiet` → `--QUIET` | `git rev-parse` still exits non-zero for an unknown commit or a range (1 or 128) and zero for a real one, and only the status is read. |
+| `x__run__mutmut_5`, `_11`, `_16`; `x__package__mutmut_3`, `_5` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. `errors="replace"` keeps `_run` in text mode without it. |
+| `x__run__mutmut_7`, `_13` | `check=False` → `None` or removed | `None` is falsy and `False` is the default. |
+| `x__package__mutmut_9`, `_13`, `_14`, `_28`, `_32`, `_33` | `cast(...)` type string changed | `typing.cast` returns its value unchanged at run time. |
+| `x__package__mutmut_50`, `_53` | `maxsplit=1` removed or → `2` | Only the first piece, `[0]`, is read. |
+| `x_read_workspace__mutmut_4`, `_5`, `_30`, `_31` | `build.tar` or `tree` renamed | They are names inside a fresh temporary folder, and the two names still differ. |
+| `x__tables__mutmut_7` | a fenced block replaced by `"XXXX"` instead of `""` | The fence pattern starts and ends at line boundaries, so either replacement is a line of its own that does not start with `\|`, and it ends a table the same way. |
+| `x__tables__mutmut_8` | the closing sentinel line `""` → `"XXXX"` | Neither starts with `\|`, so both flush the last table. |
+| `x__diagram_type__mutmut_10` | fallback `""` → `"XXXX"` | Callers only test membership of `{"flowchart", "graph"}`. |
+| `x__styled_nodes__mutmut_6` | a `%%` comment replaced by `"XXXX"` instead of `""` | `XXXX` reads as an unstyled node, and unstyled nodes are dropped. |
+| `xǁ_Matricesǁread__mutmut_12`, `_15`, `_17` | the row `zip(strict=True)` → `None`, `False`, or removed | `rows` is built from `table[1:]`, so the two always have the same length. |
+| `xǁ_Matricesǁread__mutmut_20`, `_23` | the cell `zip(strict=False)` → `None` or removed | `None` is falsy and `False` is the default. |
+| `xǁ_Matricesǁdiffer__mutmut_4`, `_6`, `_7`, `_10`, `_12`, `_13` | a `.get(cell, "")` default → `None`, none, or `"XXXX"` | Each cell comes from one of the two dicts and both hold only non-blank marks, so a default is only ever compared with a mark. A code mark is `Y`, `!` or `d`; only a spec that writes the literal mark `XXXX` would tell `_13` apart. |
+
+The grader's tests that build a real import graph are marked `no_mutation`, and
+under mutmut the same tests run on a fake graph instead (`import_graph` in
+`tests/test_design_spec_grade.py`). Real grimp hangs in mutmut's forked workers, which
+hid these survivors behind timeouts (see
+[quality-gates.md](quality-gates.md#mutation-testing)). The fake rejects any
+`cache_dir` other than `None` and any `as_packages` other than `True`, so mutants of the
+call itself are still killed. Which modules grimp finds and which imports it reports are
+checked only by the real-grimp tests, which mutmut does not run.
+
+## Timeouts
+
+A timeout counts as caught only when the mutant also hangs outside mutmut's fork. See
+[quality-gates.md](quality-gates.md#mutation-testing) for how to check one.
+
+`evals.grade.x__payload__mutmut_6`, `_7`, `_10`, `_12` and `_14` turn the retry loop in
+`_payload` into one that never ends. The tests hang and mutmut stops them, so these
+mutants are caught, not survivors.
+
+`skill.tools.setup_files.x_backup__mutmut_5` (`number += 1` → `number = 1`) does the
+same to the search for a free `<name>.orig.N` once two backups exist.
+`x_leading_comments__mutmut_14` (`start -= 1` → `start = 1`) does it to the backward
+scan once the first line is blank or a comment, and `x_leading_comments__mutmut_20`
+(`start += 1` → `start = 1`) to the skip over the blank lines between a comment and its
+header.
+
+## `skill/tools/setup_files.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_main__mutmut_70`, `_72`; `x_staged_templates__mutmut_2`, `_4`; `x_read__mutmut_3`, `_5`, `_8`; `x_digest__mutmut_10`; `x_table_digest__mutmut_9`; `x_write__mutmut_13`, `_16`, `_19`; `x_install_tables__mutmut_11`, `_13`; `x_add_dev_tools__mutmut_9`, `_12` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_run_command__mutmut_2`, `_4` | `check=False` → `None` or removed | `None` is falsy and `False` is the default. |
+| `x_write__mutmut_14`, `_17` | `newline=""` → `None` or removed | Newline translation writes `os.linesep`, which is `"\n"` on Linux. |
+| `x_rewrite_tables__mutmut_36` | `"".join(kept)` → `"XXXX".join(kept)` before `endswith` | The joined text ends with its last block either way; they differ only when that block is empty, and then neither ends in a blank line. |
+| `x_tool_name__mutmut_4`, `_16` | `""` → `"XXXX"` for a header that is not a tool table | Neither name is a baseline tool, so the block is kept either way. |
+| `x_requirement_name__mutmut_4`, `_12` | `.lower()` → `.upper()`; separator → `"XX-XX"` | Both sides of the comparison are normalized the same way, so names match exactly when they did. |
+
+## `skill/tools/template_history.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_main__mutmut_7`, `_9`, `_28`, `_31`, `_34` | `encoding="utf-8"` → `None`, removed, or `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_main__mutmut_29`, `_32` | `newline=""` → `None` or removed | Newline translation writes `os.linesep`, which is `"\n"` on Linux. |
+| `x__digest_span__mutmut_5` | `index` → `rindex` for the opener | The script has one `HASHEOF` opener. |
+| `x__digest_span__mutmut_8`, `_10` | the closing delimiter searched from the start of the script | No line before the opener is exactly `HASHEOF`. |
+| `x__digest_span__mutmut_11` | `index` → `rindex` for the closing delimiter | The script has one closing `HASHEOF` line. |
+| `x__digest_span__mutmut_13` | search from `start - 2` instead of `start - 1` | The character at `start - 2` is the opener's closing quote, so no match can begin there. |
+
+## `skill/tools/review_brief.py`
+
+| Mutant | Change | Why it is equivalent |
+|---|---|---|
+| `x_read_text__mutmut_1`, `_3`, `_7` | `encoding="utf-8"` → `None`, removed, `"UTF-8"` | UTF-8 locale on Linux; codec names are case-insensitive. |
+| `x_suppressions_section__mutmut_3`, `_9`, `_10` | allow-list label changed | The label only appears in a `ValueError` message, which the brief catches and never shows. |
+| `x_added_suppressions__mutmut_20` | no-comment fallback `""` → `"XXXX"` | Neither text contains a directive. |
+| `x_mutation_section__mutmut_17` | `partition(".xǁ")` → `rpartition` | A mangled method name holds exactly one `.xǁ`. |
+| `x_mutation_section__mutmut_24` | separator test → tail test | With no `.xǁ` both are empty; with one, both are non-empty. |

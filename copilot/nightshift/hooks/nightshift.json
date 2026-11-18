@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "hooks": {
+    "notification": [
+      {
+        "type": "command",
+        "matcher": "permission_prompt",
+        "powershell": "powershell -NoProfile -ExecutionPolicy Bypass -File \"$(if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { \"$env:USERPROFILE\\.copilot\" })\\skills\\nightshift\\hooks\\nightshift-hook.ps1\" -Event notification",
+        "bash": "pwsh -NoProfile -File \"${COPILOT_HOME:-$HOME/.copilot}/skills/nightshift/hooks/nightshift-hook.ps1\" -Event notification",
+        "timeoutSec": 15
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "powershell": "powershell -NoProfile -ExecutionPolicy Bypass -File \"$(if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { \"$env:USERPROFILE\\.copilot\" })\\skills\\nightshift\\hooks\\nightshift-hook.ps1\" -Event agentStop",
+        "bash": "pwsh -NoProfile -File \"${COPILOT_HOME:-$HOME/.copilot}/skills/nightshift/hooks/nightshift-hook.ps1\" -Event agentStop",
+        "timeoutSec": 15
+      }
+    ]
+  }
+}
