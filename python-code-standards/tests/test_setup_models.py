@@ -351,7 +351,7 @@ OLD_COPILOT_BLOCK: str = """<!-- python-code-standards:models -->
 - Adversarial code-review provider: `copilot`
 - Adversarial code-review model: `GPT-6 Astra`
 <!-- /python-code-standards:models -->"""
-"""Copilot's defaults as setup wrote them before the coder guard; ``copilot/copilot-instructions.md`` at the repository root still holds this."""
+"""Copilot's defaults as setup wrote them before the coder guard."""
 
 COPILOT_BLOCK: str = OLD_COPILOT_BLOCK.replace("\n<!-- /", f"\n\n{COPILOT_GUARD}\n<!-- /")
 """Copilot's defaults as setup writes them now, the coder guard last."""
