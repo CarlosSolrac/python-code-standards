@@ -23,6 +23,19 @@
       "matchStrings": ["RENOVATE_VERSION: (?<currentValue>\\d+\\.\\d+\\.\\d+)"],
       "datasourceTemplate": "npm",
       "depNameTemplate": "renovate"
+    },
+    {
+      "description": "The mermaid and jsdom versions the design-spec diagram tools install",
+      "customType": "regex",
+      "managerFilePatterns": ["/^design-spec/skill/tools/validate_mermaid\\.mjs$/"],
+      "matchStrings": ["(?<depName>mermaid|jsdom): \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
+      "datasourceTemplate": "npm"
+    },
+    {
+      "description": "Versions in workflow files that carry a '# renovate:' comment, such as a matrix entry",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": ["\"(?<currentValue>[^\"]+)\" # renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)"]
     }
   ],
   "rangeStrategy": "bump",
@@ -38,6 +51,13 @@
     { "groupName": "pytest", "matchPackageNames": ["pytest", "pytest-cov"] },
     { "groupName": "ruff", "matchPackageNames": ["ruff", "astral-sh/ruff-pre-commit"] },
     { "groupName": "github-actions", "groupSlug": "github-actions", "matchManagers": ["github-actions"] },
+    {
+      "description": "A major mermaid or jsdom release can change how diagrams render or raise the minimum Node; review it by hand",
+      "matchManagers": ["custom.regex"],
+      "matchDepNames": ["mermaid", "jsdom"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
     {
       "description": "The ci workflow never runs Renovate, so a passing check cannot vouch for the Node that renovate.yml runs it on; merge those bumps by hand",
       "matchManagers": ["github-actions"],

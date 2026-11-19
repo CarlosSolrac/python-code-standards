@@ -72,3 +72,52 @@ jobs:
         run: |
           uv run deptry .
           uv run pip-audit
+
+  # The design-spec Mermaid tools: the validator and the browser viewer. Node
+  # 22.22.2 is the oldest version they support, so it stays fixed; Renovate
+  # keeps the other entry on the newest Node. The first test run installs the
+  # pinned mermaid and jsdom into the shared cache, so this job needs network.
+  design-spec:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node:
+          - "22.22.2"
+          - "26.13.1" # renovate: datasource=node-version depName=node
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Tests and coverage
+        run: >-
+          node --test --experimental-test-coverage
+          --test-coverage-include="design-spec/skill/tools/*.mjs"
+          --test-coverage-lines=100 --test-coverage-branches=100
+          "design-spec/tests/*.test.mjs"
+
+      - name: Every Mermaid diagram in the repository parses
+        run: git ls-files -z '*.md' | xargs -0 node design-spec/skill/tools/validate_mermaid.mjs
+
+  # The one stable name that branch protection requires for design-spec: the
+  # matrix job names change whenever Renovate bumps a Node version.
+  design-spec-ok:
+    if: always()
+    needs: design-spec
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every design-spec job passed
+        env:
+          RESULT: ${{ needs.design-spec.result }}
+        run: test "$RESULT" = success
