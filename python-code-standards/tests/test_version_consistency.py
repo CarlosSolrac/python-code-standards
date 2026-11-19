@@ -16,6 +16,8 @@ import pytest
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
+from skill.tools.setup_models import COPILOT, render_block
+
 REPO_ROOT: Path = Path(__file__).resolve().parent.parent
 ASSETS: Path = REPO_ROOT / "skill" / "assets"
 
@@ -157,6 +159,12 @@ def test_repository_declares_the_baseline_dev_requirements() -> None:
 def test_pre_commit_runs_the_baseline_ruff() -> None:
     """The hook and ``uv run ruff`` must agree, or a commit and CI disagree on which rules fire."""
     assert ruff_hook_mismatches((ASSETS / "pyproject-baseline.toml").read_text(encoding="utf-8"), (ASSETS / "pre-commit-config.yaml").read_text(encoding="utf-8")) == []
+
+
+@pytest.mark.no_mutation
+def test_repository_copilot_instructions_hold_the_block_setup_writes() -> None:
+    """The checked-in Copilot instructions would otherwise drift from what ``setup_models`` writes, guard line included."""
+    assert render_block(COPILOT.defaults, COPILOT) in (REPO_ROOT.parent / "copilot" / "copilot-instructions.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.no_mutation

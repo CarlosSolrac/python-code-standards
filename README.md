@@ -35,7 +35,8 @@ the two nightshift skills, installed into `~/.copilot/skills` instead of the Cla
 The preferred way to install is to ask an LLM coding agent to do it. Claude Code is shown
 below; it clones the repository, backs up what it replaces, links the files, and verifies
 the result, stopping to ask wherever a choice is yours. To do it by hand instead, see
-[Manual setup](docs/manual-setup.md).
+[Manual setup](docs/manual-setup.md). For GitHub Copilot CLI, use
+[Scenario 4](#scenario-4-github-copilot-cli).
 
 1. Open a Claude Code session in any folder.
 2. Set the model and effort for your scenario from the table below.
@@ -48,6 +49,7 @@ prompt if you keep code elsewhere.
 | --- | --- | --- | --- |
 | Brand-new install, or replace | Sonnet 5.5 (`/model sonnet`) | medium (`/effort medium`) | Cloning, backing up, and linking follow the README step by step, so the faster, cheaper model is enough. |
 | Merge | Opus 5.5 (`/model opus`) | high (`/effort high`) | Telling a real conflict from two wordings of the same rule, and merging without dropping either side's intent, is judgment the stronger model handles more reliably. |
+| GitHub Copilot CLI | Claude Sonnet 5.5 (`/model`) | default | The agent follows numbered steps and stops at each choice. The faster model is sufficient. |
 
 ### Scenario 1: brand-new install
 
@@ -106,6 +108,23 @@ stalling.
 
 On Windows, links need Developer Mode or an elevated prompt. Without either, add
 "copy instead of linking" to the end of any prompt.
+
+### Scenario 4: GitHub Copilot CLI
+
+Use this to install the skills, the nightshift hook, and the models block for GitHub
+Copilot CLI. Copilot CLI does not read `~/.claude`, so this scenario is separate from
+scenarios 1 to 3. Open a Copilot CLI session in any folder.
+
+- **Prompt** — copy into Copilot CLI:
+
+  ```text
+  Install the python-code-standards for GitHub Copilot CLI from https://github.com/CarlosSolrac/python-code-standards.
+  Clone it to ~/src/python-code-standards. If that folder holds a clone already, use it and run git pull.
+  Do the steps in the "Copilot CLI install" section of docs/manual-setup.md, in order.
+  At each step that says "stop", stop and ask me. Do not continue until I answer.
+  Do not change ~/.claude.
+  Finish with the Verify step of that section and show me all of its output.
+  ```
 
 ## Set up a new Python project
 
@@ -227,6 +246,13 @@ existing one; see [design-spec/skill/SKILL.md](design-spec/skill/SKILL.md).
   node ~/.claude/skills/design-spec/tools/validate_mermaid.mjs docs/design.md
   ```
 
+- **Diagram viewer.** The spec keeps its Mermaid blocks. The skill also writes one HTML page
+  per spec, `docs/design_images/design.html`, with an anchor for each diagram. It adds an
+  "Open diagram in browser" link after each block, using
+  [design-spec/skill/tools/render_diagrams.mjs](design-spec/skill/tools/render_diagrams.mjs).
+  `--check` exits 1 when the page or a link is stale. The page loads a pinned Mermaid from a
+  CDN, so it needs network. github.com shows HTML as source, so open the page from a local
+  copy.
 ## Work through the backlog overnight
 
 The `nightshift` skill, in `nightshift/`, works unattended through the current project's
