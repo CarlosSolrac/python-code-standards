@@ -40,7 +40,7 @@ A single process with external storage is Standard, not Large: external systems 
 
 ## 3. Spec artifacts
 
-Text diagrams only (Mermaid, Markdown tables, directory trees). No rendered SVG unless asked. Write the spec to `docs/design.md`; in design mode, ADRs go to `docs/adr/NNNN-<slug>.md` unless the project already keeps decisions elsewhere.
+Text diagrams only (Mermaid, Markdown tables, directory trees). Each spec with Mermaid also gets a browser viewer (§7). Write the spec to `docs/design.md`; in design mode, ADRs go to `docs/adr/NNNN-<slug>.md` unless the project already keeps decisions elsewhere.
 
 | # | Artifact | When |
 |---|----------|------|
@@ -218,7 +218,14 @@ node "${CLAUDE_SKILL_DIR}/tools/validate_mermaid.mjs" docs/design.md
 
 Exit 0 means every diagram parses; exit 1 lists each failing block with its line number. It needs Node 22.22.2+ or 24.15+. Its first run installs pinned `mermaid` and `jsdom` into a shared cache (`~/.cache/design-spec-mermaid`, or `DESIGN_SPEC_MERMAID_CACHE`), which needs network once; later runs install nothing, and the project gains no npm files. Fix any failing block before showing the spec.
 
-To render the diagrams as well (not needed for validation): `npx -y @mermaid-js/mermaid-cli -i docs/design.md -o <scratch folder>/out.md`, which needs a headless Chrome.
+Then make the browser viewer, and keep the Mermaid blocks in the spec:
+
+```bash
+node "${CLAUDE_SKILL_DIR}/tools/render_diagrams.mjs" docs/design.md
+node "${CLAUDE_SKILL_DIR}/tools/render_diagrams.mjs" --check docs/design.md
+```
+
+The first command writes `docs/design_images/design.html`, with one anchor for each diagram. It also adds a link line after each Mermaid block. When a block does not parse, it writes nothing. Run it again after each diagram change. The second command writes nothing. It exits 1 when the viewer or a link is stale. The viewer loads a pinned Mermaid from a CDN, so it needs network. github.com shows HTML as source, so open the viewer from a local copy.
 
 ## 8. Default pattern
 

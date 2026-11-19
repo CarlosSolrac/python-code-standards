@@ -29,6 +29,7 @@ from evals.design_spec_grade import (
     EMPTY_TREE,
     EVALS,
     GRADER_VERSION,
+    RENDERER,
     RULES,
     VALIDATOR,
     Check,
@@ -57,6 +58,7 @@ from evals.design_spec_grade import (
     no_c4,
     read_workspace,
     spec_and_adrs_only,
+    viewer_current,
 )
 from evals.design_spec_grade import _run as run_command  # pyright: ignore[reportPrivateUsage]
 
@@ -286,6 +288,7 @@ def test_rules_match_the_assertions_in_evals_json() -> None:
 def test_every_eval_that_writes_a_spec_grades_its_diagrams(eval_id: int) -> None:
     checks: list[Check] = [rule.check for rule in RULES[eval_id]]
     assert diagrams_parse in checks
+    assert viewer_current in checks
     assert no_c4 in checks
 
 
@@ -687,9 +690,11 @@ def test_documentation_only_passes_documentation_changes(repo: tuple[Path, str])
     (root / "docs" / "adr").mkdir()
     (root / "docs" / "adr" / "0001-x.md").write_text("# ADR\n", encoding="utf-8")
     (root / "README.md").write_text("tally, documented", encoding="utf-8")
+    (root / "docs" / "design_images").mkdir()
+    (root / "docs" / "design_images" / "design.html").write_text("<!doctype html>\n", encoding="utf-8")
     (root / ".venv").mkdir()
     (root / ".venv" / "ignored.py").write_text("", encoding="utf-8")
-    assert documentation_only(_repo_run(repo)) == Verdict(passed=True, evidence=f"changed since {repo[1]}: README.md, docs/adr/0001-x.md, docs/design.md")
+    assert documentation_only(_repo_run(repo)) == Verdict(passed=True, evidence=f"changed since {repo[1]}: README.md, docs/adr/0001-x.md, docs/design.md, docs/design_images/design.html")
 
 
 def test_documentation_only_names_code_changes_committed_staged_and_untracked(repo: tuple[Path, str]) -> None:
@@ -728,17 +733,29 @@ def test_spec_and_adrs_only_accepts_only_the_spec_and_adrs(tmp_path: Path) -> No
     (root / "docs" / "adr").mkdir(parents=True)
     (root / "docs" / "design.md").write_text("# Design\n", encoding="utf-8")
     (root / "docs" / "adr" / "0001-x.md").write_text("# ADR\n", encoding="utf-8")
-    assert spec_and_adrs_only(run) == Verdict(passed=True, evidence=f"changed since {EMPTY_TREE}: docs/adr/0001-x.md, docs/design.md")
+    (root / "docs" / "design_images").mkdir()
+    (root / "docs" / "design_images" / "design.html").write_text("<!doctype html>\n", encoding="utf-8")
+    assert spec_and_adrs_only(run) == Verdict(passed=True, evidence=f"changed since {EMPTY_TREE}: docs/adr/0001-x.md, docs/design.md, docs/design_images/design.html")
     (root / "docs" / "notes.md").write_text("notes\n", encoding="utf-8")
+
     (root / "main.py").write_text("", encoding="utf-8")
     (root / "docs" / "adr" / "helper.py").write_text("", encoding="utf-8")
     _git(root, "add", "main.py")
-    assert spec_and_adrs_only(run) == Verdict(passed=False, evidence="changed outside docs/design.md and Markdown ADRs under docs/adr/: docs/adr/helper.py, docs/notes.md, main.py")
+    assert spec_and_adrs_only(run) == Verdict(
+        passed=False, evidence="changed outside docs/design.md, its viewer docs/design_images/design.html, and Markdown ADRs under docs/adr/: docs/adr/helper.py, docs/notes.md, main.py"
+    )
 
 
 def test_documentation_only_names_code_under_docs(repo: tuple[Path, str]) -> None:
     (repo[0] / "docs" / "conf.py").write_text("", encoding="utf-8")
     assert documentation_only(_repo_run(repo)) == Verdict(passed=False, evidence="changed outside documentation files: docs/conf.py")
+
+
+@pytest.mark.parametrize("path", ["docs/page.html", "docs/design_images/other.html", "docs/design_images/design.js", "design_images/nested/design.html"])
+def test_documentation_only_names_html_that_is_not_a_spec_viewer(repo: tuple[Path, str], path: str) -> None:
+    (repo[0] / path).parent.mkdir(parents=True, exist_ok=True)
+    (repo[0] / path).write_text("", encoding="utf-8")
+    assert documentation_only(_repo_run(repo)) == Verdict(passed=False, evidence=f"changed outside documentation files: {path}")
 
 
 def test_documentation_only_names_both_sides_of_a_rename(repo: tuple[Path, str]) -> None:
@@ -820,6 +837,40 @@ def test_diagrams_parse_fails_without_a_spec() -> None:
     assert diagrams_parse(_run(spec=None)) == Verdict(passed=False, evidence=f"no spec at {Path('fixture/docs/design.md')}")
 
 
+@pytest.mark.parametrize(
+    ("fake", "verdict"),
+    [
+        (FakeValidator(0, "d.md: viewer OK\n"), Verdict(passed=True, evidence="render_diagrams.mjs --check exit 0: d.md: viewer OK")),
+        (FakeValidator(0, "d.md: no Mermaid diagrams\n"), Verdict(passed=True, evidence="render_diagrams.mjs --check exit 0: d.md: no Mermaid diagrams")),
+        (
+            FakeValidator(1, "d.md: viewer STALE missing viewer file; link lines missing or wrong\n"),
+            Verdict(passed=False, evidence="render_diagrams.mjs --check exit 1: d.md: viewer STALE missing viewer file; link lines missing or wrong"),
+        ),
+        (
+            FakeValidator(1, "d.md: block 1 (line 2): FAIL Error: one\nd.md: block 2 (line 9): FAIL Error: two\n"),
+            Verdict(passed=False, evidence="render_diagrams.mjs --check exit 1: d.md: block 1 (line 2): FAIL Error: one; d.md: block 2 (line 9): FAIL Error: two"),
+        ),
+        (FakeValidator(2, "", "usage: render_diagrams.mjs [--check] <doc.md>...\n"), Verdict(passed=None, evidence="render_diagrams.mjs could not run (exit 2): usage: render_diagrams.mjs [--check] <doc.md>...")),
+        (
+            FakeValidator(1, "", "Error: npm install failed in cache: ECONNREFUSED\n"),
+            Verdict(passed=None, evidence="render_diagrams.mjs could not run (exit 1): Error: npm install failed in cache: ECONNREFUSED"),
+        ),
+    ],
+    ids=["current", "no-diagrams", "stale", "parse-errors", "cannot-run", "crash-before-checking"],
+)
+def test_viewer_current_reports_the_checker(monkeypatch: pytest.MonkeyPatch, fake: FakeValidator, verdict: Verdict) -> None:
+    renderer: FakeValidator = replace(fake, calls=[])
+    monkeypatch.setattr("evals.design_spec_grade._run", renderer)
+    run: Run = _run(spec="# Spec\n")
+    assert viewer_current(run) == verdict
+    assert renderer.calls == [(["node", str(RENDERER), "--check", str(run.spec_path)], RENDERER.parent)]
+    assert RENDERER.is_file()
+
+
+def test_viewer_current_fails_without_a_spec() -> None:
+    assert viewer_current(_run(spec=None)) == Verdict(passed=False, evidence=f"no spec at {Path('fixture/docs/design.md')}")
+
+
 def test_run_reports_a_missing_program_as_exit_127(tmp_path: Path) -> None:
     status: int
     output: str
@@ -833,6 +884,12 @@ def test_run_reports_a_missing_program_as_exit_127(tmp_path: Path) -> None:
 def test_rules_run_the_diagram_checker(monkeypatch: pytest.MonkeyPatch, number: int, status: Status) -> None:
     monkeypatch.setattr("evals.design_spec_grade._run", FakeValidator(0, "d.md: block 1 (line 2): OK flowchart-v2\n"))
     assert _graded(number, "Every Mermaid diagram in the spec passes", _run(spec="# Spec\n")).status == status
+
+
+@pytest.mark.parametrize(("number", "fake", "status"), [(1, FakeValidator(0, "d.md: viewer OK\n"), "pass"), (6, FakeValidator(1, "d.md: viewer STALE viewer differs\n"), "fail")])
+def test_rules_run_the_viewer_check(monkeypatch: pytest.MonkeyPatch, number: int, fake: FakeValidator, status: Status) -> None:
+    monkeypatch.setattr("evals.design_spec_grade._run", replace(fake, calls=[]))
+    assert _graded(number, "Every Mermaid diagram in the spec has a current browser viewer", _run(spec="# Spec\n")).status == status
 
 
 SHOP: Workspace = Workspace(

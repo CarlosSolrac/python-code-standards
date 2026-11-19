@@ -229,6 +229,12 @@ describe("start", () => {
         assert.match(io.errText, /needs Node 22\.22\.2\+ or 24\.15\+.*found v/);
     });
 
+    test("names the script that needs the newer Node", async () => {
+        const io = capture();
+        assert.equal(await start(undefined, () => assert.fail("ran"), io, "render_diagrams.mjs"), 2);
+        assert.match(io.errText, /^render_diagrams\.mjs needs Node/);
+    });
+
     test("does nothing when imported as a module", async () => {
         assert.equal(await start(false, () => assert.fail("ran"), capture()), undefined);
     });
