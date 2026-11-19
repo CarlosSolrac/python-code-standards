@@ -276,7 +276,7 @@ that does not reproduce is noted in the task's timeline and changes nothing. Rev
      reproduction, for the user to decide.
    - `thorough`: run it as a deep review — the review-model reviewer plus five more
      `general-purpose` reviewers on `gpt-6.1-sol`, `gpt-5.3-codex`, `gemini-4-argon`,
-     `grok-4.7` and `mai-code-1.1-flash`, all six started in one response with
+     `grok-4.7` and `mai-code-2`, all six started in one response with
      `mode: "background"`, each with the same brief. Wait for all six with `read_agent` and
      `wait: true` before doing anything else, then consolidate:
      merge duplicates, note which models raised each finding (agreement raises confidence),

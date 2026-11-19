@@ -312,7 +312,7 @@ night:
 - **Reviews.** Every review runs on the Copilot review model from the `## Models (Copilot)`
   block (default GPT-6 Astra), never the Codex plugin. `adversarial=thorough` runs a deep
   review with GPT-6 Astra, gpt-6.1-sol, gpt-5.3-codex, gemini-4-argon, grok-4.7 and
-  mai-code-1.1-flash, consolidated, up to three rounds.
+  mai-code-2, consolidated, up to three rounds.
 - **Limits.** Copilot ends a turn after eight consecutive `agentStop` blocks, and MCP input
   or consent requests wait for an answer even in autopilot, so prep checks the MCP servers.
   `--allow-all` replaces the Claude hook's deny-all: the authority boundary is kept by the
