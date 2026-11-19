@@ -61,6 +61,12 @@ EVALS: Path = find_evals(Path(__file__).resolve())
 VALIDATOR: Path = EVALS.parents[1] / "skill" / "tools" / "validate_mermaid.mjs"
 """design-spec's own diagram checker: Mermaid's parser on every Mermaid block."""
 
+RENDERER: Path = EVALS.parents[1] / "skill" / "tools" / "render_diagrams.mjs"
+"""design-spec's browser viewer writer; ``--check`` reports whether a spec's viewer and link lines are current."""
+
+VIEWER_FILE: re.Pattern[str] = re.compile(r"(?:.*/)?(?P<stem>[^/]+)_images/(?P=stem)\.html")
+"""The viewer ``render_diagrams.mjs`` writes for ``<dir>/<stem>.md``: ``<dir>/<stem>_images/<stem>.html``."""
+
 EMPTY_TREE: str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 """Git's empty tree: eval 1's fixture has no commit, so its changes are compared with nothing."""
 
@@ -431,6 +437,26 @@ def diagrams_parse(run: Run) -> Verdict:
     return Verdict(passed=None, evidence=f"validate_mermaid.mjs could not run (exit {status}): {(error or output).strip()}")
 
 
+def viewer_current(run: Run) -> Verdict:
+    """Check the spec's browser viewer with ``render_diagrams.mjs --check``; a checker that cannot run decides nothing.
+
+    Exit 1 is a failure only with a ``viewer STALE`` or ``FAIL`` diagram line: the CLI
+    also exits 1 when it crashes before checking, such as a failed first-use npm install.
+    """
+    if run.spec is None:
+        return _no_spec(run)
+    status: int
+    output: str
+    error: str
+    status, output, error = _run(["node", str(RENDERER), "--check", str(run.spec_path)], RENDERER.parent)
+    if status == 0:
+        return Verdict(passed=True, evidence=f"render_diagrams.mjs --check exit 0: {'; '.join(output.splitlines())}")
+    failures: list[str] = [line for line in output.splitlines() if ": viewer STALE " in line or ": FAIL " in line]
+    if status == 1 and failures:
+        return Verdict(passed=False, evidence=f"render_diagrams.mjs --check exit 1: {'; '.join(failures)}")
+    return Verdict(passed=None, evidence=f"render_diagrams.mjs could not run (exit {status}): {(error or output).strip()}")
+
+
 def _no_spec(run: Run) -> Verdict:
     """Fail a spec check because there is no spec to read."""
     return Verdict(passed=False, evidence=f"no spec at {run.spec_path}")
@@ -540,18 +566,22 @@ def _line_count(run: Run, path: str) -> int | None:
 
 
 def documentation_only(run: Run) -> Verdict:
-    """Check that every file changed since the build commit is documentation, that is Markdown (the spec, ADRs, a backlog)."""
+    """Check that every file changed since the build commit is documentation: Markdown (the spec, ADRs, a backlog) or a spec's browser viewer."""
     return _changes(run, _is_documentation, "documentation files")
 
 
 def spec_and_adrs_only(run: Run) -> Verdict:
-    """Check that the only files written are ``docs/design.md`` and Markdown ADRs under ``docs/adr/`` (eval 1)."""
-    return _changes(run, lambda path: path == "docs/design.md" or (path.startswith("docs/adr/") and _is_documentation(path)), "docs/design.md and Markdown ADRs under docs/adr/")
+    """Check that the only files written are ``docs/design.md``, its browser viewer, and Markdown ADRs under ``docs/adr/`` (eval 1)."""
+    return _changes(
+        run,
+        lambda path: path in {"docs/design.md", "docs/design_images/design.html"} or (path.startswith("docs/adr/") and _is_documentation(path)),
+        "docs/design.md, its viewer docs/design_images/design.html, and Markdown ADRs under docs/adr/",
+    )
 
 
 def _is_documentation(path: str) -> bool:
-    """Return whether a changed file counts as documentation."""
-    return path.lower().endswith(".md")
+    """Return whether a changed file counts as documentation: Markdown, or the viewer ``render_diagrams.mjs`` writes for ``<stem>.md``."""
+    return path.lower().endswith(".md") or VIEWER_FILE.fullmatch(path) is not None
 
 
 def _changes(run: Run, allowed: Callable[[str], bool], what: str) -> Verdict:
@@ -966,8 +996,9 @@ RULES: Mapping[int, Sequence[Rule]] = {
             complete=False,
         ),
         Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
+        Rule("Every Mermaid diagram in the spec has a current browser viewer (design-spec/skill/tools/render_diagrams.mjs --check exits 0)", viewer_current),
         Rule('The reply ends with "Approve or correct before I implement."', closing_line),
-        Rule("No code is written: the only files added are docs/design.md and ADRs under docs/adr/", spec_and_adrs_only),
+        Rule("No code is written: the only files added are docs/design.md, its browser viewer docs/design_images/design.html, and ADRs under docs/adr/", spec_and_adrs_only),
     ),
     2: (Rule("The first line states the Small size class", first_line(None, "Small")),),
     3: (
@@ -980,6 +1011,7 @@ RULES: Mapping[int, Sequence[Rule]] = {
         Rule("Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source", contract_sources, complete=False),
         Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
         Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
+        Rule("Every Mermaid diagram in the spec has a current browser viewer (design-spec/skill/tools/render_diagrams.mjs --check exits 0)", viewer_current),
         Rule("No Mermaid C4 diagram (C4Context, C4Container) is used", no_c4),
         Rule("No code is changed: git status and git diff 8ffaa6f show changes to documentation files only", documentation_only),
     ),
@@ -992,6 +1024,7 @@ RULES: Mapping[int, Sequence[Rule]] = {
         ),
         Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
         Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
+        Rule("Every Mermaid diagram in the spec has a current browser viewer (design-spec/skill/tools/render_diagrams.mjs --check exits 0)", viewer_current),
         Rule("No Mermaid C4 diagram (C4Context, C4Container) is used", no_c4),
         Rule("No code is changed: names.py keeps the reversed import, and git status and git diff bb6b246 show changes to documentation files only", documentation_only),
     ),
@@ -1005,6 +1038,7 @@ RULES: Mapping[int, Sequence[Rule]] = {
         Rule("Every boundary in the contract table, every '!' or 'd' cell of the dependency matrix, and every component-flowchart node not marked inferred cites a path:line source", contract_sources, complete=False),
         Rule("Every path:line the spec cites exists in the fixture at the build commit: the file is tracked there and has at least that many lines", citations_exist),
         Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
+        Rule("Every Mermaid diagram in the spec has a current browser viewer (design-spec/skill/tools/render_diagrams.mjs --check exits 0)", viewer_current),
         Rule("No Mermaid C4 diagram (C4Context, C4Container) is used", no_c4),
         Rule("No code is changed: git status shows changes to documentation files only", documentation_only),
     ),
@@ -1016,6 +1050,7 @@ RULES: Mapping[int, Sequence[Rule]] = {
             impact_nodes(read_workspace),
         ),
         Rule("Every Mermaid diagram in the spec passes design-spec/skill/tools/validate_mermaid.mjs (exit 0)", diagrams_parse),
+        Rule("Every Mermaid diagram in the spec has a current browser viewer (design-spec/skill/tools/render_diagrams.mjs --check exits 0)", viewer_current),
         Rule("No Mermaid C4 diagram (C4Context, C4Container) is used", no_c4),
         Rule('The reply ends with "Approve or correct before I implement."', closing_line),
         Rule("No code is written: git status and git diff <build commit> show changes to documentation files only", documentation_only),
