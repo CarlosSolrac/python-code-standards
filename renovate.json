@@ -35,7 +35,7 @@
       "description": "Versions in workflow files that carry a '# renovate:' comment, such as a matrix entry",
       "customType": "regex",
       "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
-      "matchStrings": ["\"(?<currentValue>[^\"]+)\" # renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)"]
+      "matchStrings": ["\"(?<currentValue>[^\"]+)\" # renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?"]
     }
   ],
   "rangeStrategy": "bump",

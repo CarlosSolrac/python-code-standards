@@ -1,6 +1,7 @@
 # Tests nightshift-hook.ps1 against throwaway repositories: it acts only for a session that an
 # active log in one of the repository's worktrees names, and stays silent for every other case.
 # Run it under each shell the hook must support, e.g. -Shell pwsh and -Shell powershell.exe.
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'Shell', Justification = 'Read inside Invoke-Hook, which the rule does not follow.')]
 param(
     [string]$Shell = (Get-Process -Id $PID).Path,
     [string]$WorkRoot = [IO.Path]::GetTempPath()
@@ -22,7 +23,7 @@ function Invoke-TestGit {
     if ($LASTEXITCODE -ne 0) { throw "git $args failed" }
 }
 
-function Write-Log([string]$Dir, [string]$Name, [string]$Status, [string]$Session, [switch]$NoTrailingNewline) {
+function Write-TestLog([string]$Dir, [string]$Name, [string]$Status, [string]$Session, [switch]$NoTrailingNewline) {
     $folder = Join-Path $Dir '.nightshift'
     New-Item -ItemType Directory -Force $folder | Out-Null
     $text = "# Nightshift log`n`nStatus: $Status`nSession: $Session`n`n## Timeline`n- 01:00 start"
@@ -36,11 +37,11 @@ function Clear-Logs {
     foreach ($dir in $repo, $wt) { Remove-Item -Recurse -Force (Join-Path $dir '.nightshift') -ErrorAction SilentlyContinue }
 }
 
-function Invoke-Hook([string]$Event, [string]$Payload, [string]$Dir = $repo) {
+function Invoke-Hook([string]$EventName, [string]$Payload, [string]$Dir = $repo) {
     # Returns the hook's stdout as one string and sets $script:exitCode.
     Push-Location $Dir
     try {
-        $out = $Payload | & $Shell -NoProfile -ExecutionPolicy Bypass -File $hook -Event $Event 2>$null
+        $out = $Payload | & $Shell -NoProfile -ExecutionPolicy Bypass -File $hook -Event $EventName 2>$null
         $script:exitCode = $LASTEXITCODE
     }
     finally { Pop-Location }
@@ -60,7 +61,7 @@ function Check([string]$Name, [bool]$Ok, [string]$Detail = '') {
 
 function Test-Blocks([string]$Name, [string]$Out, [string]$Log) {
     $reason = $null
-    try { $json = $Out | ConvertFrom-Json; if ($json.decision -eq 'block') { $reason = $json.reason } } catch { }
+    try { $json = $Out | ConvertFrom-Json; if ($json.decision -eq 'block') { $reason = $json.reason } } catch { $reason = $null }
     $ok = $reason -and $reason.StartsWith('Nightshift watchdog: read ') -and
         $reason.IndexOf($skill, [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
         $reason.EndsWith("Log: $Log", [StringComparison]::OrdinalIgnoreCase) -and $Out -notmatch "`n"
@@ -80,25 +81,25 @@ try {
     Invoke-TestGit -C $repo commit -q --allow-empty -m base
     Invoke-TestGit -C $repo worktree add -q $wt
 
-    $log = Write-Log $repo 'LOG-2026-11-17.md' 'in progress' 'night'
+    $log = Write-TestLog $repo 'LOG-2026-11-17.md' 'in progress' 'night'
     Test-Blocks 'agentStop blocks for an in-progress log' (Invoke-Hook agentStop (New-Payload night)) $log
     Test-Blocks 'agentStop blocks from a task worktree' (Invoke-Hook agentStop (New-Payload night $wt) $wt) $log
     Test-Blocks 'snake_case session_id works' (Invoke-Hook agentStop (New-Payload night -IdKey session_id)) $log
     Test-Silent 'agentStop ignores another session' (Invoke-Hook agentStop (New-Payload day))
 
-    $log = Write-Log $repo 'LOG-2026-11-17.md' 'waiting for reviews' 'night'
+    $log = Write-TestLog $repo 'LOG-2026-11-17.md' 'waiting for reviews' 'night'
     Test-Blocks 'agentStop blocks while waiting for reviews' (Invoke-Hook agentStop (New-Payload night)) $log
 
-    Write-Log $repo 'LOG-2026-11-17.md' 'complete' 'night' | Out-Null
+    Write-TestLog $repo 'LOG-2026-11-17.md' 'complete' 'night' | Out-Null
     Test-Silent 'agentStop passes once complete' (Invoke-Hook agentStop (New-Payload night))
 
-    Write-Log $repo 'LOG-2026-11-17.md' 'in progress (paused)' 'night' | Out-Null
+    Write-TestLog $repo 'LOG-2026-11-17.md' 'in progress (paused)' 'night' | Out-Null
     Test-Silent 'status must match exactly' (Invoke-Hook agentStop (New-Payload night))
 
-    $quoted = Write-Log $repo 'LOG-2026-11-17.md' 'complete' 'night'
+    $quoted = Write-TestLog $repo 'LOG-2026-11-17.md' 'complete' 'night'
     [IO.File]::AppendAllText($quoted, "``````text`nStatus: in progress`n``````n", $utf8)
     Test-Silent 'status in the body is ignored' (Invoke-Hook agentStop (New-Payload night))
-    $quoted = Write-Log $repo 'LOG-2026-11-17.md' 'in progress' 'night'
+    $quoted = Write-TestLog $repo 'LOG-2026-11-17.md' 'in progress' 'night'
     [IO.File]::AppendAllText($quoted, "``````text`nSession: day`n``````n", $utf8)
     Test-Silent 'session in the body is ignored' (Invoke-Hook agentStop (New-Payload day))
 
@@ -108,23 +109,23 @@ try {
 
     $env:COPILOT_PROJECT_DIR = $repo
     try {
-        $log = Write-Log $repo 'LOG-2026-11-17.md' 'in progress' 'night'
+        $log = Write-TestLog $repo 'LOG-2026-11-17.md' 'in progress' 'night'
         Test-Blocks 'COPILOT_PROJECT_DIR finds the log from outside the repository' (Invoke-Hook agentStop (New-Payload night $plain) $plain) $log
     }
     finally { Remove-Item Env:COPILOT_PROJECT_DIR -ErrorAction SilentlyContinue; Clear-Logs }
 
-    $log = Write-Log $wt 'LOG-2026-11-17.md' 'in progress' 'night'
+    $log = Write-TestLog $wt 'LOG-2026-11-17.md' 'in progress' 'night'
     Test-Blocks 'agentStop finds a log in the other worktree' (Invoke-Hook agentStop (New-Payload night)) $log
 
-    Write-Log $repo 'LOG-2026-11-16.md' 'in progress' 'night' | Out-Null
-    $log = Write-Log $repo 'LOG-2026-11-18.md' 'in progress' 'night'
+    Write-TestLog $repo 'LOG-2026-11-16.md' 'in progress' 'night' | Out-Null
+    $log = Write-TestLog $repo 'LOG-2026-11-18.md' 'in progress' 'night'
     Test-Blocks 'newest of several active logs wins' (Invoke-Hook agentStop (New-Payload night)) $log
 
     Test-Silent 'malformed JSON passes' (Invoke-Hook agentStop '{"sessionId": "night", ')
     Test-Silent 'empty payload passes' (Invoke-Hook agentStop '')
 
     Clear-Logs
-    $log = Write-Log $repo 'LOG-2026-11-18.md' 'in progress' 'night'
+    $log = Write-TestLog $repo 'LOG-2026-11-18.md' 'in progress' 'night'
     $before = [IO.File]::ReadAllText($log)
     $prompt = @{ notification_type = 'permission_prompt'; message = 'Allow?' }
     $out = Invoke-Hook notification (New-Payload night -Extra $prompt)
@@ -134,7 +135,7 @@ try {
         $added.EndsWith("`n") -and ($added.Split("`n").Count -eq 2) -and
         ($added.TrimEnd("`n") -cmatch $promptLine)) "out '$out', added '$added'"
 
-    $log = Write-Log $repo 'LOG-2026-11-18.md' 'in progress' 'night' -NoTrailingNewline
+    $log = Write-TestLog $repo 'LOG-2026-11-18.md' 'in progress' 'night' -NoTrailingNewline
     $before = [IO.File]::ReadAllText($log)
     Invoke-Hook notification (New-Payload night -Extra $prompt) | Out-Null
     $lines = [IO.File]::ReadAllLines($log)

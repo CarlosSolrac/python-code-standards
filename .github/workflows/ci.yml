@@ -121,3 +121,58 @@ jobs:
         env:
           RESULT: ${{ needs.design-spec.result }}
         run: test "$RESULT" = success
+
+  # Shell and PowerShell scripts: both linters once, then the nightshift hooks'
+  # own tests under every shell that runs the hooks on each system (Claude Code
+  # runs deny-unattended.sh with bash, Git Bash on Windows; Copilot runs
+  # nightshift-hook.ps1 with pwsh, or Windows PowerShell on Windows).
+  scripts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      SHELLCHECK_VERSION: "0.11.0.1" # renovate: datasource=pypi depName=shellcheck-py
+      PSSCRIPTANALYZER_VERSION: "1.25.0" # renovate: datasource=nuget depName=PSScriptAnalyzer registryUrl=https://www.powershellgallery.com/api/v2/
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        if: runner.os == 'Linux'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: 0.13.8
+
+      - name: ShellCheck
+        if: runner.os == 'Linux'
+        run: git ls-files -z '*.sh' | xargs -0 uvx --from "shellcheck-py==$SHELLCHECK_VERSION" shellcheck
+
+      # Imported by version, because the runner image may carry another one.
+      - name: PSScriptAnalyzer
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -RequiredVersion $env:PSSCRIPTANALYZER_VERSION -Scope CurrentUser -Force
+          Import-Module PSScriptAnalyzer -RequiredVersion $env:PSSCRIPTANALYZER_VERSION
+          $findings = @(git ls-files '*.ps1' | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Settings ./PSScriptAnalyzerSettings.psd1 })
+          $findings | Format-Table ScriptName, Line, Severity, RuleName, Message -AutoSize -Wrap
+          if ($findings.Count -gt 0) { exit 1 }
+
+      - name: deny-unattended.sh tests (bash)
+        run: bash nightshift/hooks/test-deny-unattended.sh
+
+      - name: nightshift-hook.ps1 tests (pwsh)
+        shell: pwsh
+        run: ./copilot/nightshift/hooks/test-nightshift-hook.ps1 -Shell pwsh
+
+      - name: nightshift-hook.ps1 tests (Windows PowerShell)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\copilot\nightshift\hooks\test-nightshift-hook.ps1 -Shell powershell.exe

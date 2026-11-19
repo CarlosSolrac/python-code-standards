@@ -25,7 +25,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $logDir = Join-Path $env:LOCALAPPDATA 'python-code-standards'
 $logPath = Join-Path $logDir 'nightly-sync.log'
 
-function Write-Log([string] $outcome, [string] $detail) {
+function Write-SyncLog([string] $outcome, [string] $detail) {
     if (-not (Test-Path -LiteralPath $logDir)) {
         [void](New-Item -ItemType Directory -Path $logDir)
     }
@@ -43,12 +43,12 @@ function Show-Toast([string] $text) {
         $appId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
         [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId).Show([Windows.UI.Notifications.ToastNotification]::new($xml))
     } catch {
-        Write-Log 'notice' "notification not shown: $($_.Exception.Message)"
+        Write-SyncLog 'notice' "notification not shown: $($_.Exception.Message)"
     }
 }
 
 function Stop-Sync([string] $outcome, [string] $detail) {
-    Write-Log $outcome $detail
+    Write-SyncLog $outcome $detail
     if ($outcome -eq 'skipped' -or $outcome -eq 'failed') {
         Show-Toast "${outcome}: $detail"
     }

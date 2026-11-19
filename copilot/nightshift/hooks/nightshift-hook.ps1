@@ -9,6 +9,7 @@
 # agentStop: the watchdog. Block the stop and tell the agent to continue the night.
 #
 # Any failure exits 0 without output: these events must never break the session.
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidAssignmentToAutomaticVariable', 'Event', Justification = '-Event is the installed hook command line; $Event is automatic only inside event actions.')]
 param([Parameter(Mandatory)][ValidateSet('notification', 'agentStop')][string]$Event)
 
 function Invoke-Git {
