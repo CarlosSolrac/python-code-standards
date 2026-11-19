@@ -2,6 +2,10 @@
 # Tests deny-unattended.sh against throwaway repositories: it acts only for a session that a
 # running log in one of the repository's worktrees names, and stays silent for every other case.
 set -u
+# A fixed identity, so the commits below succeed where git has none configured (CI runners);
+# without them the worktrees are never created and the worktree cases pass vacuously.
+export GIT_AUTHOR_NAME='Nightshift Test' GIT_AUTHOR_EMAIL='nightshift@example.invalid'
+export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME" GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
 hook="$(cd "$(dirname "$0")" && pwd)/deny-unattended.sh"
 repo=$(mktemp -d)
 trap 'rm -rf "$repo"' EXIT
@@ -93,4 +97,9 @@ expect "passes a repository without a log" "$(run "$nolog" PermissionRequest nig
 rm -rf "$nolog"
 expect "passes outside a repository" "$(run /tmp PermissionRequest night-session)" ""
 
-[ "$failures" -eq 0 ] && echo "all passed" || { echo "$failures failed"; exit 1; }
+if [ "$failures" -eq 0 ]; then
+	echo "all passed"
+else
+	echo "$failures failed"
+	exit 1
+fi

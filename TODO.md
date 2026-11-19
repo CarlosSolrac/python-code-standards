@@ -1,8 +1,10 @@
-Not for nightshift: item 1 edits other repositories; items 2–7 moved to docs/plans/design-spec-review.md.
+Not for nightshift: item 1 edited other repositories and is done; items 2–7 moved to docs/plans/design-spec-review.md.
 
 # TODO
 
-1. **Fill the template.** Skill §8 sends every Standard pipeline to `template-0-summaries`, whose index holds only a README; `template-sqlmesh-duckdb` is empty. Until it is filled, eval 1 (template found) fails. When filling it, draw the worked examples' context view as a flowchart with the system as a boundary subgraph (design-spec §3 artifact #2), not `C4Context`. Planned for a separate session.
+## ✅ Completed: Fill the template
+
+**Status: confirmed done 2026-11-18.** Skill §8 sends every Standard pipeline to `template-0-summaries`; its README now indexes `template-sqlmesh-duckdb` (status Ready), which holds the filled pipeline, and that template's `docs/design.md` draws the context view as a flowchart with the system as a boundary subgraph (design-spec §3 artifact #2), not `C4Context`.
 
 ## ✅ Completed: Nightshift: turn permission prompts into blockers instead of stalls (option A)
 

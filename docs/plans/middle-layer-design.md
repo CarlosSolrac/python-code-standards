@@ -1,3 +1,5 @@
+Not for nightshift: all tasks done (verified 2026-11-18 by their done-checks); kept as the record of decisions.
+
 # Plan: a stronger middle layer — design shape, outside-in TDD, a pass-through check, and an eval
 
 Source material: the daytime review of 2026-10-23, which traced weak middle layers to the guidance in

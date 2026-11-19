@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-repo_root=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+repo_root=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 profile=$repo_root/.claude/profiles/qwen.json
 
 action=${1-}
