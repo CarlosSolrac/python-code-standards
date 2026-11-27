@@ -369,13 +369,13 @@ Keep the sections in this order so the morning reader sees what needs them first
 # Nightshift log — <project> — <YYYY-MM-DD>
 
 Status: in progress | waiting for reviews | complete
-Started: <YYYY-MM-DD HH:MM> · Last update: <YYYY-MM-DD HH:MM> · Finished: <YYYY-MM-DD HH:MM>
+Started: <YYYY-MM-DD HH:MM ±HHMM> · Last update: <YYYY-MM-DD HH:MM> · Finished: <YYYY-MM-DD HH:MM ±HHMM>
 Session: <id of the Copilot session running the night>
 Host: Copilot CLI
 
 ## Morning summary
 <Written last. Once complete, the Close-the-session warning first, then
-`Started: <YYYY-MM-DD HH:MM> · Completed: <YYYY-MM-DD HH:MM> · Elapsed: <Xh YYm>`.
+`Started: <YYYY-MM-DD HH:MM ±HHMM> · Completed: <YYYY-MM-DD HH:MM ±HHMM> · Elapsed: <Xh YYm>`.
 Done: N (PR links).
 Blocked: N. Decisions worth reviewing, highest stakes first, one line each with a link to
 the entry. Anything left running or left behind, such as worktrees kept after a failed push.>
@@ -420,7 +420,9 @@ Needs from you: <the specific thing>
 
 `Started` is set once, when the log is created, and `Finished` stays `—` until the status
 becomes `complete`. The Morning summary's times line copies both, with dates so a night that
-spans midnight reads correctly. Elapsed is `Finished` − `Started` on the wall clock, so it
+spans midnight reads correctly. `Started` and `Finished` carry the UTC offset (`date '+%Y-%m-%d %H:%M %z'`; in PowerShell
+`Get-Date -Format 'yyyy-MM-dd HH:mm zzz'; either ±HHMM or ±HH:MM is fine`) so a daylight-saving change cannot skew the
+elapsed time. Elapsed is `Finished` − `Started` with both offsets applied, so it
 includes time spent `waiting for reviews`. While the night is `waiting for reviews`, write
 `Completed: — (waiting for reviews)` and the elapsed time so far, marked `(so far)`.
 
