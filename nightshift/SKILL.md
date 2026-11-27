@@ -387,7 +387,8 @@ includes time spent `waiting for Codex`. While the night is `waiting for Codex`,
 
 Each `##` heading appears once: update a section in place, never append a second copy of
 it. Timestamps use local time, read from the clock as each entry is written (`date +%H:%M`
-for the timeline, `date '+%Y-%m-%d %H:%M'` for the header); never estimate one. Update
+for the timeline, `date '+%Y-%m-%d %H:%M'` for `Last update`, and the offset-aware command
+above for `Started` and `Finished`); never estimate one. Update
 `Last update` on every write.
 
 ## Running it

@@ -79,7 +79,8 @@ not passed.
   answer to them, which would stall the night. Never call an MCP tool that may ask for input,
   consent or a sign-in overnight; get the same result another way or log a blocker.
 - **Clock.** Read times with `Get-Date -Format HH:mm` and `Get-Date -Format 'yyyy-MM-dd HH:mm'`
-  (or `date +%H:%M` / `date '+%Y-%m-%d %H:%M'` in bash); never estimate one.
+  (or `date +%H:%M` / `date '+%Y-%m-%d %H:%M'` in bash); never estimate one. `Started` and
+  `Finished` also need the UTC offset: see *Log format*.
 
 ## Start of every wake-up
 
