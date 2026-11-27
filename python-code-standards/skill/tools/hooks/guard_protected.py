@@ -113,7 +113,9 @@ def protected_reason(tool_name: str, tool_input: object) -> str | None:
 
 def file_tool_reason(tool_name: str, tool_input: dict[object, object] | str) -> str | None:
     """Return why a file-tool input needs approval, or None when its targets are ordinary files."""
-    if tool_name != "apply_patch" and isinstance(tool_input, str):
+    if tool_name == "apply_patch":
+        tool_input = unwrap_patch(tool_input)
+    elif isinstance(tool_input, str):
         return "This file tool input could not be inspected for quality-gate changes, so the user must approve it."
     paths: list[str] | None = target_paths(tool_input)
     if not paths:
@@ -144,6 +146,19 @@ def decode_input(tool_input: object) -> object:
             return tool_input
         else:
             return decoded
+    return tool_input
+
+
+def unwrap_patch(tool_input: dict[object, object] | str) -> dict[object, object] | str:
+    """Return the raw patch from an apply_patch input of the form {"input": "<patch>"}, else the input unchanged.
+
+    Only an object whose single key is "input" is unwrapped, so any other shape
+    still falls through to the structured checks and asks when it cannot be read.
+    """
+    if isinstance(tool_input, dict) and tool_input.keys() == {"input"}:
+        patch: object = tool_input["input"]
+        if isinstance(patch, str):
+            return patch
     return tool_input
 
 

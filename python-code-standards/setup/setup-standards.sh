@@ -2062,7 +2062,9 @@ def protected_reason(tool_name: str, tool_input: object) -> str | None:
 
 def file_tool_reason(tool_name: str, tool_input: dict[object, object] | str) -> str | None:
     """Return why a file-tool input needs approval, or None when its targets are ordinary files."""
-    if tool_name != "apply_patch" and isinstance(tool_input, str):
+    if tool_name == "apply_patch":
+        tool_input = unwrap_patch(tool_input)
+    elif isinstance(tool_input, str):
         return "This file tool input could not be inspected for quality-gate changes, so the user must approve it."
     paths: list[str] | None = target_paths(tool_input)
     if not paths:
@@ -2093,6 +2095,19 @@ def decode_input(tool_input: object) -> object:
             return tool_input
         else:
             return decoded
+    return tool_input
+
+
+def unwrap_patch(tool_input: dict[object, object] | str) -> dict[object, object] | str:
+    """Return the raw patch from an apply_patch input of the form {"input": "<patch>"}, else the input unchanged.
+
+    Only an object whose single key is "input" is unwrapped, so any other shape
+    still falls through to the structured checks and asks when it cannot be read.
+    """
+    if isinstance(tool_input, dict) and tool_input.keys() == {"input"}:
+        patch: object = tool_input["input"]
+        if isinstance(patch, str):
+            return patch
     return tool_input
 
 
@@ -3025,6 +3040,7 @@ cat >"$WORK/hashes.json" <<'HASHEOF'
    "6b92ef9bf25ad82304d6b2ed34243929077d3c85ce3d9cff6a2c6d0cc305ea32",
    "7231795635fee1ecd9ca7e1018cbe834891bc47d3ff6701c7e784e7fff98c429",
    "7a4370b125283c970250197c326b05cf9c75d4a8d412e46f5ee4d2fe4957f39b",
+   "9065de3fb8a4f0e30792a358218946e2c34e468ea1aa138f3987cd3f52752785",
    "d3e624d7d678977a95888816f4995b28f7ed7e9fbce6eefad3a51741d055ab07",
    "f232e75c6f8ef6af4d73cc106eb935a2bdf3b596af991fecc45524b80a46b647",
    "f5effd54169dcf6e1ffc50918fb369f6d6429faedfe9a43001551ba8fe9f71d3"

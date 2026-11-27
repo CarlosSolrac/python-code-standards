@@ -442,11 +442,27 @@ def test_raw_apply_patch_that_deletes_or_moves_onto_a_gate_file_asks(header: str
     assert str(specific["permissionDecisionReason"]).startswith("pyproject.toml defines a quality gate")
 
 
-def test_apply_patch_nested_in_an_object_asks_as_uninspectable_pinned_not_endorsed() -> None:
-    """Pins today's behaviour: a patch under an unrecognised key is never parsed, so even an ordinary-file patch asks."""
+def test_apply_patch_wrapped_in_an_input_object_to_an_ordinary_file_is_silent() -> None:
+    """Copilot can send the patch as {"input": "<patch>"}; its file headers are read like a raw patch."""
     patch: str = "*** Begin Patch\n*** Update File: src/app.py\n*** End Patch"
+    assert run_event({"tool_name": "apply_patch", "tool_input": {"input": patch}}) is None
+
+
+def test_apply_patch_wrapped_in_an_input_object_to_a_gate_file_asks() -> None:
+    patch: str = "*** Begin Patch\n*** Update File: src/app.py\n*** Update File: pyproject.toml\n*** End Patch"
     decision: dict[str, object] | None = run_event({"tool_name": "apply_patch", "tool_input": {"input": patch}})
     assert decision is not None
     specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
-    assert specific["permissionDecision"] == "ask"
+    assert str(specific["permissionDecisionReason"]).startswith("pyproject.toml defines a quality gate")
+
+
+@pytest.mark.parametrize(
+    "tool_input",
+    [{"input": "*** Begin Patch\n*** Update File: src/app.py\n*** End Patch", "extra": "x"}, {"input": ["*** Update File: src/app.py"]}],
+    ids=["extra-key", "non-string-input"],
+)
+def test_apply_patch_object_that_is_not_a_bare_input_wrapper_asks_as_uninspectable(tool_input: dict[str, object]) -> None:
+    decision: dict[str, object] | None = run_event({"tool_name": "apply_patch", "tool_input": tool_input})
+    assert decision is not None
+    specific: dict[str, object] = cast("dict[str, object]", decision["hookSpecificOutput"])
     assert str(specific["permissionDecisionReason"]) == "This file tool input could not be inspected for quality-gate changes, so the user must approve it."
