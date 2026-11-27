@@ -74,10 +74,10 @@ not passed.
    then update the plan table and timeline in one write, so an interrupted re-evaluation
    leaves the log stale and the next wake-up repeats it. Resume only if open items remain:
    tasks still `todo` or `in progress`, or reviews pending. Otherwise write the *Morning
-   summary*, set `Status: complete`, delete the watchdog with `CronDelete`, and stop with
-   the *Close-the-session warning*.
-2. Otherwise this is a new night. Run the *Preflight*, start the *Watchdog*, then build the
-   *Plan*.
+   summary*, set `Status: complete` and `Finished:` (see *Log format*), delete the watchdog
+   with `CronDelete`, and stop with the *Close-the-session warning*.
+2. Otherwise this is a new night. Create the log with `Started:` set from the clock, run the
+   *Preflight*, start the *Watchdog*, then build the *Plan*.
 
 ### Watchdog
 
@@ -161,14 +161,15 @@ Repeat until every task is `done` or `blocked`:
 
 When no task is left `todo`, write the *Morning summary*. If reviews are still pending, set
 `Status: waiting for Codex`, keep the watchdog, and end the turn; each watchdog wake-up
-retries them and updates the summary. Once none are pending, set `Status: complete`, delete
-the watchdog with `CronDelete`, and stop with the *Close-the-session warning*. Do not look
+retries them and updates the summary. Once none are pending, set `Status: complete` and
+`Finished:` (see *Log format*), delete the watchdog with `CronDelete`, and stop with the
+*Close-the-session warning*. Do not look
 for more work.
 
 ### Close-the-session warning
 
 Whenever the night ends with `Status: complete`, open the *Morning summary* and the final
-reply with this banner, word for word. Terminal replies show no colours, so the coloured
+reply with this banner, word for word, followed by the times line from *Log format*. Terminal replies show no colours, so the coloured
 emoji carry them:
 
 ```markdown
@@ -332,7 +333,9 @@ Started: <YYYY-MM-DD HH:MM> · Last update: <YYYY-MM-DD HH:MM> · Finished: <YYY
 Session: <id of the session running the night>
 
 ## Morning summary
-<Written last. Once complete, the Close-the-session warning first. Done: N (PR links).
+<Written last. Once complete, the Close-the-session warning first, then
+`Started: <YYYY-MM-DD HH:MM> · Completed: <YYYY-MM-DD HH:MM> · Elapsed: <Xh YYm>`.
+Done: N (PR links).
 Blocked: N. Decisions worth reviewing, highest stakes first, one line each with a link to
 the entry. Anything left running or left behind, such as worktrees kept after a failed push.>
 
@@ -373,6 +376,12 @@ Needs from you: <the specific thing>
 ## Timeline
 - <time> <event>
 ```
+
+`Started` is set once, when the log is created, and `Finished` stays `—` until the status
+becomes `complete`. The Morning summary's times line copies both, with dates so a night that
+spans midnight reads correctly. Elapsed is `Finished` − `Started` on the wall clock, so it
+includes time spent `waiting for Codex`. While the night is `waiting for Codex`, write
+`Completed: — (waiting for Codex)` and the elapsed time so far, marked `(so far)`.
 
 Each `##` heading appears once: update a section in place, never append a second copy of
 it. Timestamps use local time, read from the clock as each entry is written (`date +%H:%M`

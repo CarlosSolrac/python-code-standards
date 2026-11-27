@@ -104,9 +104,10 @@ the `agentStop` hook (*Keeping the night going*), or an autopilot continuation.
    then update the plan table and timeline in one write, so an interrupted re-evaluation
    leaves the log stale and the next wake-up repeats it. Resume only if open items remain:
    tasks still `todo` or `in progress`, or reviews pending. Otherwise write the *Morning
-   summary*, set `Status: complete`, and stop with the *Close-the-session warning*.
-2. Otherwise, if the user typed `/nightshift`, this is a new night: run the *Preflight*,
-   then build the *Plan*. A watchdog prompt or an autopilot continuation with no open log
+   summary*, set `Status: complete` and `Finished:` (see *Log format*), and stop with the
+   *Close-the-session warning*.
+2. Otherwise, if the user typed `/nightshift`, this is a new night: create the log with
+   `Started:` set from the clock, run the *Preflight*, then build the *Plan*. A watchdog prompt or an autopilot continuation with no open log
    means the night is over: reply that nightshift is complete and stop.
 
 ### Keeping the night going
@@ -197,13 +198,13 @@ Repeat until every task is `done` or `blocked`:
 When no task is left `todo`, write the *Morning summary*. If reviews are still pending, set
 `Status: waiting for reviews`, wait 20 minutes (two sync `Start-Sleep -Seconds 600` shell
 calls), retry them, update the summary, and repeat; if the turn ends meanwhile, the watchdog
-resumes it. Once none are pending, set `Status: complete` and stop with the
-*Close-the-session warning*. Do not look for more work.
+resumes it. Once none are pending, set `Status: complete` and `Finished:` (see *Log
+format*) and stop with the *Close-the-session warning*. Do not look for more work.
 
 ### Close-the-session warning
 
 Whenever the night ends with `Status: complete`, open the *Morning summary* and the final
-reply with this banner, word for word. Terminal replies show no colours, so the coloured
+reply with this banner, word for word, followed by the times line from *Log format*. Terminal replies show no colours, so the coloured
 emoji carry them:
 
 ```markdown
@@ -373,7 +374,9 @@ Session: <id of the Copilot session running the night>
 Host: Copilot CLI
 
 ## Morning summary
-<Written last. Once complete, the Close-the-session warning first. Done: N (PR links).
+<Written last. Once complete, the Close-the-session warning first, then
+`Started: <YYYY-MM-DD HH:MM> · Completed: <YYYY-MM-DD HH:MM> · Elapsed: <Xh YYm>`.
+Done: N (PR links).
 Blocked: N. Decisions worth reviewing, highest stakes first, one line each with a link to
 the entry. Anything left running or left behind, such as worktrees kept after a failed push.>
 
@@ -414,6 +417,12 @@ Needs from you: <the specific thing>
 ## Timeline
 - <time> <event>
 ```
+
+`Started` is set once, when the log is created, and `Finished` stays `—` until the status
+becomes `complete`. The Morning summary's times line copies both, with dates so a night that
+spans midnight reads correctly. Elapsed is `Finished` − `Started` on the wall clock, so it
+includes time spent `waiting for reviews`. While the night is `waiting for reviews`, write
+`Completed: — (waiting for reviews)` and the elapsed time so far, marked `(so far)`.
 
 Each `##` heading appears once: update a section in place, never append a second copy of
 it. The hook appends permission-prompt lines at the end of the file, which is the
