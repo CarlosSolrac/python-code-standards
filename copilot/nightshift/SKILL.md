@@ -104,8 +104,8 @@ the `agentStop` hook (*Keeping the night going*), or an autopilot continuation.
    whether its branch and worktree still exist. Check every task before writing anything,
    then update the plan table and timeline in one write, so an interrupted re-evaluation
    leaves the log stale and the next wake-up repeats it. Resume only if open items remain:
-   tasks still `todo` or `in progress`, or reviews pending. Otherwise write the *Morning
-   summary*, set `Status: complete` and `Finished:` (see *Log format*), and stop with the
+   tasks still `todo` or `in progress`, or reviews pending. Otherwise set `Status:
+   complete` and `Finished:` (see *Log format*), write the *Morning summary*, and stop with the
    *Close-the-session warning*.
 2. Otherwise, if the user typed `/nightshift`, this is a new night: create the log with
    `Started:` set from the clock, run the *Preflight*, then build the *Plan*. A watchdog prompt or an autopilot continuation with no open log
@@ -200,7 +200,7 @@ When no task is left `todo`, write the *Morning summary*. If reviews are still p
 `Status: waiting for reviews`, wait 20 minutes (two sync `Start-Sleep -Seconds 600` shell
 calls), retry them, update the summary, and repeat; if the turn ends meanwhile, the watchdog
 resumes it. Once none are pending, set `Status: complete` and `Finished:` (see *Log
-format*) and stop with the *Close-the-session warning*. Do not look for more work.
+format*), rewrite the summary's times line from them, and stop with the *Close-the-session warning*. Do not look for more work.
 
 ### Close-the-session warning
 

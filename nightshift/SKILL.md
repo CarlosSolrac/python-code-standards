@@ -73,9 +73,9 @@ not passed.
    whether its branch and worktree still exist. Check every task before writing anything,
    then update the plan table and timeline in one write, so an interrupted re-evaluation
    leaves the log stale and the next wake-up repeats it. Resume only if open items remain:
-   tasks still `todo` or `in progress`, or reviews pending. Otherwise write the *Morning
-   summary*, set `Status: complete` and `Finished:` (see *Log format*), delete the watchdog
-   with `CronDelete`, and stop with the *Close-the-session warning*.
+   tasks still `todo` or `in progress`, or reviews pending. Otherwise set `Status:
+   complete` and `Finished:` (see *Log format*), write the *Morning summary*, delete the
+   watchdog with `CronDelete`, and stop with the *Close-the-session warning*.
 2. Otherwise this is a new night. Create the log with `Started:` set from the clock, run the
    *Preflight*, start the *Watchdog*, then build the *Plan*.
 
@@ -162,7 +162,7 @@ Repeat until every task is `done` or `blocked`:
 When no task is left `todo`, write the *Morning summary*. If reviews are still pending, set
 `Status: waiting for Codex`, keep the watchdog, and end the turn; each watchdog wake-up
 retries them and updates the summary. Once none are pending, set `Status: complete` and
-`Finished:` (see *Log format*), delete the watchdog with `CronDelete`, and stop with the
+`Finished:` (see *Log format*), rewrite the summary's times line from them, delete the watchdog with `CronDelete`, and stop with the
 *Close-the-session warning*. Do not look
 for more work.
 
