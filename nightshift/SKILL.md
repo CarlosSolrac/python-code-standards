@@ -384,7 +384,9 @@ spans midnight reads correctly. `Started` and `Finished` carry the UTC offset (`
 `Get-Date -Format 'yyyy-MM-dd HH:mm zzz'; either ±HHMM or ±HH:MM is fine`) so a daylight-saving change cannot skew the
 elapsed time. Elapsed is `Finished` − `Started` with both offsets applied, so it
 includes time spent `waiting for Codex`. While the night is `waiting for Codex`, write
-`Completed: — (waiting for Codex)` and the elapsed time so far, marked `(so far)`.
+`Completed: — (waiting for Codex)` and the elapsed time so far, marked `(so far)`. A log from before offsets
+were recorded has a `Started` with none: keep it unchanged, read it at the current local
+offset, and mark the elapsed time `(approx.)`.
 
 Each `##` heading appears once: update a section in place, never append a second copy of
 it. Timestamps use local time, read from the clock as each entry is written (`date +%H:%M`
