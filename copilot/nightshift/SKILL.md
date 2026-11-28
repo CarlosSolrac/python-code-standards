@@ -142,8 +142,9 @@ Check once and record the results under `## Setup` in the log.
   *Needs you* and continue.
 - Models: read them (*Host facts*) and record the coding and review model ids in effect.
 - Repository root (`git rev-parse --show-toplevel`) and default branch. Not a git
-  repository: write the log, mark it `complete` with a blocker explaining that nightshift
-  needs git to keep work reversible, and stop.
+  repository: write the log, mark it `complete` with `Finished:` set and a blocker explaining
+  that nightshift needs git to keep work reversible, write the *Morning summary* with its
+  times line, and stop.
 - `git fetch`; note whether `origin` exists and `gh auth status` succeeds. If pushing or PRs
   are unavailable, decide to keep branches local, log that decision, and continue.
 - The project's own checks — find them in the instruction files, README, `pyproject.toml`,
