@@ -44,9 +44,13 @@ MIRRORS: dict[str, dict[str, Substitutions]] = {
                 "| Reviews | Branch / PR | |---|------|--------|------------|--------|---------|-------------|",
             ),
             ("— job <id> failed <time>:", "— <model> failed <time>:"),
+            (
+                "time spent `waiting for Codex`. While the night is `waiting for Codex`, write `Completed: — (waiting for Codex)`",
+                "time spent `waiting for reviews`. While the night is `waiting for reviews`, write `Completed: — (waiting for reviews)`",
+            ),
             ("<preflight results: settings, default branch,", "<preflight results: settings, models, hook, default branch,"),
             (
-                "Timestamps use local time, read from the clock as each entry is written (`date +%H:%M` for the timeline, `date '+%Y-%m-%d %H:%M'` for the header); never estimate one.",
+                "Timestamps use local time, read from the clock as each entry is written (`date +%H:%M` for the timeline, `date '+%Y-%m-%d %H:%M'` for `Last update`, and the offset-aware command above for `Started` and `Finished`); never estimate one.",
                 "The hook appends permission-prompt lines at the end of the file, which is the *Timeline*.",
             ),
         ],
