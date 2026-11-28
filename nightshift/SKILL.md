@@ -73,11 +73,11 @@ not passed.
    whether its branch and worktree still exist. Check every task before writing anything,
    then update the plan table and timeline in one write, so an interrupted re-evaluation
    leaves the log stale and the next wake-up repeats it. Resume only if open items remain:
-   tasks still `todo` or `in progress`, or reviews pending. Otherwise write the *Morning
-   summary*, set `Status: complete`, delete the watchdog with `CronDelete`, and stop with
-   the *Close-the-session warning*.
-2. Otherwise this is a new night. Run the *Preflight*, start the *Watchdog*, then build the
-   *Plan*.
+   tasks still `todo` or `in progress`, or reviews pending. Otherwise set `Status:
+   complete` and `Finished:` (see *Log format*), write the *Morning summary*, delete the
+   watchdog with `CronDelete`, and stop with the *Close-the-session warning*.
+2. Otherwise this is a new night. Create the log with `Started:` set from the clock, run the
+   *Preflight*, start the *Watchdog*, then build the *Plan*.
 
 ### Watchdog
 
@@ -104,8 +104,9 @@ Check once and record the results under `## Setup` in the log.
   matcher `permission_prompt` (see *Running it*). If it does not, the first permission
   prompt stalls the night: log it under *Needs you* and continue.
 - Repository root (`git rev-parse --show-toplevel`) and default branch. Not a git
-  repository: write the log, mark it `complete` with a blocker explaining that nightshift
-  needs git to keep work reversible, and stop.
+  repository: write the log, mark it `complete` with `Finished:` set and a blocker explaining
+  that nightshift needs git to keep work reversible, write the *Morning summary* with its
+  times line, and stop.
 - `git fetch`; note whether `origin` exists and `gh auth status` succeeds. If pushing or PRs
   are unavailable, decide to keep branches local, log that decision, and continue.
 - The project's own checks — find them in CLAUDE.md, README, `pyproject.toml`,
@@ -161,14 +162,15 @@ Repeat until every task is `done` or `blocked`:
 
 When no task is left `todo`, write the *Morning summary*. If reviews are still pending, set
 `Status: waiting for Codex`, keep the watchdog, and end the turn; each watchdog wake-up
-retries them and updates the summary. Once none are pending, set `Status: complete`, delete
-the watchdog with `CronDelete`, and stop with the *Close-the-session warning*. Do not look
+retries them and updates the summary. Once none are pending, set `Status: complete` and
+`Finished:` (see *Log format*), rewrite the summary's times line from them, delete the watchdog with `CronDelete`, and stop with the
+*Close-the-session warning*. Do not look
 for more work.
 
 ### Close-the-session warning
 
 Whenever the night ends with `Status: complete`, open the *Morning summary* and the final
-reply with this banner, word for word. Terminal replies show no colours, so the coloured
+reply with this banner, word for word, followed by the times line from *Log format*. Terminal replies show no colours, so the coloured
 emoji carry them:
 
 ```markdown
@@ -328,11 +330,13 @@ Keep the sections in this order so the morning reader sees what needs them first
 # Nightshift log — <project> — <YYYY-MM-DD>
 
 Status: in progress | waiting for Codex | complete
-Started: <YYYY-MM-DD HH:MM> · Last update: <YYYY-MM-DD HH:MM> · Finished: <YYYY-MM-DD HH:MM>
+Started: <YYYY-MM-DD HH:MM ±HHMM> · Last update: <YYYY-MM-DD HH:MM> · Finished: <YYYY-MM-DD HH:MM ±HHMM>
 Session: <id of the session running the night>
 
 ## Morning summary
-<Written last. Once complete, the Close-the-session warning first. Done: N (PR links).
+<Written last. Once complete, the Close-the-session warning first, then
+`Started: <YYYY-MM-DD HH:MM ±HHMM> · Completed: <YYYY-MM-DD HH:MM ±HHMM> · Elapsed: <Xh YYm>`.
+Done: N (PR links).
 Blocked: N. Decisions worth reviewing, highest stakes first, one line each with a link to
 the entry. Anything left running or left behind, such as worktrees kept after a failed push.>
 
@@ -374,9 +378,20 @@ Needs from you: <the specific thing>
 - <time> <event>
 ```
 
+`Started` is set once, when the log is created, and `Finished` stays `—` until the status
+becomes `complete`. The Morning summary's times line copies both, with dates so a night that
+spans midnight reads correctly. `Started` and `Finished` carry the UTC offset (`date '+%Y-%m-%d %H:%M %z'`; in PowerShell
+`Get-Date -Format 'yyyy-MM-dd HH:mm zzz'; either ±HHMM or ±HH:MM is fine`) so a daylight-saving change cannot skew the
+elapsed time. Elapsed is `Finished` − `Started` with both offsets applied, so it
+includes time spent `waiting for Codex`. While the night is `waiting for Codex`, write
+`Completed: — (waiting for Codex)` and the elapsed time so far, marked `(so far)`. A log from before offsets
+were recorded has a `Started` with none: keep it unchanged, read it at the current local
+offset, and mark the elapsed time `(approx.)`.
+
 Each `##` heading appears once: update a section in place, never append a second copy of
 it. Timestamps use local time, read from the clock as each entry is written (`date +%H:%M`
-for the timeline, `date '+%Y-%m-%d %H:%M'` for the header); never estimate one. Update
+for the timeline, `date '+%Y-%m-%d %H:%M'` for `Last update`, and the offset-aware command
+above for `Started` and `Finished`); never estimate one. Update
 `Last update` on every write.
 
 ## Running it

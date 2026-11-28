@@ -79,7 +79,8 @@ not passed.
   answer to them, which would stall the night. Never call an MCP tool that may ask for input,
   consent or a sign-in overnight; get the same result another way or log a blocker.
 - **Clock.** Read times with `Get-Date -Format HH:mm` and `Get-Date -Format 'yyyy-MM-dd HH:mm'`
-  (or `date +%H:%M` / `date '+%Y-%m-%d %H:%M'` in bash); never estimate one.
+  (or `date +%H:%M` / `date '+%Y-%m-%d %H:%M'` in bash); never estimate one. `Started` and
+  `Finished` also need the UTC offset: see *Log format*.
 
 ## Start of every wake-up
 
@@ -103,10 +104,11 @@ the `agentStop` hook (*Keeping the night going*), or an autopilot continuation.
    whether its branch and worktree still exist. Check every task before writing anything,
    then update the plan table and timeline in one write, so an interrupted re-evaluation
    leaves the log stale and the next wake-up repeats it. Resume only if open items remain:
-   tasks still `todo` or `in progress`, or reviews pending. Otherwise write the *Morning
-   summary*, set `Status: complete`, and stop with the *Close-the-session warning*.
-2. Otherwise, if the user typed `/nightshift`, this is a new night: run the *Preflight*,
-   then build the *Plan*. A watchdog prompt or an autopilot continuation with no open log
+   tasks still `todo` or `in progress`, or reviews pending. Otherwise set `Status:
+   complete` and `Finished:` (see *Log format*), write the *Morning summary*, and stop with the
+   *Close-the-session warning*.
+2. Otherwise, if the user typed `/nightshift`, this is a new night: create the log with
+   `Started:` set from the clock, run the *Preflight*, then build the *Plan*. A watchdog prompt or an autopilot continuation with no open log
    means the night is over: reply that nightshift is complete and stop.
 
 ### Keeping the night going
@@ -140,8 +142,9 @@ Check once and record the results under `## Setup` in the log.
   *Needs you* and continue.
 - Models: read them (*Host facts*) and record the coding and review model ids in effect.
 - Repository root (`git rev-parse --show-toplevel`) and default branch. Not a git
-  repository: write the log, mark it `complete` with a blocker explaining that nightshift
-  needs git to keep work reversible, and stop.
+  repository: write the log, mark it `complete` with `Finished:` set and a blocker explaining
+  that nightshift needs git to keep work reversible, write the *Morning summary* with its
+  times line, and stop.
 - `git fetch`; note whether `origin` exists and `gh auth status` succeeds. If pushing or PRs
   are unavailable, decide to keep branches local, log that decision, and continue.
 - The project's own checks — find them in the instruction files, README, `pyproject.toml`,
@@ -197,13 +200,13 @@ Repeat until every task is `done` or `blocked`:
 When no task is left `todo`, write the *Morning summary*. If reviews are still pending, set
 `Status: waiting for reviews`, wait 20 minutes (two sync `Start-Sleep -Seconds 600` shell
 calls), retry them, update the summary, and repeat; if the turn ends meanwhile, the watchdog
-resumes it. Once none are pending, set `Status: complete` and stop with the
-*Close-the-session warning*. Do not look for more work.
+resumes it. Once none are pending, set `Status: complete` and `Finished:` (see *Log
+format*), rewrite the summary's times line from them, and stop with the *Close-the-session warning*. Do not look for more work.
 
 ### Close-the-session warning
 
 Whenever the night ends with `Status: complete`, open the *Morning summary* and the final
-reply with this banner, word for word. Terminal replies show no colours, so the coloured
+reply with this banner, word for word, followed by the times line from *Log format*. Terminal replies show no colours, so the coloured
 emoji carry them:
 
 ```markdown
@@ -368,12 +371,14 @@ Keep the sections in this order so the morning reader sees what needs them first
 # Nightshift log — <project> — <YYYY-MM-DD>
 
 Status: in progress | waiting for reviews | complete
-Started: <YYYY-MM-DD HH:MM> · Last update: <YYYY-MM-DD HH:MM> · Finished: <YYYY-MM-DD HH:MM>
+Started: <YYYY-MM-DD HH:MM ±HHMM> · Last update: <YYYY-MM-DD HH:MM> · Finished: <YYYY-MM-DD HH:MM ±HHMM>
 Session: <id of the Copilot session running the night>
 Host: Copilot CLI
 
 ## Morning summary
-<Written last. Once complete, the Close-the-session warning first. Done: N (PR links).
+<Written last. Once complete, the Close-the-session warning first, then
+`Started: <YYYY-MM-DD HH:MM ±HHMM> · Completed: <YYYY-MM-DD HH:MM ±HHMM> · Elapsed: <Xh YYm>`.
+Done: N (PR links).
 Blocked: N. Decisions worth reviewing, highest stakes first, one line each with a link to
 the entry. Anything left running or left behind, such as worktrees kept after a failed push.>
 
@@ -414,6 +419,16 @@ Needs from you: <the specific thing>
 ## Timeline
 - <time> <event>
 ```
+
+`Started` is set once, when the log is created, and `Finished` stays `—` until the status
+becomes `complete`. The Morning summary's times line copies both, with dates so a night that
+spans midnight reads correctly. `Started` and `Finished` carry the UTC offset (`date '+%Y-%m-%d %H:%M %z'`; in PowerShell
+`Get-Date -Format 'yyyy-MM-dd HH:mm zzz'; either ±HHMM or ±HH:MM is fine`) so a daylight-saving change cannot skew the
+elapsed time. Elapsed is `Finished` − `Started` with both offsets applied, so it
+includes time spent `waiting for reviews`. While the night is `waiting for reviews`, write
+`Completed: — (waiting for reviews)` and the elapsed time so far, marked `(so far)`. A log from before offsets
+were recorded has a `Started` with none: keep it unchanged, read it at the current local
+offset, and mark the elapsed time `(approx.)`.
 
 Each `##` heading appears once: update a section in place, never append a second copy of
 it. The hook appends permission-prompt lines at the end of the file, which is the
